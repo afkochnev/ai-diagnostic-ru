@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-brand: #2f5774;
+  --color-brand-dark: #24445c;
+  --color-muted: #526877;
+  --color-surface: #f4f6f8;
+  --color-tint: #e9eff3;
+  --color-line: #dce3e8;
+  --shadow-card: 0 4px 20px rgb(47 87 116 / 4%);
+  --font-sans: Arial, Helvetica, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-brand);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: #cddfe9; }
+:focus-visible { outline: 3px solid #2f5774; outline-offset: 5px; }
+h1, h2, h3, p { overflow-wrap: break-word; }
+.section-title { font-size: clamp(1.65rem, 3vw, 2rem); font-weight: 600; line-height: 1.25; letter-spacing: -0.025em; }
