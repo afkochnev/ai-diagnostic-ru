@@ -1,0 +1,76 @@
+services:
+  - type: web
+    name: ai-diagnostic-web-staging
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: AUTH_FLOW_SECRET
+        sync: false
+      - key: DATA_PROCESSING_POLICY_URL
+        sync: false
+      - key: MARKETING_POLICY_URL
+        sync: false
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: CONSULTATION_NOTIFICATION_EMAIL
+        sync: false
+      - key: INTERNAL_WORKER_SECRET
+        sync: false
+
+  - type: worker
+    name: ai-diagnostic-worker-staging
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: npm run worker
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: AUTH_FLOW_SECRET
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: CONSULTATION_NOTIFICATION_EMAIL
+        sync: false
+      - key: WORKER_POLL_INTERVAL_MS
+        sync: false
+      - key: WORKER_LEASE_SECONDS
+        sync: false
+      - key: SCORING_MAX_ATTEMPTS
+        sync: false
+      - key: AI_MAX_ATTEMPTS
+        sync: false
+      - key: CONSULTATION_MAX_ATTEMPTS
+        sync: false
+      - key: AI_PROVIDER_TIMEOUT_MS
+        sync: false
+      - key: AI_CONCURRENCY
+        sync: false

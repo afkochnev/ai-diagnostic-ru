@@ -1,0 +1,4 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+const service=readFileSync("src/server/admin/metrics.ts","utf8"); const page=readFileSync("src/app/[locale]/(admin)/admin/metrics/page.tsx","utf8");
+describe("admin metrics contract",()=>{it("is server guarded and cohort based",()=>{expect(service).toContain("await requireAdmin()");expect(service).toContain("started_at");expect(service).toContain("diagnostic_id");expect(service).toContain('eq("status","completed")')});it("keeps unsupported analytics out",()=>{expect(page).toContain("Visitors");expect(page).toContain("скачивания PDF");expect(page).toContain("Нет данных")});it("supports UTC date boundaries and approved ratios",()=>{expect(service).toContain("23:59:59.999");expect(page).toContain("Диагностическая воронка");expect(page).toContain("pct(")})});

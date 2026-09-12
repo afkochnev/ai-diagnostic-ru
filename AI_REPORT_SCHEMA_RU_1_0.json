@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ai-report-ru-1.0",
+  "title": "AI Report RU 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "main_diagnosis",
+    "manageability_index_text",
+    "strengths",
+    "key_problem_zones",
+    "growth_constraint",
+    "implementation_risks",
+    "first_actions",
+    "plan_30_days",
+    "plan_60_days",
+    "plan_90_days",
+    "next_step"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "main_diagnosis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manageability_index_text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "strengths": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "key_problem_zones": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "growth_constraint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "implementation_risks": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "first_actions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "plan_30_days": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "plan_60_days": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "plan_90_days": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "next_step": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

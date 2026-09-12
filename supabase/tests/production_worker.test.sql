@@ -1,0 +1,14 @@
+begin;
+select plan(10);
+select has_function('public','claim_scoring_jobs',ARRAY['integer','integer','integer'],'scoring claim function exists');
+select has_function('public','claim_ai_report_jobs',ARRAY['integer','integer','integer'],'AI claim function exists');
+select ok((select pg_get_functiondef(p.oid) like '%j.kind = ''score_diagnostic''%' and pg_get_functiondef(p.oid) like '%skip locked%' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='claim_scoring_jobs' limit 1),'scoring claim is kind-scoped and locked');
+select ok((select pg_get_functiondef(p.oid) like '%j.kind = ''ai_report''%' and pg_get_functiondef(p.oid) like '%skip locked%' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='claim_ai_report_jobs' limit 1),'AI claim is kind-scoped and locked');
+select ok((select pg_get_functiondef(p.oid) like '%lease_expires_at <= now()%' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='claim_scoring_jobs' limit 1),'scoring expired leases reclaim');
+select ok((select pg_get_functiondef(p.oid) like '%lease_expires_at <= now()%' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='claim_ai_report_jobs' limit 1),'AI expired leases reclaim');
+select ok((select pg_get_functiondef(p.oid) like '%attempts < greatest(1, p_max_attempts)%' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='claim_scoring_jobs' limit 1),'scoring attempt ceiling');
+select ok((select pg_get_functiondef(p.oid) like '%attempts < greatest(1, p_max_attempts)%' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='claim_ai_report_jobs' limit 1),'AI attempt ceiling');
+select ok((select relrowsecurity from pg_class where oid='public.jobs'::regclass),'jobs RLS remains enabled');
+select ok((select count(*) from pg_constraint where conrelid='public.jobs'::regclass and conname='jobs_kind_diagnostic_dedupe_unique')=1,'kind dedup constraint remains');
+select * from finish();
+rollback;

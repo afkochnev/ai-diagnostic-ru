@@ -1,10 +1,7 @@
-import { redirect } from "next/navigation";
-import { requireIdentity } from "@/server/auth/session";
-import { AuthShell } from "@/features/auth/auth-shell";
-import { getMessages } from "@/i18n/messages";
+import { AdminShell } from "@/features/admin/admin-shell";
+import { requireAdmin } from "@/server/auth/admin";
+
 export default async function AdminEntry() {
- const identity = await requireIdentity();
- if (identity.role !== "administrator") redirect("/ru/access-denied");
- const copy = getMessages("ru").auth;
- return <AuthShell title={copy.adminEntryTitle}><p>{copy.adminEntryText}</p></AuthShell>;
+  await requireAdmin();
+  return <AdminShell />;
 }

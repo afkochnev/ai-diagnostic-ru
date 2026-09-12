@@ -1,0 +1,16 @@
+begin;
+select plan(12);
+select has_table('public','lead_requests','lead requests table exists');
+select has_table('public','consultation_notification_deliveries','notification delivery table exists');
+select has_column('public','lead_requests','email','email snapshot exists');
+select has_column('public','lead_requests','idempotency_key','idempotency key exists');
+select ok((select count(*) from pg_indexes where schemaname='public' and indexname='lead_requests_active_idx')=1,'active duplicate index exists');
+select ok((select relrowsecurity from pg_class where oid='public.lead_requests'::regclass),'lead RLS enabled');
+select ok((select relrowsecurity from pg_class where oid='public.consultation_notification_deliveries'::regclass),'delivery RLS enabled');
+select ok((select count(*) from pg_constraint where conrelid='public.lead_requests'::regclass and contype='f') >= 4,'parent foreign keys exist');
+select ok((select count(*) from pg_constraint where conrelid='public.jobs'::regclass and conname='jobs_kind_check')=1,'consultation job kind constraint exists');
+select ok((select pg_get_functiondef(p.oid) like '%email_confirmed_at%' from pg_proc p where p.proname='create_lead_request' limit 1),'verified email required by function');
+select ok((select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='claim_consultation_notification_jobs')=1,'atomic consultation claim function exists');
+select ok((select pg_get_functiondef(p.oid) like '%skip locked%' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='claim_consultation_notification_jobs' limit 1),'claim uses skip locked');
+select * from finish();
+rollback;

@@ -9,7 +9,7 @@ export default async function MfaPage() {
  if (!identity) redirect("/ru/login");
  if (!identity.user.email_confirmed_at) redirect("/ru/verify-email");
  if (identity.role !== "administrator") redirect("/ru/access-denied");
- if (identity.aal === "aal2") redirect("/ru/account");
+ if (identity.aal === "aal2") redirect(identity.role === "administrator" ? "/ru/admin" : "/ru/account");
  const { data } = await (await createAuthClient()).auth.mfa.listFactors();
  const factor = data?.totp.find((item) => item.status === "verified");
  return <AuthShell title={getMessages("ru").auth.mfaTitle}><MfaForm factorId={factor?.id} /></AuthShell>;

@@ -1,0 +1,12 @@
+begin;
+select plan(8);
+select is((select count(*)::int from public.questions where is_active and answer_type='scale_0_4'),80,'all 80 scored questions are active');
+select is((select count(*)::int from public.questions where is_active and is_required),82,'82 required questions');
+select is((select count(*)::int from public.questions where is_active and not is_required),2,'2 optional questions');
+select is((select count(*)::int from public.diagnostic_blocks where weight=0),2,'non-scoring blocks have zero weight');
+select is((select count(*)::int from public.diagnostic_blocks where weight=1),8,'eight scoring blocks have weight one');
+select is((select count(*)::int from public.maturity_levels),5,'five maturity levels configured');
+select is((select count(*)::int from information_schema.tables where table_schema='public' and table_name in ('diagnostic_company_snapshots','diagnostic_results','diagnostic_block_results','jobs')),4,'durable scoring tables exist');
+select ok((select exists(select 1 from pg_proc where proname='submit_diagnostic')),'submit RPC exists');
+select * from finish();
+rollback;

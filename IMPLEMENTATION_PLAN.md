@@ -12,7 +12,7 @@ Documentation and technical identifiers are English. User-facing content is Russ
 
 | Topic | Implementation consequence | Sources |
 | --- | --- | --- |
-| Stack | Next.js App Router, strict TypeScript, Tailwind, Supabase PostgreSQL/Auth/Storage, server-only OpenAI adapter, server PDF, initial Vercel deployment; alternative stacks listed in P are not a new choice | A §§1–2; P §§0, 33, 41 |
+| Stack | Next.js App Router, strict TypeScript, Tailwind, hosted Supabase PostgreSQL/Auth, server-only OpenAI adapter, server PDF, Render web service plus separate Render background worker; alternative stacks listed in P are not a new choice | A §§1–2; P §§0, 33, 41 |
 | Company ownership | One primary company per user in MVP; saving updates it. Preserve A's owner relation and enforce MVP uniqueness transactionally/in the DB | P §§0.1, 7; A §3 |
 | Methodology | Import the exact eight blocks and 80 supplied statements; do not ask for them again or alter wording. Missing open questions/metadata remain publication gates | P §§10–15, 31–32, 47 |
 | Scoring | Internal 0–4, reverse `4 - score`, weighted block percentage and eight-block mean as specified; full precision plus one-decimal presentation. Missing boundary rules prevent final acceptance, not all development | P §§12–15, 47; A §4 |
@@ -117,8 +117,8 @@ Every stage has a reproducible build/type/lint gate once the project exists, rel
 - **Business logic:** create before showing questions; duplicate start clicks reuse the intended attempt; save acknowledged before moving; Back means previous methodology block; resume uses persisted current block. Map displayed 1–5 to internal 0–4 if that presentation is selected. Missing input is never zero. Do not publish an incomplete production methodology or silently omit open questions.
 - **Access:** owner-only attempt editing in `in_progress`; pinned versions readable for owners after retirement; user cannot mutate methodology or submit another version's questions/options.
 - **Tests:** exact supplied 80-text import/count/order; type/scale validation; no duplicate answers; version pinning/retirement; cross-version selection rejection; lost response, repeated mutation, multi-tab conflict, browser restart and navigation-save failure; unauthorized direct database mutation.
-- **Completion:** approved dataset can be loaded from DB, answered and resumed without losing acknowledged edits. Until D04–D06 resolve, only infrastructure and explicitly synthetic test versions can pass; the production methodology/whole stage cannot be called complete.
-- **Dependencies:** Stage 3; D04–D06 for production behavior. Scoring engine is not required to test saving/resume.
+- **Completion:** approved dataset can be loaded from DB, answered and resumed without losing acknowledged edits. D04 and D06 are resolved; D05 remains a Stage 5 scoring decision and does not block Stage 4 navigation/autosave.
+- **Dependencies:** Stage 3; approved RU-1.0 import and D06. Scoring engine is not required to test saving/resume.
 - **Sources:** P §§2.1.5–8, 10–16, 31–32, 42, 44; A §§3–4, 6.
 
 ### Stage 5 — Submission, deterministic scoring and durable execution
@@ -164,7 +164,7 @@ Every stage has a reproducible build/type/lint gate once the project exists, rel
 - **API / Server Actions:** `GET /api/reports/{id}/pdf` for authorized existing download and an idempotent POST preparation operation when generation is needed; worker creates artifact. GET must not silently regenerate AI.
 - **Business logic:** use the requested persisted revision; format percentages at most one decimal; protect old revisions' artifacts; handle overflow according to D12 without truncating report meaning or silently changing the page contract.
 - **Access:** owner/admin only; private paths; authorization before streamed download or short-lived signed URL; no user-controlled external renderer resources.
-- **Tests:** visual review of Cyrillic, long text, all sections, pagination and page count; PDF numeric equality to browser/result; duplicate preparation requests; cross-user and expired-link denial; Vercel runtime/memory limits.
+- **Tests:** visual review of Cyrillic, long text, all sections, pagination and page count; PDF numeric equality to browser/result; duplicate preparation requests; cross-user and expired-link denial; Render runtime/memory limits.
 - **Completion:** approved branded PDF downloads on mobile/desktop, all content is readable, and private access survives adversarial tests. Deployment spike and D12 are resolved for final acceptance.
 - **Dependencies:** Stage 6, job runner from Stage 5, D12. No report-email dependency.
 - **Sources:** P §§0.1, 2.1.12, 24, 37–39, 45; A §§3–5, 7.
@@ -245,7 +245,7 @@ The following is ready to implement **after separate authorization**, without as
 1. Stage 1's runnable public browser slice, locale structure, exact landing copy, supplied visual tokens and responsive primitives.
 2. Stage 2's Supabase integration boundaries, profile/role/RLS foundations, server session checks and form structure. Final registration policy/legal handling remains gated by D01–D02.
 3. Stage 3's twelve-field form structure, supplied industry/revenue references, owner/revision persistence and Dashboard layout. Final validation/completeness awaits D03.
-4. Stage 4's versioned schema/import validation and faithful draft import of the 80 supplied questions; transaction/revision/version-integrity tests using clearly synthetic test data. Production publication awaits D04–D06.
+4. Stage 4's versioned schema/import validation and resumable diagnostic over the approved RU-1.0 dataset. Production scoring still awaits D05.
 5. Pure scoring contracts/tests for the specified example, report schema structure, job/PDF deployment spikes and integration adapters. These are partial later-stage tasks; they do not establish final scoring, prompt or release acceptance.
 
 ### Minimum first browser-testable stage
@@ -260,4 +260,4 @@ This planning task creates only `IMPLEMENTATION_PLAN.md` and `OPEN_DECISIONS.md`
 
 ## Stage 2 authorization and decision update
 
-The user authorized Stage 2 only after Stage 1. D01 and the Stage 2 portion of D02 are now resolved as recorded in OPEN_DECISIONS.md. Mandatory email verification, eight-character passwords, independent versioned consent records and administrator MFA supersede the previously open authentication choices. Temporary legal UI is explicitly authorized for this stage; final legal texts and retention/erasure remain production release blockers. The user subsequently authorized Stage 3 and resolved D03; Company Profile and Dashboard are now implemented. Stage 4 remains unauthorized.
+The user authorized Stage 2 only after Stage 1. D01 and the Stage 2 portion of D02 are now resolved as recorded in OPEN_DECISIONS.md. Mandatory email verification, eight-character passwords, independent versioned consent records and administrator MFA supersede the previously open authentication choices. Temporary legal UI is explicitly authorized for this stage; final legal texts and retention/erasure remain production release blockers. The user subsequently authorized Stage 3 and resolved D03, then authorized Stage 4 and resolved D04 and D06. Company Profile, Dashboard, versioned RU-1.0 methodology and resumable diagnostics are now implemented. Stage 5 remains unauthorized.

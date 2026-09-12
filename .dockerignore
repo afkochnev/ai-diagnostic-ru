@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+test-results
+playwright-report
+.env*
+!.env.example
+.git
+.gitignore
+tmp
+output
+*.tsbuildinfo
+Prompt.docx
+README*.md

@@ -53,7 +53,7 @@ export function AuthForm({ action, mode, policy, hidden = {} }: Props) {
       </>}
       {(localError || state.error) && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{localError || state.error}</p>}
       {state.success && <p role="status" className="rounded-xl bg-tint p-3 text-sm">{state.success}</p>}
-      <button disabled={pending} className="min-h-12 w-full cursor-pointer rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-60">{pending ? copy.pending : labels[mode]}</button>
+      <button type="submit" disabled={pending} className="min-h-12 w-full cursor-pointer rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-60">{pending ? copy.pending : labels[mode]}</button>
     </form>
   );
 }

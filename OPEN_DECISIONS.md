@@ -13,12 +13,12 @@ Both source documents were read in full. Stage numbers refer to `IMPLEMENTATION_
 - Keep Supabase's anti-enumeration behavior: duplicate signup gets the same email-verification state; no account-existence lookup endpoint. Incorrect login uses the specified generic Russian message.
 - Status: these decisions no longer block Stage 2. Company existence integration belongs to Stage 3, not Stage 2.
 
-## D02 — Stage 2 consent decisions resolved; release blockers remain
+## D02 — Open: production privacy and retention requirements
 
 - The user approved Stage 2 development with the exact temporary checkbox copy from PRODUCT_SPEC §5. Data-processing consent is mandatory; marketing is optional. Store separate records for both decisions, each with version, server timestamp, source and granted status.
 - `consent_documents` holds current versions; both start at explicitly temporary `temporary-ru-v1`. Signup validates the versions presented to the user against the database before committing the identity and consent records atomically. Later editable metadata cannot rewrite consent history.
 - Document URLs are replaceable through server configuration. The temporary legal pages explicitly say the documents are not yet approved; they do not invent legal terms.
-- **Release blocker:** approved legal texts/versions, jurisdiction/hosting requirements, retention and erasure across Auth/DB/Storage/providers, marketing lifecycle, any justified IP collection and analytics consent remain unresolved. No IP is collected in consent records at this stage.
+- **Status:** OPEN. Approved legal texts/versions, jurisdiction/hosting requirements, retention and erasure across Auth/DB/Storage/providers, marketing lifecycle, any justified IP collection and analytics consent remain unresolved. No IP is collected in consent records at this stage.
 - **Affected stages:** production readiness (Stage 11), and later personal-data/analytics modules when applicable.
 - **Can work continue?** Yes. These remaining decisions do not block Stage 2 implementation and synthetic-data verification. They block public production registration/release until approved.
 
@@ -28,28 +28,35 @@ Both source documents were read in full. Stage numbers refer to `IMPLEMENTATION_
 - **Affected stages:** 3 and diagnostic eligibility in later stages.
 - **Status:** resolved by product instruction before Stage 3 implementation.
 
-## D04 — Missing methodology content and publication metadata
+## D04 — Methodology content and publication metadata — Resolved for Stage 4
 
-- **Question:** Supply exact open questions, order, types, requiredness and semantic context labels. Confirm the per-question metadata for RU-1.0 (`weight`, `is_required`, `is_active`, `reverse_score` and any nonstandard validation) and whether the eight block weights are equal. If semantic labels have an existing required mapping, supply it; otherwise technical keys can be assigned without changing meaning.
-- **Why necessary:** P §§0.2, 10–12, 31, 47 supplies all 80 scored statements but explicitly identifies missing open questions/metadata. “Positive wording” does not authorize guessing every production reverse flag, and examples with equal weights do not confirm the complete production dataset.
-- **Affected stages:** 4 publication; 5 scoring acceptance; 6 complete AI input; 11 MVP gate.
-- **Can other work continue?** Yes: Stages 1–3, faithful draft import of supplied statements and synthetic engine tests. Do not silently publish defaults or omit open questions.
+- **Decision:** `METHODOLOGY_RU_1_0.csv` is the authoritative Bubble export for RU-1.0. It defines all 10 blocks, 84 questions, exact Russian text, order, question keys, weights, required/active flags, reverse flags, answer types and legacy provenance fields.
+- **Affected stages:** 4 import/publication and later scoring/report integration.
+- **Status:** RESOLVED. Решение зафиксировано пользователем; содержимое берётся из актуального Bubble-экспорта.
 
-## D05 — Missing-answer, rounding and classification semantics
+## D05 — Missing-answer, rounding and classification semantics — Resolved for Stage 5
 
-- **Question:** Define skipped/not-applicable/inactive-answer treatment and denominator behavior; confirm whether those answer states are allowed at all. Confirm rounding mode, whether any intermediate rounding is permitted, whether maturity uses raw or rounded index, and continuous boundary handling around 29.9/30, 49.9/50, 69.9/70 and 84.9/85. If D04 supplies unequal block weights, provide the authoritative overall aggregation rule for that case. Specify block-level required-answer enforcement versus final-submit-only enforcement.
-- **Why necessary:** P §§12–15 already supplies the internal 0–4 scale, reverse transform, block formula, equal-block mean, five labels and displayed example 63.8. These are not open. P §§0.2, 2.1.6, 47 and A §4 leave the listed edge cases unresolved; interpreting decimal interval gaps or omissions can change results.
-- **Affected stages:** 4 navigation validation; 5 final scoring; 6–7 displayed authoritative values; 11 equivalence acceptance.
-- **Can other work continue?** Yes: Auth/profile/autosave and pure tests for explicitly specified cases. The final engine cannot be accepted until result-changing choices resolve. Ask for authoritative boundary fixtures as evidence of the decisions, not a replacement formula.
+- RU-1.0 has no «Не применимо». Eighty scale questions and two `company_info` text questions are required; two `open_questions` text questions are optional and excluded from scoring. Missing means no Answer, never score zero. Inactive questions are hidden and excluded from denominators.
+- Stored scale values are 0–4 from user-facing 1–5. Reverse scoring uses `4 - stored_score`. Block score is `(sum(effective_score * question_weight) / sum(4 * question_weight)) * 100`; overall is the block-weighted mean of the eight scoring blocks. Intermediate values are not rounded and display uses decimal ROUND_HALF_UP to one decimal.
+- Maturity is classified from the raw overall value at [0,30), [30,50), [50,70), [70,85), [85,100]. RU-1.0 has equal weights and all reverse flags false. Submit validates all 82 required answers; navigation does not.
+- **Affected stages:** 5 scoring and submission; later report integration.
+- **Status:** RESOLVED. D05 больше не блокирует детерминированный scoring.
 
-## D06 — In-progress lifecycle and draft meaning
+## D06 — In-progress lifecycle and draft meaning — Resolved for Stage 4 MVP
 
-- **Question:** What is the lifetime/expiry or abandonment policy for unfinished attempts? What should an intentional “New diagnostic” request do while an unfinished attempt exists, and is a separate user-visible `Черновик` state needed beyond creation of an `in_progress` attempt? Specify any transition that makes it distinct.
-- **Why necessary:** P §§0.2, 2.1.5, 16 leaves lifetime/concurrent-attempt policy open and lists draft without defining a separate transition. Duplicate clicks must already be deduplicated; multiple simultaneous unfinished attempts must not be introduced without approval. A's technical statuses need a precise product projection.
-- **Affected stages:** 4 start/resume; 5 completion; 8 Dashboard.
-- **Can other work continue?** Yes: one-attempt persistence/resume, idempotent creation and later scoring/report modules in isolation. Do not invent deletion, expiry, abandonment or a concurrent-attempt UX. Already submitted data remains immutable as specified.
+- **Decision:** A company has at most one unfinished diagnostic. It never expires or deletes automatically, has no separate user-facing draft status, and starts immediately as `in_progress`. A repeated start request returns the existing attempt. After completion, a new attempt may be created; submitted/completed attempts remain immutable and non-editable.
+- **Affected stages:** 4 start/resume and later completion/history flows.
+- **Status:** RESOLVED. Решение зафиксировано пользователем.
 
 ## D07 — Durable execution and operational budgets
+
+**Status: IMPLEMENTATION IN PROGRESS (Stage 9C).**
+
+Stage 9C fixes the core runner model: one long-running Node process, explicit
+kind-specific atomic claims, five-minute leases with reclaim/fencing, bounded
+attempt ceilings (scoring/AI 3, consultation 5), two-second polling and
+server-only execution. Production deployment, scheduler/hosting choice,
+provider budgets, alerting, RPO/RTO and operational acceptance remain open.
 
 - **Question:** Select the job dispatcher/runner deployment after the required Vercel feasibility spike. Supply expected volume, acceptable waiting times, generation/notification quotas, retry/cost ceilings and production recovery objectives (RPO/RTO).
 - **Why necessary:** A §§4, 7–8 explicitly leaves runner/budgets/recovery targets to be selected; P §40 gives only qualitative page timing and approximate AI duration. Durable jobs, leases, idempotency and server execution are already fixed, not open choices.
@@ -58,6 +65,8 @@ Both source documents were read in full. Stage numbers refer to `IMPLEMENTATION_
 
 ## D08 — Approved production prompt and AI configuration
 
+- **Status:** RESOLVED for prompt/schema. `AI_REPORT_PROMPT_RU_1_0.md` and `AI_REPORT_SCHEMA_RU_1_0.json` are authoritative. Model and operational parameters remain configurable; default model is `gpt-5.6-sol`.
+
 - **Question:** Supply or approve the exact versioned production prompt/equivalent structured-output contract and the initial configurable OpenAI model selection with acceptance criteria for reviewed Russian outputs.
 - **Why necessary:** P §§0.2, 18–20, 33, 47 gives the twelve-section content/quality requirements and provider interface but explicitly omits the production prompt. A requires model/prompt provenance. Generating an unapproved prompt and calling it final would change the report contract.
 - **Affected stages:** 6 final integration; 7 representative layout validation; 11 report-quality acceptance.
@@ -65,10 +74,10 @@ Both source documents were read in full. Stage numbers refer to `IMPLEMENTATION_
 
 ## D09 — Funnel counting and attribution
 
-- **Question:** For each of the six funnel steps, are counts unique visitors/users, sessions or entity/event totals? Define reporting window/cohort, anonymous-to-user association, repeat visits/diagnostics/regenerations, conversion denominators and reporting timezone.
-- **Why necessary:** P §30 specifies the six steps and suggested events but not these counting semantics. Different plausible aggregations give different funnel values. A requires minimal, privacy-aware event handling.
-- **Affected stages:** 10; analytics-linked totals in 9 if reused.
-- **Can other work continue?** Yes: all core diagnostic/report work and event schema scaffolding. Do not publish guessed conversions; resolve D02 before persistent anonymous tracking.
+- **Status:** CLOSED for Stage 8G metrics. The primary funnel is a diagnostic funnel deduplicated by unique `diagnostic_id`. Cohort membership is determined by `diagnostics.started_at`; date boundaries are UTC and the cohort is evaluated against current persisted state.
+- **Stages:** started → completed (`status = completed` and `completed_at` present) → at least one completed AI report → at least one consultation lead. Feedback count is shown separately and feedback conversion is `diagnostics with feedback / completed diagnostics`.
+- **Operational rules:** report versions, delivery attempts and PDF artifacts do not duplicate funnel diagnostics; visitor/page-view, anonymous tracking, PDF-download, inbox-delivery and consultation-completion metrics are not implemented. Allowed conversions use only the approved diagnostic denominators and show “Нет данных” for zero denominators.
+- **Affected stages:** Stage 8G. Future analytics instrumentation requires separate privacy/retention decisions under D02.
 
 ## D10 — Consultation validation and administrator notification
 
@@ -79,10 +88,9 @@ Both source documents were read in full. Stage numbers refer to `IMPLEMENTATION_
 
 ## D11 — Feedback cardinality and required fields
 
-- **Question:** Is the permitted feedback one per user/company, one per completed diagnostic, or repeatable? Can an existing submission be edited? Are rating/useful/improve all required or only some?
-- **Why necessary:** P §§2.1.15, 26 specifies eligibility after one completed diagnostic, rating 1–5 and two text questions, but only says the CTA may be hidden after feedback. It does not establish a database uniqueness rule or edit/requiredness policy.
-- **Affected stages:** 8 form/constraints; 9 count/average correctness.
-- **Can other work continue?** Yes: eligibility check, popup layout, other flows and read-only admin layout. Do not invent per-diagnostic linkage or repeat-submission behavior. Optional beta wording feedback is not mandatory scope.
+- **Decision:** Feedback belongs to a completed diagnostic. At most one immutable record is allowed per `(user_id, diagnostic_id)`; a user may submit feedback again for a later completed diagnostic. `company_id` is retained for analytics and future administration. `rating` is required and constrained to 1–5; `useful` and `improve` are optional trimmed text values normalized to NULL. No edit after submission and no beta wording question in MVP. Feedback persistence does not create jobs or notifications. The completed result page exposes `Оценить аудит`; after submission the CTA is hidden.
+- **Status:** RESOLVED for Stage 7D. Feedback is not bound to an AI report version.
+- **Affected stages:** 7D persistence/UI; future Admin UI aggregates.
 
 ## D12 — Branded PDF assets and overflow acceptance
 
@@ -91,12 +99,15 @@ Both source documents were read in full. Stage numbers refer to `IMPLEMENTATION_
 - **Affected stages:** 1 final branding, 7 PDF acceptance; 6 if prompt length constraints need refinement.
 - **Can other work continue?** Yes: landing without invented branding, renderer deployment spike, template and synthetic typography tests. Exact library selection is an engineering spike per A, not another product question.
 
-## D13 — Admin date and aggregate semantics
+## D13 — Latest/current semantics
 
-- **Question:** Which timestamp is the displayed/filterable “diagnostic date” (start or completion), which timezone applies, and does “latest index” refer to the latest successfully scored diagnostic if a newer unfinished one exists? Do headline “Received report” and “Left feedback” counts represent unique users or record totals?
-- **Why necessary:** P §§25, 28–29 asks for these dates/latest values/counts without their precise definitions. A stores separate timestamps and requires explicit timezone semantics. Query implementation must not substitute one interpretation invisibly.
-- **Affected stages:** 8 history display; 9 admin aggregates/filters; 10 if sharing definitions.
-- **Can other work continue?** Yes: underlying dated records, explicit started/completed fields and list/detail layout. Final ambiguous labels/counts await a decision.
+- **Status:** CLOSED.
+- There is no global business concept of a “current diagnostic”. The sole active attempt is the company’s `in_progress` diagnostic; completed attempts remain history and downstream routes use an explicit `diagnostic_id`.
+- Dashboard resume targets the exact active diagnostic and persisted block. Completed history is presentation-sorted by `started_at DESC`; this ordering is not a current/latest business claim. If a completed summary is needed later, its canonical rule is `status = completed AND completed_at IS NOT NULL`, ordered by `completed_at DESC, id DESC`.
+- For an exact diagnostic, the usable AI report is the highest `version` whose status is `completed`. A newer failed or generating report never hides an older usable completed report. If no completed report exists, the UI shows the persisted generating/failed/no-report state without rendering unfinished content or creating a report.
+- `company_profiles` is the canonical current profile. A completed diagnostic uses its immutable `diagnostic_company_snapshots.profile_data`; if that snapshot is missing, the UI reports that the historical profile is unavailable and does not silently substitute current data. An unfinished diagnostic may use the current profile until its snapshot is created.
+- PDF and report-email records remain explicitly bound to their report/version/artifact. No implicit latest PDF, email attachment, lead or feedback semantics are introduced. Presentation sorting in admin history is not a business selection.
+- **Affected stages:** diagnostic result and Stage 8C historical profile integrity; prior accepted stages retain their explicit-ID/version contracts.
 
 ## D14 — Historical migration scope
 

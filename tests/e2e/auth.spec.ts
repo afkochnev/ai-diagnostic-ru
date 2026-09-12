@@ -48,8 +48,8 @@ test("registration, verification, login, password recovery, logout and role isol
   const confirm = await emailLink(request, email, "Подтвердите email");
   await page.goto(confirm);
   await page.getByRole("button", { name: "Подтвердить email", exact: true }).click();
-  await expect(page).toHaveURL("/ru/company-profile");
-  await expect(page.getByRole("heading", { name: "Профиль компании", exact: true })).toBeVisible();
+  await expect(page).toHaveURL("/ru?welcome=1");
+  await expect(page.getByRole("heading", { name: "Определите уровень управления вашей компании и ограничения для её роста.", exact: true })).toBeVisible();
   await page.goto("/ru/admin");
   await expect(page).toHaveURL("/ru/access-denied");
   await page.getByRole("button", { name: "Выйти", exact: true }).click();

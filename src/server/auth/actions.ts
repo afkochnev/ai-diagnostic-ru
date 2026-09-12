@@ -8,6 +8,7 @@ import { authConfig } from "@/server/supabase/config";
 import { clearRecovery, hasRecovery, setRecovery } from "./recovery";
 import { emailSchema, loginSchema, passwordSchema, registrationSchema, type AuthState } from "@/validation/auth";
 import { getMessages } from "@/i18n/messages";
+import { buildSignupMetadata, hasCreatedAuthUser } from "./registration-contract";
 
 const text = getMessages("ru").auth;
 const value = (form: FormData, name: string) => String(form.get(name) ?? "");
@@ -28,6 +29,9 @@ export async function registerAction(_: AuthState, form: FormData): Promise<Auth
     data_processing_consent: form.get("data_processing_consent") === "on", marketing_consent: form.get("marketing_consent") === "on",
   });
   if (!parsed.success) return { error: parsed.error.issues.some((issue) => issue.path[0] === "confirm_password") ? text.passwordMismatch : text.required };
+  const dataProcessingConsent = form.get("data_processing_consent") === "on";
+  if (!dataProcessingConsent) return { error: text.required };
+  const marketingConsent = form.get("marketing_consent") === "on";
   const client = await actionClient();
   const { data: documents, error: policyError } = await client.from("consent_documents").select("kind, version");
   if (policyError || documents?.length !== 2) return { error: text.technical };
@@ -35,11 +39,17 @@ export async function registerAction(_: AuthState, form: FormData): Promise<Auth
   for (const [key, version] of Object.entries(versions)) {
     if (value(form, key) !== version) return { error: text.required };
   }
-  const { email, password, ...metadata } = parsed.data;
-  const { error } = await client.auth.signUp({ email, password, options: {
-    emailRedirectTo: `${authConfig().APP_URL}/auth/confirm`, data: { ...metadata, ...versions },
+  const { email, password, full_name } = parsed.data;
+  const metadata = buildSignupMetadata({ full_name, data_processing_consent: dataProcessingConsent, marketing_consent: marketingConsent, versions });
+  const { data, error } = await client.auth.signUp({ email, password, options: {
+    emailRedirectTo: `${authConfig().APP_URL}/auth/confirm`, data: metadata,
   } });
-  if (error) return failure(error);
+  if (error) {
+    return failure(error);
+  }
+  if (!hasCreatedAuthUser(data)) {
+    return { error: text.technical };
+  }
   // Supabase may deliberately return an obfuscated user for duplicate emails.
   // Always show the same confirmation state, without an enumeration endpoint.
   await clearRecovery();
@@ -101,7 +111,7 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
   }
   await clearRecovery();
   revalidatePath("/", "layout");
-  redirect("/ru/company-profile");
+  redirect("/ru?welcome=1");
 }
 
 export async function resetAction(_: AuthState, form: FormData): Promise<AuthState> {
@@ -151,5 +161,7 @@ export async function verifyMfaAction(_: AuthState, form: FormData): Promise<Aut
   const { error } = await client.auth.mfa.challengeAndVerify({ factorId, code });
   if (error) return { error: text.mfaBad };
   revalidatePath("/", "layout");
-  redirect("/ru/company-profile");
+  // Administrator access is gated by the verified role and aal2 in requireAdmin.
+  // The role was resolved server-side above; ordinary users retain onboarding flow.
+  redirect(role?.role === "administrator" ? "/ru/admin" : "/ru/company-profile");
 }

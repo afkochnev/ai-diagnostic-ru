@@ -1,0 +1,11 @@
+begin;
+select plan(7);
+select has_table('public', 'email_deliveries', 'email delivery log exists');
+select has_column('public', 'email_deliveries', 'recipient_email', 'recipient is stored');
+select has_column('public', 'email_deliveries', 'ai_report_version', 'report version is stored');
+select has_column('public', 'email_deliveries', 'pdf_artifact_id', 'PDF artifact binding is stored');
+select ok((select count(*) from pg_indexes where schemaname='public' and tablename='email_deliveries' and indexname='email_deliveries_active_idx') = 1, 'active delivery uniqueness exists');
+select ok((select relrowsecurity from pg_class where oid='public.email_deliveries'::regclass), 'RLS is enabled');
+select ok((select count(*) from pg_constraint where conrelid = 'public.email_deliveries'::regclass and contype = 'c') >= 1, 'delivery status constraints exist');
+select * from finish();
+rollback;

@@ -5,7 +5,7 @@ Date: 2026-09-09.
 
 ## 1. Scope and requirements
 
-Build an independent Russian-language application using Next.js, strict TypeScript, Tailwind CSS, PostgreSQL through Supabase, Supabase Auth and Storage, server-side OpenAI integration, server-generated PDF, and Vercel. No Bubble or other no-code runtime dependencies.
+Build an independent Russian-language application using Next.js, strict TypeScript, Tailwind CSS, PostgreSQL through hosted Supabase, Supabase Auth, server-side OpenAI integration, server-generated PDF, and separate Render web/worker services. No Bubble or other no-code runtime dependencies.
 
 The product covers registration, login, email verification when configured, company profile editing, repeatable diagnostics with autosave, required-answer validation, deterministic block and overall results, maturity classification, saved AI analysis, browser reports, PDF download, and user-requested email delivery. Administrators need searchable and filterable user, company, and diagnostic lists, contact details, dates, completion status, results, block scores, answers, company profiles, reports, and administrative assessment.
 
@@ -19,7 +19,7 @@ Use a modular monolith: one Next.js application plus a durable job execution pat
 
 ```mermaid
 flowchart TD
-    Browser[Russian browser UI] --> Web[Next.js App Router on Vercel]
+    Browser[Russian browser UI] --> Web[Next.js App Router on Render Web Service]
     Web --> Auth[Supabase Auth]
     Web --> Services[Application services and authorization]
     Services --> DB[Supabase PostgreSQL with RLS]
@@ -186,7 +186,7 @@ Persist a validated report before making it available. Browser, PDF and email us
 
 Use the `jobs` table as a transactional outbox/queue. A scheduled authenticated dispatcher or durable runner claims jobs atomically with leases; process each external step separately. Use bounded exponential backoff with jitter, timeouts, heartbeat/lease renewal, maximum attempts, failed-job inspection and explicit retries. Fencing tokens prevent expired workers from committing over newer attempts. Delivery is at least once: unique keys and state transitions deduplicate database effects. External calls can still be repeated after a crash; use provider idempotency where available and acknowledge that exactly-once email delivery is not guaranteed otherwise.
 
-Do not rely on fire-and-forget promises or a browser request staying open. Vercel Functions have execution limits, so the selected runner, AI timeout, PDF renderer and batch sizes must fit the deployment plan. Validate this before selecting the job infrastructure. [Vercel Function limits](https://vercel.com/docs/functions/limitations).
+Do not rely on fire-and-forget promises or a browser request staying open. The Render web service handles request-bound work while the separate Render Background Worker owns durable jobs. AI timeout, PDF renderer and batch sizes must fit the selected Render service limits and pass the staging smoke test.
 
 Generate PDF in a server Node.js runtime from the persisted report and results. Proposed starting option: a typed PDF template with an embedded Cyrillic font and controlled pagination; compare it with an HTML-to-PDF renderer in a deployment spike before committing to a library. Verify long Russian text, tables, page breaks and selectable text. Store versioned artifacts in a private bucket. Downloads require current authorization and either a streamed response or a short-lived signed URL; never use public report objects.
 
@@ -310,13 +310,13 @@ This is a proposed layout, not generated application scaffolding. Production met
 | 4. Methodology and diagnostic flow | Validated import/publication, database-driven forms, autosave, resume, submission and snapshots | Interrupted-network and multi-tab tests; required-answer enforcement; immutable historical versions |
 | 5. Deterministic engine | Supplied rules only, decimal arithmetic, persisted block/overall values and maturity, durable scoring jobs | Golden fixtures from methodology owner; rounding/threshold/omission cases; repeatability without OpenAI |
 | 6. AI and browser report | Versioned prompt/schema, minimal saved input, server-only API integration, retries and saved report viewer | Refusal/timeout/invalid-output tests; evidence checks; result-to-report consistency; no AI arithmetic authority |
-| 7. PDF and email | Server renderer, private artifacts, download authorization, verified-recipient jobs and delivery tracking | Cyrillic visual QA, long report layout, Vercel runtime check, signed-link isolation and duplicate-request tests |
+| 7. PDF and email | Server renderer, private artifacts, download authorization, verified-recipient jobs and delivery tracking | Cyrillic visual QA, long report layout, Render runtime check, signed-link isolation and duplicate-request tests |
 | 8. Administration | Paginated lists, name/contact search, company/status/date filters, detailed answers/results/reports and assessment | Admin-only access, usable date semantics, immutable assessment history and role revocation tests |
 | 9. Production readiness | Load/security/accessibility checks, observability, runbooks, backup/restore and deployment rehearsals | Agreed latency/cost targets, queue recovery tests, alerting, restore evidence and release checklist |
 
 Use UTC storage with explicit localized dates and a documented timezone for admin filters. CI checks include type checking, linting, production build, domain tests, database/RLS integration tests and core browser flows. Use mocked providers in routine CI, with controlled staging smoke tests. Assess AI quality with reviewed Russian fixtures; do not snapshot nondeterministic prose as the sole quality test.
 
-Track autosave errors, scoring failures, job age, AI latency/token cost, PDF duration, email bounces and authorization failures using correlation IDs, without logging answers or report bodies. Define RPO/RTO, retention and response objectives before launch. Database and storage recovery must both be rehearsed. Promote migrations through staging with compatible rollout and rollback/recovery plans; Vercel preview deployments must never use production secrets or customer data.
+Track autosave errors, scoring failures, job age, AI latency/token cost, PDF duration, email bounces and authorization failures using correlation IDs, without logging answers or report bodies. Define RPO/RTO, retention and response objectives before launch. Database and storage recovery must both be rehearsed. Promote migrations through staging with compatible rollout and rollback/recovery plans; Render previews and staging services must never use production secrets or customer data.
 
 ## 8. Decisions required before implementation
 
@@ -331,7 +331,7 @@ Track autosave errors, scoring failures, job age, AI latency/token cost, PDF dur
 | Administrative assessment | Define rubric, structured fields, revision policy, visibility and whether it can trigger a separate report revision; never silently overwrite computed results |
 | Authentication policy | Confirm email verification gate, administrator MFA, session policy and initial admin provisioning |
 | Report contract | Approve structure, language, intended interpretation limits, prompt governance, model evaluation criteria and regeneration permissions |
-| Jobs and hosting | Select durable dispatcher/runner and retry budget after Vercel deployment spike; agree expected volume and execution/cost ceilings |
+| Jobs and hosting | Validate the selected Render web/background-worker deployment and retry budget; agree expected volume and execution/cost ceilings |
 | PDF and email | Select renderer and provider; confirm fonts/branding, attachment versus link, recipient rules and delivery/retention semantics |
 | Privacy and operations | Determine applicable jurisdiction, regions, provider retention, user consent/notice, erasure, audit retention, backups and RPO/RTO |
 | Existing Bubble migration | Confirm whether historical users/companies/answers/reports require migration; obtain source schema and exports if so; never assume authentication credentials are portable |
