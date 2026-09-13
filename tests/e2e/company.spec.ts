@@ -89,8 +89,8 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
   expect([200, 201]).toContain(apiStart.status());
   const apiDiagnostic = await apiStart.json() as { id: string };
   expect(apiDiagnostic.id).toMatch(/^[0-9a-f-]{36}$/);
-  await page.getByRole("button", { name: "Новая диагностика", exact: true }).click();
-  await expect(page).toHaveURL(/\/ru\/diagnostics\/[0-9a-f-]+$/);
+  await expect(page.getByRole("button", { name: "Новая диагностика", exact: true })).toBeDisabled();
+  await expect(page).toHaveURL("/ru/dashboard");
   await expect(page.getByRole("heading", { name: "Общая информация", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.locator("textarea").nth(0).fill("Согласовать ответственность за ключевые решения.");
