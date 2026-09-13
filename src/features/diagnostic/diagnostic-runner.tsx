@@ -21,6 +21,7 @@ export function DiagnosticRunner({ data }: Props) {
   const [missingRequiredIds, setMissingRequiredIds] = useState<string[]>([]);
   const questionRefs = useRef<Record<string, HTMLElement | null>>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
   const revisionRef = useRef(revision);
   const answersRef = useRef(answers);
   const currentIndex = Math.max(0, data.blocks.findIndex((block) => block.id === data.diagnostic.current_block_id));
@@ -31,16 +32,20 @@ export function DiagnosticRunner({ data }: Props) {
 
   const save = useCallback(async (nextBlockId = currentBlock.id) => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
-    setSaving("saving"); setError("");
-    const payload = { expected_revision: revisionRef.current, mutation_id: crypto.randomUUID(), current_block_id: nextBlockId, answers: Object.entries(answersRef.current).map(([question_id, value]) => ({ question_id, value })) };
-    try {
-      const response = await fetch(`/api/diagnostics/${data.diagnostic.id}/answers`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      const body = await response.json().catch(() => null) as { revision?: number; error?: string; code?: string } | null;
-      if (!response.ok || !body?.revision) { setSaving("error"); setError(response.status === 409 ? "Диагностика изменена в другой вкладке. Обновите страницу и повторите действие." : "Не удалось сохранить ответы. Попробуйте ещё раз."); return false; }
-      revisionRef.current = body.revision; setRevision(body.revision); setSaving("saved"); return true;
-    } catch {
-      setSaving("error"); setError("Не удалось сохранить ответы. Попробуйте ещё раз."); return false;
-    }
+    const operation = saveQueue.current.then(async () => {
+      setSaving("saving"); setError("");
+      const payload = { expected_revision: revisionRef.current, mutation_id: crypto.randomUUID(), current_block_id: nextBlockId, answers: Object.entries(answersRef.current).map(([question_id, value]) => ({ question_id, value })) };
+      try {
+        const response = await fetch(`/api/diagnostics/${data.diagnostic.id}/answers`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        const body = await response.json().catch(() => null) as { revision?: number; error?: string; code?: string } | null;
+        if (!response.ok || !body?.revision) { setSaving("error"); setError(response.status === 409 ? "Диагностика изменена в другой вкладке. Обновите страницу и повторите действие." : "Не удалось сохранить ответы. Попробуйте ещё раз."); return false; }
+        revisionRef.current = body.revision; setRevision(body.revision); setSaving("saved"); return true;
+      } catch {
+        setSaving("error"); setError("Не удалось сохранить ответы. Попробуйте ещё раз."); return false;
+      }
+    });
+    saveQueue.current = operation.then(() => true, () => false);
+    return operation;
   }, [currentBlock.id, data.diagnostic.id]);
 
   useEffect(() => {

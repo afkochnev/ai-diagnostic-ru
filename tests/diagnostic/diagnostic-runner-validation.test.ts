@@ -13,6 +13,13 @@ describe("diagnostic runner required-answer validation", () => {
     expect(source.indexOf("clearTimeout(timer.current); timer.current = null;", source.indexOf("if (missing.length)"))).toBeLessThan(source.indexOf("setValidationError", source.indexOf("if (missing.length)")));
   });
 
+  it("serializes autosave and explicit block saves", () => {
+    const source = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "utf8");
+    expect(source).toContain('const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));');
+    expect(source).toContain("const operation = saveQueue.current.then(async () => {");
+    expect(source).toContain("saveQueue.current = operation.then(() => true, () => false);");
+  });
+
   it("finds missing required answers while accepting score zero", () => {
     expect(isDiagnosticAnswerPresent(scale, 0)).toBe(true);
     expect(getMissingRequiredQuestions([scale, text], { scale: 0 })).toEqual([text]);
