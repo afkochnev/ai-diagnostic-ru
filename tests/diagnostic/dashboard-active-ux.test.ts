@@ -4,6 +4,14 @@ import { readFileSync } from "node:fs";
 const page = readFileSync("src/app/[locale]/(workspace)/dashboard/page.tsx", "utf8");
 
 describe("active diagnostic dashboard controls", () => {
+  it("renders the account heading copy", () => {
+    expect(page).toContain("{copy.dashboard}");
+    const messages = readFileSync("src/messages/ru.json", "utf8");
+    expect(messages).toContain('"dashboard": "Кабинет управленческой диагностики"');
+    expect(messages).not.toContain('"dashboard": "Перейти в кабинет"');
+    expect(messages).toContain('"greeting": "Добро пожаловать"');
+  });
+
   it("disables new diagnostic while an active attempt exists", () => {
     const activeBranch = page.slice(page.indexOf("{activeDiagnostic ?"), page.indexOf(": <form action={startDiagnosticAction}"));
     expect(activeBranch).toContain('href={`/ru/diagnostics/${activeDiagnostic.id}`}');
