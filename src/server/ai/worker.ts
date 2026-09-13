@@ -1,11 +1,12 @@
 import crypto from "node:crypto";
 import { createAdminClient } from "@/server-runtime/supabase/admin";
 import { buildAIInput, generateReport } from "./report";
+const promptVersionFor = (version: number) => version === 1 ? "RU-1.0" : version === 2 ? "RU-1.1" : "RU-1.3";
 export async function enqueueAIReport(diagnosticId: string, version = 1) {
   const db = createAdminClient();
   const input = await buildAIInput(diagnosticId);
   const hash = crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex");
-  const promptVersion = version === 1 ? "RU-1.0" : version === 2 ? "RU-1.1" : "RU-1.2";
+  const promptVersion = promptVersionFor(version);
   const deduplicationKey = `ai_report_v${version}`;
   const { data: existing } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
   if (existing) return existing;
@@ -54,7 +55,7 @@ export async function runAIJob(job: ClaimedAIJob) {
   await db.from("ai_reports").update({ status: "generating" }).eq("id", report.id).in("status", ["queued", "failed", "generating"]);
   try {
     const input = await buildAIInput(diagnosticId);
-    const generated = await generateReport(input, report.version === 1 ? "RU-1.0" : report.version === 2 ? "RU-1.1" : "RU-1.2", Number(process.env.AI_PROVIDER_TIMEOUT_MS || 180000));
+    const generated = await generateReport(input, promptVersionFor(report.version), Number(process.env.AI_PROVIDER_TIMEOUT_MS || 180000));
     const { error: reportError } = await db.from("ai_reports").update({ status: "completed", structured_content: generated.content, provider_request_id: generated.requestId ?? null, completed_at: new Date().toISOString(), error_code: null, error_message: null }).eq("id", report.id).eq("status", "generating");
     if (reportError) throw new Error(`ai_report_persist_failed:${reportError.message}`);
     const { error: jobError } = await db.from("jobs").update({ status: "completed", completed_at: new Date().toISOString(), lease_token: null, lease_expires_at: null, last_error_code: null, last_error_message: null }).eq("id", job.job_id).eq("lease_token", lease);
