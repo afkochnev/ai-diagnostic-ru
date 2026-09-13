@@ -11,7 +11,8 @@ describe("report actions presentation", () => {
     expect(actions.indexOf("ConsultationModal")).toBeLessThan(actions.indexOf("PdfDownloadButton"));
     expect(actions).toContain("max-w-[800px]");
     expect(actions).toContain("grid gap-4 sm:grid-cols-2");
-    expect(actions).toContain("[&>button]:bg-brand");
+    expect(actions).toContain("[&>button]:justify-center");
+    expect(actions).toContain("[&_button]:w-full");
     expect(actions).toContain("mt-7 text-center");
     expect(actions).toContain("FeedbackModal");
     expect(actions).not.toContain("Действия с отчётом");
@@ -30,5 +31,13 @@ describe("report actions presentation", () => {
     expect(email).toContain('role="status"');
     expect(email).toContain("✓ Отчёт отправлен на email");
     expect(email).not.toContain("state === \"sent\" ? \"Отчёт отправлен\"");
+  });
+
+  it("keeps feedback trigger link-like rather than button-like", () => {
+    const feedback = readFileSync("src/features/feedback/feedback-modal.tsx", "utf8");
+    const trigger = feedback.slice(feedback.indexOf('if (state === "closed")'), feedback.indexOf('if (state === "success")'));
+    expect(trigger).toContain("underline");
+    expect(trigger).not.toContain("border border-brand");
+    expect(trigger).not.toContain("bg-brand");
   });
 });

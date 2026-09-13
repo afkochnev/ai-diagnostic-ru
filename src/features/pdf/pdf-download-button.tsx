@@ -20,5 +20,5 @@ export function PdfDownloadButton({ reportId }: { reportId: string }) {
       link.click(); URL.revokeObjectURL(url);
     } catch { setError(true); } finally { setLoading(false); }
   }
-  return <div className="mt-6"><button type="button" onClick={() => void download()} disabled={loading} className="inline-flex min-h-12 items-center rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-60">{loading ? "Готовим PDF…" : "Скачать PDF"}</button>{error && <p role="alert" className="mt-2 text-sm text-red-700">Не удалось подготовить PDF. Попробуйте ещё раз.</p>}</div>;
+  return <div className="mt-6"><button type="button" onClick={() => void download()} disabled={loading} className="inline-flex min-h-14 w-full items-center justify-center rounded-xl border border-brand bg-transparent px-5 py-3 text-center font-semibold text-brand disabled:opacity-60">{loading ? "Готовим PDF…" : "Скачать PDF"}</button>{error && <p role="alert" className="mt-2 text-sm text-red-700">Не удалось подготовить PDF. Попробуйте ещё раз.</p>}</div>;
 }
