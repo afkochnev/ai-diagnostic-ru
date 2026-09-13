@@ -106,8 +106,11 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
   await page.getByRole("link", { name: "В кабинет", exact: true }).first().click();
   await expect(page).toHaveURL("/ru/dashboard");
   await expect(page.getByRole("link", { name: "Продолжить диагностику", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Новая диагностика", exact: true }).click();
-  await expect(page).toHaveURL(/\/ru\/diagnostics\/[0-9a-f-]+$/);
+  const disabledNewDiagnostic = page.getByRole("button", { name: "Новая диагностика", exact: true });
+  await expect(disabledNewDiagnostic).toBeDisabled();
+  await disabledNewDiagnostic.press("Enter");
+  await disabledNewDiagnostic.press("Space");
+  await expect(page).toHaveURL("/ru/dashboard");
   await page.goto("/ru/dashboard");
   await page.goto(await page.getByRole("link", { name: "Продолжить диагностику", exact: true }).getAttribute("href") ?? "");
   await expect(page.getByRole("heading", { name: "Стратегия", exact: true })).toBeVisible();
