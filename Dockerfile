@@ -32,6 +32,7 @@ COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/AI_REPORT_PROMPT_RU_1_0.md ./AI_REPORT_PROMPT_RU_1_0.md
 COPY --from=build /app/AI_REPORT_PROMPT_RU_1_1.md ./AI_REPORT_PROMPT_RU_1_1.md
 COPY --from=build /app/AI_REPORT_PROMPT_RU_1_2.md ./AI_REPORT_PROMPT_RU_1_2.md
+COPY --from=build /app/AI_REPORT_PROMPT_RU_1_3.md ./AI_REPORT_PROMPT_RU_1_3.md
 COPY --from=build /app/AI_REPORT_SCHEMA_RU_1_0.json ./AI_REPORT_SCHEMA_RU_1_0.json
 RUN npx playwright install --with-deps chromium \
   && chmod -R a+rX /ms-playwright \
