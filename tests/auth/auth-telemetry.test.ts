@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync("src/server/auth/actions.ts", "utf8");
+const page = readFileSync("src/app/auth/confirm/page.tsx", "utf8");
 const telemetry = source.slice(source.indexOf('const telemetry ='), source.indexOf('if (!data?.user)'));
 
 describe("safe auth confirmation telemetry", () => {
   it("records only safe request and outcome metadata", () => {
+    expect(page).toContain('checkpoint: "route_enter"');
+    expect(page).toContain("has_code: Boolean(code)");
     expect(telemetry).toContain('route: "/auth/confirm"');
     expect(telemetry).toContain("request_host");
     expect(telemetry).toContain("pkce_verifier_present");
