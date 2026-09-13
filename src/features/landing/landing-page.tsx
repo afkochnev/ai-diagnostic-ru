@@ -4,9 +4,9 @@ import { Container } from "@/components/ui/container";
 import { localePath, type Locale } from "@/i18n/config";
 import type { Messages } from "@/i18n/messages";
 
-export function LandingPage({ locale, messages }: { locale: Locale; messages: Messages }) {
+export function LandingPage({ locale, messages, authenticated = false }: { locale: Locale; messages: Messages; authenticated?: boolean }) {
   const content = messages.landing;
-  const registrationPath = localePath(locale, "/register");
+  const registrationPath = localePath(locale, authenticated ? "/account" : "/register");
 
   return (
     <main id="main-content">

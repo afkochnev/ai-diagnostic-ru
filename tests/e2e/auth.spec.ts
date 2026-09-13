@@ -63,7 +63,7 @@ test("registration, verification, login, password recovery, logout and role isol
   await page.locator('input[name="email"]:visible').first().fill(email);
   await page.locator('input[name="password"]').fill(password);
   await page.getByRole("button", { name: "Вход", exact: true }).click();
-  await expect(page).toHaveURL("/ru/company-profile");
+  await expect(page).toHaveURL("/ru");
   await page.getByRole("button", { name: "Выйти", exact: true }).click();
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Создание профиля компании", exact: true })).toHaveCount(0);
@@ -88,7 +88,7 @@ test("registration, verification, login, password recovery, logout and role isol
   await page.locator('input[name="email"]:visible').first().fill(email);
   await page.locator('input[name="password"]').fill("newonlylowercasepassword");
   await page.getByRole("button", { name: "Вход", exact: true }).click();
-  await expect(page).toHaveURL("/ru/company-profile");
+  await expect(page).toHaveURL("/ru");
   expect((await page.context().cookies()).filter((cookie) => cookie.name.startsWith("sb-")).every((cookie) => cookie.httpOnly)).toBe(true);
 
   // The browser cannot gain privileges even by bypassing forms and using the public API.

@@ -64,7 +64,7 @@ export async function loginAction(_: AuthState, form: FormData): Promise<AuthSta
   if (error) return { error: error.status === 429 ? text.rateLimit : error.code === "email_not_confirmed" ? text.verifyRequired : text.badLogin };
   await clearRecovery();
   revalidatePath("/", "layout");
-  redirect("/ru/account");
+  redirect("/ru");
 }
 
 export async function logoutAction() {
@@ -98,10 +98,25 @@ export async function resendAction(_: AuthState, form: FormData): Promise<AuthSt
 export async function confirmAction(_: AuthState, form: FormData): Promise<AuthState> {
   const type = value(form, "type");
   const token_hash = value(form, "token_hash");
-  if (!["signup", "recovery"].includes(type) || !/^[A-Za-z0-9_-]{32,256}$/.test(token_hash)) return { error: text.invalidLink };
+  const code = value(form, "code");
+  if (!["signup", "recovery"].includes(type)) return { error: text.invalidLink };
   const client = await actionClient();
-  const { data, error } = await client.auth.verifyOtp({ token_hash, type: type as "signup" | "recovery" });
-  if (error || !data.user) return { error: text.invalidLink };
+  const data = code && /^[A-Za-z0-9._~-]{20,512}$/.test(code)
+    ? (await client.auth.exchangeCodeForSession(code)).data
+    : /^[A-Za-z0-9_-]{32,256}$/.test(token_hash)
+      ? (await client.auth.verifyOtp({ token_hash, type: type as "signup" | "recovery" })).data
+      : null;
+  if (!data?.user) {
+    if (type === "signup") {
+      const { data: current } = await client.auth.getUser();
+      if (current.user?.email_confirmed_at) {
+        await clearRecovery();
+        revalidatePath("/", "layout");
+        redirect("/ru?welcome=1");
+      }
+    }
+    return { error: text.invalidLink };
+  }
   if (type === "recovery") {
     const { data: claims } = await client.auth.getClaims();
     const sessionId = claims?.claims.session_id;

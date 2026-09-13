@@ -22,7 +22,7 @@ describe("registration action", () => {
     const confirmation = action.slice(action.indexOf("export async function confirmAction"), action.indexOf("export async function resetAction"));
     expect(confirmation).not.toContain('redirect("/ru/company-profile")');
     const landing = readFileSync("src/app/[locale]/(public)/page.tsx", "utf8");
-    expect(landing).toContain("welcome !== \"1\"");
+    expect(landing).toContain("authenticated");
     expect(landing).toContain("LandingPage");
   });
 
