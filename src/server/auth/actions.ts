@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createAuthClient } from "@/server/supabase/server";
@@ -100,12 +100,33 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
   const token_hash = value(form, "token_hash");
   const code = value(form, "code");
   if (!["signup", "recovery"].includes(type)) return { error: text.invalidLink };
+  const requestHeaders = await headers();
+  const requestCookies = await cookies();
+  const cookieNames = requestCookies.getAll().map((cookie) => cookie.name);
+  const telemetry = {
+    route: "/auth/confirm",
+    has_code: Boolean(code),
+    request_host: requestHeaders.get("host")?.split(":")[0] ?? "",
+    request_protocol: requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim() || "http",
+    pkce_verifier_present: cookieNames.some((name) => /code-verifier/i.test(name)),
+    exchange_attempted: false,
+  };
   const client = await actionClient();
-  const data = code && /^[A-Za-z0-9._~-]{20,512}$/.test(code)
-    ? (await client.auth.exchangeCodeForSession(code)).data
-    : /^[A-Za-z0-9_-]{32,256}$/.test(token_hash)
-      ? (await client.auth.verifyOtp({ token_hash, type: type as "signup" | "recovery" })).data
-      : null;
+  let data: Awaited<ReturnType<typeof client.auth.exchangeCodeForSession>>["data"] | Awaited<ReturnType<typeof client.auth.verifyOtp>>["data"] | null = null;
+  let exchangeError: { name?: string; code?: string; status?: number } | null = null;
+  if (code && /^[A-Za-z0-9._~-]{20,512}$/.test(code)) {
+    telemetry.exchange_attempted = true;
+    const result = await client.auth.exchangeCodeForSession(code);
+    data = result.data;
+    exchangeError = result.error;
+    console.info("[auth-confirm]", { ...telemetry, exchange_success: Boolean(data.session), session_present: Boolean(data.session), user_present: Boolean(data.user), session_cookies_written: Boolean(data.session), error_name: exchangeError?.name ?? null, error_code: exchangeError?.code ?? null, error_status: exchangeError?.status ?? null, failure_category: exchangeError ? (exchangeError.code === "bad_code_verifier" ? "pkce_verifier_missing" : "auth_code_exchange_failed") : null });
+  } else if (/^[A-Za-z0-9_-]{32,256}$/.test(token_hash)) {
+    telemetry.exchange_attempted = true;
+    const result = await client.auth.verifyOtp({ token_hash, type: type as "signup" | "recovery" });
+    data = result.data;
+    exchangeError = result.error;
+    console.info("[auth-confirm]", { ...telemetry, exchange_success: Boolean(data.session), session_present: Boolean(data.session), user_present: Boolean(data.user), session_cookies_written: Boolean(data.session), error_name: exchangeError?.name ?? null, error_code: exchangeError?.code ?? null, error_status: exchangeError?.status ?? null, failure_category: exchangeError ? "otp_verification_failed" : null });
+  }
   if (!data?.user) {
     if (type === "signup") {
       const { data: current } = await client.auth.getUser();
