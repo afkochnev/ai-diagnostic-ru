@@ -7,5 +7,5 @@ export function EmailReportButton({ reportId }: { reportId: string }) {
     setState("sending");
     try { const response = await fetch(`/api/reports/${reportId}/email`, { method: "POST", cache: "no-store" }); if (!response.ok) throw new Error("email_failed"); setState("sent"); } catch { setState("failed"); }
   }
-  return <div className="mt-3"><button type="button" onClick={() => void send()} disabled={state === "sending"} className="inline-flex min-h-12 items-center rounded-xl border border-brand px-5 py-3 font-semibold text-brand disabled:opacity-60">{state === "sending" ? "Отправляем…" : state === "sent" ? "Отчёт отправлен" : "Отправить на email"}</button>{state === "failed" && <p role="alert" className="mt-2 text-sm text-red-700">Не удалось отправить отчёт. Попробуйте ещё раз.</p>}</div>;
+  return <div className="mt-3">{state === "sent" ? <p role="status" className="py-2 text-sm text-muted">✓ Отчёт отправлен на email</p> : <button type="button" onClick={() => void send()} disabled={state === "sending"} className="inline-flex min-h-12 items-center rounded-xl border border-brand px-5 py-3 font-semibold text-brand disabled:opacity-60">{state === "sending" ? "Отправляем…" : "Отправить на email"}</button>}{state === "failed" && <p role="alert" className="mt-2 text-sm text-red-700">Не удалось отправить отчёт. Попробуйте ещё раз.</p>}</div>;
 }
