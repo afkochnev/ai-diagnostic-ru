@@ -7,12 +7,34 @@ export async function enqueueAIReport(diagnosticId: string, version = 1) {
   const hash = crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex");
   const promptVersion = version === 1 ? "RU-1.0" : version === 2 ? "RU-1.1" : "RU-1.2";
   const deduplicationKey = `ai_report_v${version}`;
-  const { data: existing } = await db.from("ai_reports").select("id,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
+  const { data: existing } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
   if (existing) return existing;
-  const { data: report, error } = await db.from("ai_reports").insert({ diagnostic_id: diagnosticId, version, prompt_version: promptVersion, schema_version: "RU-1.0", model: process.env.OPENAI_MODEL || "gpt-5.6-sol", status: "queued", input_snapshot: input, input_hash: hash }).select("id,status").single();
-  if (error || !report) throw error ?? new Error("ai_report_insert_failed");
-  await db.from("jobs").insert({ kind: "ai_report", diagnostic_id: diagnosticId, deduplication_key: deduplicationKey });
+  const { data: report, error } = await db.from("ai_reports").insert({ diagnostic_id: diagnosticId, version, prompt_version: promptVersion, schema_version: "RU-1.0", model: process.env.OPENAI_MODEL || "gpt-5.6-sol", status: "queued", input_snapshot: input, input_hash: hash }).select("id,version,status").single();
+  if (error || !report) {
+    if (error?.code === "23505") {
+      const { data: existingReport } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
+      if (existingReport) return existingReport;
+    }
+    throw error ?? new Error("ai_report_insert_failed");
+  }
+  const { error: jobError } = await db.from("jobs").insert({ kind: "ai_report", diagnostic_id: diagnosticId, deduplication_key: deduplicationKey });
+  if (jobError?.code === "23505") return report;
+  if (jobError) throw jobError;
   return report;
+}
+
+export async function requestAIReportRegeneration(userId: string, diagnosticId: string) {
+  const db = createAdminClient();
+  const { data: diagnostic } = await db.from("diagnostics").select("id,status,created_by_user_id").eq("id", diagnosticId).eq("created_by_user_id", userId).maybeSingle();
+  if (!diagnostic || diagnostic.status !== "completed") throw new Error("not_found");
+  const { data: result } = await db.from("diagnostic_results").select("id").eq("diagnostic_id", diagnosticId).maybeSingle();
+  if (!result) throw new Error("not_found");
+  const { data: reports } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).order("version", { ascending: false });
+  const current = reports ?? [];
+  const active = current.find((report) => report.status === "queued" || report.status === "generating");
+  if (active) return active;
+  const nextVersion = (current[0]?.version ?? 0) + 1;
+  return enqueueAIReport(diagnosticId, nextVersion);
 }
 
 export type ClaimedAIJob = { job_id: string; diagnostic_id: string; lease_token: string; attempt_count: number; deduplication_key: string };
