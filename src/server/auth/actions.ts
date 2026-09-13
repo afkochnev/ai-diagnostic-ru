@@ -9,6 +9,7 @@ import { clearRecovery, hasRecovery, setRecovery } from "./recovery";
 import { emailSchema, loginSchema, passwordSchema, registrationSchema, type AuthState } from "@/validation/auth";
 import { getMessages } from "@/i18n/messages";
 import { buildSignupMetadata, hasCreatedAuthUser } from "./registration-contract";
+import type { EmailOtpType } from "@supabase/supabase-js";
 
 const text = getMessages("ru").auth;
 const value = (form: FormData, name: string) => String(form.get(name) ?? "");
@@ -99,7 +100,7 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
   const type = value(form, "type");
   const token_hash = value(form, "token_hash");
   const code = value(form, "code");
-  if (!["signup", "recovery"].includes(type)) return { error: text.invalidLink };
+  if (!["signup", "recovery", "email"].includes(type)) return { error: text.invalidLink };
   const requestHeaders = await headers();
   const requestCookies = await cookies();
   const cookieNames = requestCookies.getAll().map((cookie) => cookie.name);
@@ -122,10 +123,13 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
     console.info("[auth-confirm]", { ...telemetry, exchange_success: Boolean(data.session), session_present: Boolean(data.session), user_present: Boolean(data.user), session_cookies_written: Boolean(data.session), error_name: exchangeError?.name ?? null, error_code: exchangeError?.code ?? null, error_status: exchangeError?.status ?? null, failure_category: exchangeError ? (exchangeError.code === "bad_code_verifier" ? "pkce_verifier_missing" : "auth_code_exchange_failed") : null });
   } else if (/^[A-Za-z0-9_-]{32,256}$/.test(token_hash)) {
     telemetry.exchange_attempted = true;
-    const result = await client.auth.verifyOtp({ token_hash, type: type as "signup" | "recovery" });
+    console.info("[auth-confirm]", { checkpoint: "before_verify_otp", has_code: false, has_token_hash: true, type });
+    const result = await client.auth.verifyOtp({ token_hash, type: type as EmailOtpType });
     data = result.data;
     exchangeError = result.error;
     console.info("[auth-confirm]", { ...telemetry, exchange_success: Boolean(data.session), session_present: Boolean(data.session), user_present: Boolean(data.user), session_cookies_written: Boolean(data.session), error_name: exchangeError?.name ?? null, error_code: exchangeError?.code ?? null, error_status: exchangeError?.status ?? null, failure_category: exchangeError ? "otp_verification_failed" : null });
+    console.info("[auth-confirm]", { checkpoint: "verify_otp_result", verify_success: Boolean(data.user), session_present: Boolean(data.session), user_present: Boolean(data.user), safe_error_name: exchangeError?.name ?? null, safe_error_code: exchangeError?.code ?? null, safe_error_status: exchangeError?.status ?? null, safe_failure_category: exchangeError ? "otp_verification_failed" : null });
+    console.info("[auth-confirm]", { checkpoint: "session_persisted", session_cookie_present: Boolean(data.session) });
   }
   if (!data?.user) {
     if (type === "signup") {

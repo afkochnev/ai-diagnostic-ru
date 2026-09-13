@@ -9,6 +9,7 @@ describe("safe auth confirmation telemetry", () => {
   it("records only safe request and outcome metadata", () => {
     expect(page).toContain('checkpoint: "route_enter"');
     expect(page).toContain("has_code: Boolean(code)");
+    expect(page).toContain("has_token_hash: Boolean(token_hash)");
     expect(telemetry).toContain('route: "/auth/confirm"');
     expect(telemetry).toContain("request_host");
     expect(telemetry).toContain("pkce_verifier_present");
@@ -27,5 +28,14 @@ describe("safe auth confirmation telemetry", () => {
     expect(telemetry).not.toContain("exchangeError.message");
     expect(telemetry).not.toContain("OPENAI_API_KEY");
     expect(telemetry).not.toContain("RESEND_API_KEY");
+  });
+
+  it("accepts the hosted email token type and verifies it once", () => {
+    expect(source).toContain('["signup", "recovery", "email"]');
+    expect(source).toContain('checkpoint: "before_verify_otp"');
+    expect(source).toContain('checkpoint: "verify_otp_result"');
+    expect(source).toContain('checkpoint: "session_persisted"');
+    expect(source).toContain("type: type as EmailOtpType");
+    expect(source.match(/auth\.verifyOtp\(/g)?.length).toBe(1);
   });
 });
