@@ -10,6 +10,6 @@ export async function POST() {
     return NextResponse.json(result, { status: result.existing ? 200 : 201 });
   } catch (error) {
     const status = error instanceof DiagnosticError && error.code === "not_found" ? 404 : 400;
-    return NextResponse.json({ error: error instanceof Error ? error.message : "invalid_request" }, { status });
+    return NextResponse.json({ error: error instanceof DiagnosticError && error.code === "not_found" ? "not_found" : "invalid_request" }, { status });
   }
 }

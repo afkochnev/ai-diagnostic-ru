@@ -16,6 +16,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ di
     return NextResponse.json(result);
   } catch (error) {
     const code = error instanceof DiagnosticError ? error.code : "invalid";
-    return NextResponse.json({ error: error instanceof Error ? error.message : "invalid_request", code }, { status: code === "conflict" ? 409 : code === "not_found" ? 404 : 400 });
+    return NextResponse.json({ error: code === "conflict" ? "conflict" : code === "not_found" ? "not_found" : "invalid_request", code }, { status: code === "conflict" ? 409 : code === "not_found" ? 404 : 400 });
   }
 }
