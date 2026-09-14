@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-const migration = readFileSync("supabase/migrations/20260917000100_rate_limits.sql", "utf8");
+const migration = readFileSync("supabase/migrations/20260916000400_rate_limits.sql", "utf8");
 const reports = readFileSync("src/app/api/diagnostics/[diagnosticId]/reports/route.ts", "utf8");
 const pdf = readFileSync("src/app/api/reports/[reportId]/pdf/prepare/route.ts", "utf8");
 const email = readFileSync("src/app/api/reports/[reportId]/email/route.ts", "utf8");
