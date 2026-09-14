@@ -44,10 +44,18 @@ export function isRetryableAIError(message: string) { return /timeout|aborted|42
 export async function runAIJob(job: ClaimedAIJob) {
   const db = createAdminClient();
   const diagnosticId = job.diagnostic_id;
-  const version = Number(job.deduplication_key.match(/^ai_report_v(\d+)$/)?.[1] ?? 1);
-  const { data: report } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
-  if (!report) return { status: "missing" };
   const lease = job.lease_token;
+  const versionMatch = job.deduplication_key.match(/^ai_report_v(\d+)$/);
+  if (!versionMatch) {
+    await db.from("jobs").update({ status: "failed", available_at: new Date("2099-01-01").toISOString(), attempts: 3, last_error_code: "invalid_ai_job_key", last_error_message: "AI job payload is invalid", lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", job.lease_token);
+    return { status: "failed" };
+  }
+  const version = Number(versionMatch[1]);
+  const { data: report } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
+  if (!report) {
+    await db.from("jobs").update({ status: "failed", available_at: new Date("2099-01-01").toISOString(), attempts: 3, last_error_code: "ai_report_missing", last_error_message: "AI report row is missing", lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", lease);
+    return { status: "failed" };
+  }
   if (report.status === "completed") {
     await db.from("jobs").update({ status: "completed", completed_at: new Date().toISOString(), lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", lease);
     return { status: "completed" };
@@ -66,7 +74,7 @@ export async function runAIJob(job: ClaimedAIJob) {
     const terminal = !isRetryableAIError(message) || job.attempt_count >= 3;
     const next = new Date(Date.now() + Math.min(3600000, 30000 * 2 ** Math.max(0, job.attempt_count - 1))).toISOString();
     await db.from("ai_reports").update({ status: "failed", error_code: message.slice(0, 120), error_message: "AI report generation failed" }).eq("id", report.id).eq("status", "generating");
-    await db.from("jobs").update({ status: "failed", available_at: terminal ? new Date("2099-01-01").toISOString() : next, attempts: terminal ? 3 : job.attempt_count, last_error_code: "ai_failed", last_error_message: message, lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", lease);
+    await db.from("jobs").update({ status: "failed", available_at: terminal ? new Date("2099-01-01").toISOString() : next, attempts: terminal ? 3 : job.attempt_count, last_error_code: isRetryableAIError(message) ? "provider_retryable" : "ai_failed", last_error_message: "AI report generation failed", lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", lease);
     return { status: "failed" };
   }
 }
