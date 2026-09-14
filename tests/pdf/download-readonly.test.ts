@@ -27,5 +27,12 @@ describe("Stage 9B PDF download boundary", () => {
     expect(prepare).toContain("preparePdfForReport");
     expect(button).toContain('method: "POST"');
     expect(button).toContain("/pdf/prepare");
+    expect(service).toContain("preparationLocks");
+    expect(service).toContain("preparePdfForReportUnlocked");
+  });
+
+  it("returns safe not-ready states without rendering", () => {
+    expect(download).toContain('message === "pdf_not_ready" ? 409');
+    expect(service.slice(service.indexOf("export async function getPdfForReport"), service.indexOf("const preparationLocks"))).not.toContain("renderPdf");
   });
 });

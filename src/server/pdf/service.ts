@@ -32,8 +32,10 @@ export async function getPdfForReport(reportId: string, userId: string): Promise
   return { bytes: Buffer.from(String(artifact.content_base64), "base64"), fileName: fileName(String(profile.name ?? "Компания"), diagnostic.completed_at) };
 }
 
+const preparationLocks = new Map<string, Promise<{ status: "ready"; fileName: string }>>();
+
 /** Explicit mutation path. Callers must authenticate and authorize before this service. */
-export async function preparePdfForReport(reportId: string, userId: string): Promise<{ status: "ready"; fileName: string }> {
+async function preparePdfForReportUnlocked(reportId: string, userId: string): Promise<{ status: "ready"; fileName: string }> {
   const { db, report, diagnostic } = await loadAuthorizedReport(reportId, userId);
   const [{ data: snapshot }, { data: result }] = await Promise.all([
     db.from("diagnostic_company_snapshots").select("profile_data").eq("diagnostic_id", diagnostic.id).maybeSingle(),
@@ -63,6 +65,16 @@ export async function preparePdfForReport(reportId: string, userId: string): Pro
   const { error: artifactError } = await db.from("report_artifacts").upsert({ report_id: report.id, ai_report_version: report.version, format: "pdf", template_version: templateVersion, status: "ready", storage_path: path, content_base64: bytes.toString("base64"), checksum }, { onConflict: "report_id,format,template_version" });
   if (artifactError) throw new Error("pdf_artifact_failed");
   return { status: "ready", fileName: fileName(pdfInput.companyName, diagnostic.completed_at) };
+}
+
+/** Serialize duplicate preparation requests in this runtime; artifact uniqueness remains the DB boundary. */
+export async function preparePdfForReport(reportId: string, userId: string): Promise<{ status: "ready"; fileName: string }> {
+  const key = `${userId}:${reportId}:${templateVersion}`;
+  const existing = preparationLocks.get(key);
+  if (existing) return existing;
+  const operation = preparePdfForReportUnlocked(reportId, userId);
+  preparationLocks.set(key, operation);
+  try { return await operation; } finally { preparationLocks.delete(key); }
 }
 
 export { templateVersion };
