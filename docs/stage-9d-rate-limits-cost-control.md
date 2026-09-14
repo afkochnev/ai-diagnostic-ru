@@ -1,0 +1,9 @@
+# Stage 9D — Rate Limiting / Cost Control
+
+The externally reachable mutations are diagnostic creation/answers/submit/score, AI status and regeneration, PDF preparation/download, report email, consultation requests, feedback, authentication flows, and protected admin/internal operations. High-cost actions are AI regeneration, PDF preparation, and report email; consultation is medium external-cost; ordinary answer, submit, feedback, and profile writes are low-cost and retain their existing ownership and uniqueness controls.
+
+AI regeneration is limited to three accepted requests per authenticated user per 24 hours and one request per diagnostic per ten minutes. Existing active-generation and version/job deduplication remains separate protection. PDF preparation is limited to five requests per user per hour and reuses ready artifacts; email is limited to three requests per user per hour. Consultation requests are limited to three per user per day and retain lead/delivery deduplication. Feedback remains uniqueness-controlled per diagnostic and does not need an additional quota.
+
+Limits use the shared `public.rate_limit_windows` table and service-role `consume_rate_limit` function. The insert/upsert counter operation is atomic across web instances and restarts. Exceeding a limit returns HTTP 429 with `Retry-After` and the stable `rate_limited` code. Keys derive from authenticated server identity; clients cannot supply identities or counters. No process-memory-only limiter is used.
+
+The `2099-01-01` terminal job sentinel and worker retries remain independent of request limits. Configuration is currently fixed to documented safe pilot defaults; future tuning must preserve finite defaults. Rate-limit window retention/cleanup is a future operational task and must not delete active windows incorrectly.
