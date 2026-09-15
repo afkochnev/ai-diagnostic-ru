@@ -28,6 +28,14 @@ describe("diagnostic runner required-answer validation", () => {
     expect(source).not.toContain('disabled={saving === "saving"} onClick={() => void navigate(currentIndex + 1)}');
   });
 
+  it("keeps required validation on Next while Back bypasses it", () => {
+    const source = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "utf8");
+    expect(source).toContain("const navigate = async (index: number, validateRequired = true)");
+    expect(source).toContain("if (validateRequired && missing.length)");
+    expect(source).toContain('navigate(currentIndex - 1, false)');
+    expect(source).toContain('navigate(currentIndex + 1)}');
+  });
+
   it("finds missing required answers while accepting score zero", () => {
     expect(isDiagnosticAnswerPresent(scale, 0)).toBe(true);
     expect(getMissingRequiredQuestions([scale, text], { scale: 0 })).toEqual([text]);
