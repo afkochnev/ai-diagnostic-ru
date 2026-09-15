@@ -20,6 +20,14 @@ describe("diagnostic runner required-answer validation", () => {
     expect(source).toContain("saveQueue.current = operation.then(() => true, () => false);");
   });
 
+  it("does not disable navigation while autosave is saving and keeps the latest answer synchronously", () => {
+    const source = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "utf8");
+    expect(source).toContain("answersRef.current = next;");
+    expect(source).toContain("if (navigationPendingRef.current) return;");
+    expect(source).toContain('disabled={navigationPending} onClick={() => void navigate(currentIndex + 1)}');
+    expect(source).not.toContain('disabled={saving === "saving"} onClick={() => void navigate(currentIndex + 1)}');
+  });
+
   it("finds missing required answers while accepting score zero", () => {
     expect(isDiagnosticAnswerPresent(scale, 0)).toBe(true);
     expect(getMissingRequiredQuestions([scale, text], { scale: 0 })).toEqual([text]);
