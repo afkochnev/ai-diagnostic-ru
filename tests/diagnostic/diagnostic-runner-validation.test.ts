@@ -43,6 +43,14 @@ describe("diagnostic runner required-answer validation", () => {
     expect(source).not.toContain("if (await save(data.blocks[index].id)) router.refresh();");
   });
 
+  it("marks unchanged answer payloads clean and sends answers only when dirty", () => {
+    const source = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "utf8");
+    expect(source).toContain("persistedAnswersHashRef");
+    expect(source).toContain("const answersDirty = currentHash !== persistedAnswersHashRef.current;");
+    expect(source).toContain("answers_dirty: answersDirty");
+    expect(source).toContain("answers: answersDirty ?");
+  });
+
   it("finds missing required answers while accepting score zero", () => {
     expect(isDiagnosticAnswerPresent(scale, 0)).toBe(true);
     expect(getMissingRequiredQuestions([scale, text], { scale: 0 })).toEqual([text]);

@@ -77,7 +77,7 @@ export async function getDiagnostic(diagnosticId: string, userId: string) {
   };
 }
 
-export async function saveDiagnosticAnswers(diagnosticId: string, userId: string, expectedRevision: number, mutationId: string, currentBlockId: string, inputs: DiagnosticAnswerInput[]): Promise<SaveDiagnosticResult> {
+export async function saveDiagnosticAnswers(diagnosticId: string, userId: string, expectedRevision: number, mutationId: string, currentBlockId: string, inputs: DiagnosticAnswerInput[], answersDirty = true): Promise<SaveDiagnosticResult> {
   const client = await createAuthClient();
   const { data: diagnostic } = await client.from("diagnostics").select("version_id,revision,current_block_id,status").eq("id", diagnosticId).eq("created_by_user_id", userId).maybeSingle();
   if (!diagnostic || diagnostic.status !== "in_progress") throw new DiagnosticError("not_found", "Diagnostic is not editable");
@@ -86,24 +86,29 @@ export async function saveDiagnosticAnswers(diagnosticId: string, userId: string
   if (diagnostic.revision !== expectedRevision) throw new DiagnosticError("conflict", "Diagnostic revision is stale");
   const { data: block } = await client.from("diagnostic_blocks").select("id").eq("id", currentBlockId).eq("version_id", diagnostic.version_id).eq("is_active", true).maybeSingle();
   if (!block) throw new DiagnosticError("invalid", "Block does not belong to methodology");
-  const questionIds = inputs.map((input) => input.question_id);
-  const { data: questions } = await client.from("questions").select("id,answer_type,version_id").eq("version_id", diagnostic.version_id).in("id", questionIds);
-  const questionMap = new Map((questions ?? []).map((question) => [question.id, question]));
-  for (const input of inputs) {
-    const question = questionMap.get(input.question_id);
-    if (!question) throw new DiagnosticError("invalid", "Question does not belong to pinned methodology");
-    if (input.value === null || input.value === "") continue;
-    if (question.answer_type === "scale_0_4" && (!Number.isInteger(input.value) || Number(input.value) < 0 || Number(input.value) > 4)) throw new DiagnosticError("invalid", "Scale answer is invalid");
-    if (question.answer_type === "text" && typeof input.value !== "string") throw new DiagnosticError("invalid", "Text answer is invalid");
+  const questionMap = new Map<string, { id: string; answer_type: string }>();
+  if (answersDirty) {
+    const questionIds = inputs.map((input) => input.question_id);
+    const { data: questions } = await client.from("questions").select("id,answer_type,version_id").eq("version_id", diagnostic.version_id).in("id", questionIds);
+    for (const question of questions ?? []) questionMap.set(question.id, question);
+    for (const input of inputs) {
+      const question = questionMap.get(input.question_id);
+      if (!question) throw new DiagnosticError("invalid", "Question does not belong to pinned methodology");
+      if (input.value === null || input.value === "") continue;
+      if (question.answer_type === "scale_0_4" && (!Number.isInteger(input.value) || Number(input.value) < 0 || Number(input.value) > 4)) throw new DiagnosticError("invalid", "Scale answer is invalid");
+      if (question.answer_type === "text" && typeof input.value !== "string") throw new DiagnosticError("invalid", "Text answer is invalid");
+    }
   }
   const { data: updated, error: updateError } = await client.from("diagnostics").update({ current_block_id: currentBlockId, revision: expectedRevision + 1 }).eq("id", diagnosticId).eq("created_by_user_id", userId).eq("revision", expectedRevision).eq("status", "in_progress").select("revision,current_block_id").maybeSingle();
   if (updateError || !updated) throw new DiagnosticError("conflict", "Diagnostic revision is stale");
-  for (const input of inputs) {
-    if (input.value === null || input.value === "") {
-      await client.from("answers").delete().eq("diagnostic_id", diagnosticId).eq("question_id", input.question_id);
-    } else {
-      const question = questionMap.get(input.question_id)!;
-      await client.from("answers").upsert({ diagnostic_id: diagnosticId, version_id: diagnostic.version_id, question_id: input.question_id, text_value: question.answer_type === "text" ? String(input.value).trim() : null, numeric_value: question.answer_type === "scale_0_4" ? Number(input.value) : null, revision: expectedRevision + 1 }, { onConflict: "diagnostic_id,question_id" });
+  if (answersDirty) {
+    for (const input of inputs) {
+      if (input.value === null || input.value === "") {
+        await client.from("answers").delete().eq("diagnostic_id", diagnosticId).eq("question_id", input.question_id);
+      } else {
+        const question = questionMap.get(input.question_id)!;
+        await client.from("answers").upsert({ diagnostic_id: diagnosticId, version_id: diagnostic.version_id, question_id: input.question_id, text_value: question.answer_type === "text" ? String(input.value).trim() : null, numeric_value: question.answer_type === "scale_0_4" ? Number(input.value) : null, revision: expectedRevision + 1 }, { onConflict: "diagnostic_id,question_id" });
+      }
     }
   }
   await client.from("diagnostic_mutations").insert({ diagnostic_id: diagnosticId, mutation_id: mutationId, resulting_revision: updated.revision });

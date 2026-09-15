@@ -8,6 +8,7 @@ import type { DiagnosticPageData } from "@/server/diagnostic/service";
 type Props = { data: DiagnosticPageData };
 type Question = DiagnosticPageData["blocks"][number]["questions"][number];
 const inputClass = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
+const answersHash = (value: Record<string, number | string>) => JSON.stringify(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
 
 export function DiagnosticRunner({ data }: Props) {
   const router = useRouter();
@@ -26,6 +27,7 @@ export function DiagnosticRunner({ data }: Props) {
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
   const revisionRef = useRef(revision);
   const answersRef = useRef(answers);
+  const persistedAnswersHashRef = useRef(answersHash(initialAnswers));
   const initialIndex = Math.max(0, data.blocks.findIndex((block) => block.id === data.diagnostic.current_block_id));
   const [viewIndex, setViewIndex] = useState(initialIndex);
   const currentIndex = Math.min(Math.max(0, viewIndex), Math.max(0, data.blocks.length - 1));
@@ -38,12 +40,15 @@ export function DiagnosticRunner({ data }: Props) {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     const operation = saveQueue.current.then(async () => {
       setSaving("saving"); setError("");
-      const payload = { expected_revision: revisionRef.current, mutation_id: crypto.randomUUID(), current_block_id: nextBlockId, answers: Object.entries(answersRef.current).map(([question_id, value]) => ({ question_id, value })) };
+      const currentAnswers = answersRef.current;
+      const currentHash = answersHash(currentAnswers);
+      const answersDirty = currentHash !== persistedAnswersHashRef.current;
+      const payload = { expected_revision: revisionRef.current, mutation_id: crypto.randomUUID(), current_block_id: nextBlockId, answers_dirty: answersDirty, answers: answersDirty ? Object.entries(currentAnswers).map(([question_id, value]) => ({ question_id, value })) : [] };
       try {
         const response = await fetch(`/api/diagnostics/${data.diagnostic.id}/answers`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         const body = await response.json().catch(() => null) as { revision?: number; error?: string; code?: string } | null;
         if (!response.ok || !body?.revision) { setSaving("error"); setError(response.status === 409 ? "Диагностика изменена в другой вкладке. Обновите страницу и повторите действие." : "Не удалось сохранить ответы. Попробуйте ещё раз."); return false; }
-        revisionRef.current = body.revision; setRevision(body.revision); setSaving("saved"); return true;
+        revisionRef.current = body.revision; persistedAnswersHashRef.current = currentHash; setRevision(body.revision); setSaving("saved"); return true;
       } catch {
         setSaving("error"); setError("Не удалось сохранить ответы. Попробуйте ещё раз."); return false;
       }
