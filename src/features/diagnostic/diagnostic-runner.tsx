@@ -26,7 +26,9 @@ export function DiagnosticRunner({ data }: Props) {
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
   const revisionRef = useRef(revision);
   const answersRef = useRef(answers);
-  const currentIndex = Math.max(0, data.blocks.findIndex((block) => block.id === data.diagnostic.current_block_id));
+  const initialIndex = Math.max(0, data.blocks.findIndex((block) => block.id === data.diagnostic.current_block_id));
+  const [viewIndex, setViewIndex] = useState(initialIndex);
+  const currentIndex = Math.min(Math.max(0, viewIndex), Math.max(0, data.blocks.length - 1));
   const currentBlock = data.blocks[currentIndex] ?? data.blocks[0];
 
   useEffect(() => { answersRef.current = answers; }, [answers]);
@@ -83,7 +85,7 @@ export function DiagnosticRunner({ data }: Props) {
     navigationPendingRef.current = true;
     setNavigationPending(true);
     try {
-      if (await save(data.blocks[index].id)) router.refresh();
+      if (await save(data.blocks[index].id)) setViewIndex(index);
     } finally {
       navigationPendingRef.current = false;
       setNavigationPending(false);

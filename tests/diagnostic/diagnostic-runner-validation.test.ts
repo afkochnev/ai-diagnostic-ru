@@ -36,6 +36,13 @@ describe("diagnostic runner required-answer validation", () => {
     expect(source).toContain('navigate(currentIndex + 1)}');
   });
 
+  it("switches the already-loaded block after save without a refresh round trip", () => {
+    const source = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "utf8");
+    expect(source).toContain("const [viewIndex, setViewIndex] = useState(initialIndex);");
+    expect(source).toContain("if (await save(data.blocks[index].id)) setViewIndex(index);");
+    expect(source).not.toContain("if (await save(data.blocks[index].id)) router.refresh();");
+  });
+
   it("finds missing required answers while accepting score zero", () => {
     expect(isDiagnosticAnswerPresent(scale, 0)).toBe(true);
     expect(getMissingRequiredQuestions([scale, text], { scale: 0 })).toEqual([text]);
