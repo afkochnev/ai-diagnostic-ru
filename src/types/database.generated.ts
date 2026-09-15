@@ -1474,6 +1474,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      save_diagnostic_block: {
+        Args: {
+          p_answers?: Json
+          p_answers_dirty?: boolean
+          p_current_block_id: string
+          p_diagnostic_id: string
+          p_expected_revision: number
+          p_mutation_id: string
+        }
+        Returns: {
+          current_block_id: string
+          revision: number
+        }[]
+      }
       claim_consultation_notification_jobs: {
         Args: { p_limit?: number; p_max_attempts?: number; p_lease_seconds?: number }
         Returns: {

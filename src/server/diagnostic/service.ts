@@ -79,38 +79,21 @@ export async function getDiagnostic(diagnosticId: string, userId: string) {
 
 export async function saveDiagnosticAnswers(diagnosticId: string, userId: string, expectedRevision: number, mutationId: string, currentBlockId: string, inputs: DiagnosticAnswerInput[], answersDirty = true): Promise<SaveDiagnosticResult> {
   const client = await createAuthClient();
-  const { data: diagnostic } = await client.from("diagnostics").select("version_id,revision,current_block_id,status").eq("id", diagnosticId).eq("created_by_user_id", userId).maybeSingle();
-  if (!diagnostic || diagnostic.status !== "in_progress") throw new DiagnosticError("not_found", "Diagnostic is not editable");
-  const { data: previous } = await client.from("diagnostic_mutations").select("resulting_revision").eq("diagnostic_id", diagnosticId).eq("mutation_id", mutationId).maybeSingle();
-  if (previous) return { revision: previous.resulting_revision, current_block_id: currentBlockId };
-  if (diagnostic.revision !== expectedRevision) throw new DiagnosticError("conflict", "Diagnostic revision is stale");
-  const { data: block } = await client.from("diagnostic_blocks").select("id").eq("id", currentBlockId).eq("version_id", diagnostic.version_id).eq("is_active", true).maybeSingle();
-  if (!block) throw new DiagnosticError("invalid", "Block does not belong to methodology");
-  const questionMap = new Map<string, { id: string; answer_type: string }>();
-  if (answersDirty) {
-    const questionIds = inputs.map((input) => input.question_id);
-    const { data: questions } = await client.from("questions").select("id,answer_type,version_id").eq("version_id", diagnostic.version_id).in("id", questionIds);
-    for (const question of questions ?? []) questionMap.set(question.id, question);
-    for (const input of inputs) {
-      const question = questionMap.get(input.question_id);
-      if (!question) throw new DiagnosticError("invalid", "Question does not belong to pinned methodology");
-      if (input.value === null || input.value === "") continue;
-      if (question.answer_type === "scale_0_4" && (!Number.isInteger(input.value) || Number(input.value) < 0 || Number(input.value) > 4)) throw new DiagnosticError("invalid", "Scale answer is invalid");
-      if (question.answer_type === "text" && typeof input.value !== "string") throw new DiagnosticError("invalid", "Text answer is invalid");
-    }
+  const { data, error } = await client.rpc("save_diagnostic_block", {
+    p_diagnostic_id: diagnosticId,
+    p_expected_revision: expectedRevision,
+    p_mutation_id: mutationId,
+    p_current_block_id: currentBlockId,
+    p_answers: inputs,
+    p_answers_dirty: answersDirty,
+  });
+  if (error || !data) {
+    const message = error?.message ?? "invalid";
+    if (message.includes("conflict")) throw new DiagnosticError("conflict", "Diagnostic revision is stale");
+    if (message.includes("not_found")) throw new DiagnosticError("not_found", "Diagnostic is not editable");
+    throw new DiagnosticError("invalid", "Diagnostic answers are invalid");
   }
-  const { data: updated, error: updateError } = await client.from("diagnostics").update({ current_block_id: currentBlockId, revision: expectedRevision + 1 }).eq("id", diagnosticId).eq("created_by_user_id", userId).eq("revision", expectedRevision).eq("status", "in_progress").select("revision,current_block_id").maybeSingle();
-  if (updateError || !updated) throw new DiagnosticError("conflict", "Diagnostic revision is stale");
-  if (answersDirty) {
-    for (const input of inputs) {
-      if (input.value === null || input.value === "") {
-        await client.from("answers").delete().eq("diagnostic_id", diagnosticId).eq("question_id", input.question_id);
-      } else {
-        const question = questionMap.get(input.question_id)!;
-        await client.from("answers").upsert({ diagnostic_id: diagnosticId, version_id: diagnostic.version_id, question_id: input.question_id, text_value: question.answer_type === "text" ? String(input.value).trim() : null, numeric_value: question.answer_type === "scale_0_4" ? Number(input.value) : null, revision: expectedRevision + 1 }, { onConflict: "diagnostic_id,question_id" });
-      }
-    }
-  }
-  await client.from("diagnostic_mutations").insert({ diagnostic_id: diagnosticId, mutation_id: mutationId, resulting_revision: updated.revision });
-  return { revision: updated.revision, current_block_id: updated.current_block_id! };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row.revision !== "number" || typeof row.current_block_id !== "string") throw new DiagnosticError("invalid", "Diagnostic save response is invalid");
+  return { revision: row.revision, current_block_id: row.current_block_id };
 }
