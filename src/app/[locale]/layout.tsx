@@ -15,8 +15,9 @@ export function generateStaticParams() { return locales.map((locale) => ({ local
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  const messages = getMessages(locale);
-  return { title: { default: messages.site.name, template: `%s | ${messages.site.name}` }, description: messages.landing.description };
+  const title = "Управленческий AI-аудит компании";
+  const description = "Пройдите диагностику системы управления и получите AI-отчёт с ключевыми рисками, ограничениями и планом действий на 90 дней.";
+  return { title: { default: title, template: `%s | ${title}` }, description, alternates: { canonical: `https://audit.iteam.ru/${locale}` }, openGraph: { title, description, url: `https://audit.iteam.ru/${locale}`, type: "website" }, twitter: { card: "summary", title, description } };
 }
 
 export default async function LocaleLayout({ children, params }: Props & { children: ReactNode }) {
@@ -29,7 +30,7 @@ export default async function LocaleLayout({ children, params }: Props & { child
       <SessionRefresh />
       <SiteHeader locale={locale} messages={messages} signedIn={Boolean(await getIdentity())} />
       {children}
-      <footer className="border-t border-line py-7"><Container><p className="text-sm text-muted">{messages.site.footer}</p></Container></footer>
+      <footer className="border-t border-line py-7"><Container><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{messages.site.footer}</p><a className="text-sm underline" href="https://iteam.ru" target="_blank" rel="noreferrer">iteam.ru</a></div></Container></footer>
     </>
   );
 }
