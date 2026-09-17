@@ -10,7 +10,7 @@ export async function startDiagnosticAction() {
     const result = await createDiagnostic(identity.user.id);
     redirect(`/ru/diagnostics/${result.id}`);
   } catch (error) {
-    if (error instanceof DiagnosticError) redirect("/ru/company-profile");
+    if (error instanceof DiagnosticError && error.code === "company_missing") redirect("/ru/company-profile");
     throw error;
   }
 }

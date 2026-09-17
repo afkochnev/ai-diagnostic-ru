@@ -4,7 +4,7 @@ import { createAuthClient } from "@/server/supabase/server";
 export type DiagnosticAnswerInput = { question_id: string; value: number | string | null };
 export type SaveDiagnosticResult = { revision: number; current_block_id: string };
 export type DiagnosticPageData = Awaited<ReturnType<typeof getDiagnostic>>;
-export class DiagnosticError extends Error { constructor(public readonly code: "not_found" | "conflict" | "invalid", message: string) { super(message); } }
+export class DiagnosticError extends Error { constructor(public readonly code: "not_found" | "company_missing" | "conflict" | "invalid", message: string) { super(message); } }
 
 const MANAGEABILITY_DEFINITION_KEY = "manageability";
 
@@ -28,7 +28,7 @@ export function selectCurrentPublishedVersion(
 export async function createDiagnostic(userId: string) {
   const client = await createAuthClient();
   const { data: company } = await client.from("company_profiles").select("id").eq("owner_user_id", userId).maybeSingle();
-  if (!company) throw new DiagnosticError("not_found", "Company profile is required");
+  if (!company) throw new DiagnosticError("company_missing", "Company profile is required");
   const { data: definition, error: definitionError } = await client.from("diagnostic_definitions").select("id").eq("key", MANAGEABILITY_DEFINITION_KEY).maybeSingle();
   if (definitionError || !definition) throw new DiagnosticError("not_found", "No published methodology");
   const { data: versions, error: versionError } = await client.from("diagnostic_versions").select("id,definition_id,version_number,status").eq("definition_id", definition.id).eq("status", "published");
