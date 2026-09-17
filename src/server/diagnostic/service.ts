@@ -6,11 +6,33 @@ export type SaveDiagnosticResult = { revision: number; current_block_id: string 
 export type DiagnosticPageData = Awaited<ReturnType<typeof getDiagnostic>>;
 export class DiagnosticError extends Error { constructor(public readonly code: "not_found" | "conflict" | "invalid", message: string) { super(message); } }
 
+const MANAGEABILITY_DEFINITION_KEY = "manageability";
+
+export type PublishedMethodologyVersion = {
+  id: string;
+  definition_id: string;
+  version_number: number;
+  status: string;
+};
+
+/** Select the current methodology only within the requested diagnostic definition. */
+export function selectCurrentPublishedVersion(
+  versions: readonly PublishedMethodologyVersion[],
+  definitionId: string,
+) {
+  return versions
+    .filter((version) => version.definition_id === definitionId && version.status === "published")
+    .sort((left, right) => right.version_number - left.version_number)[0] ?? null;
+}
+
 export async function createDiagnostic(userId: string) {
   const client = await createAuthClient();
   const { data: company } = await client.from("company_profiles").select("id").eq("owner_user_id", userId).maybeSingle();
   if (!company) throw new DiagnosticError("not_found", "Company profile is required");
-  const { data: version, error: versionError } = await client.from("diagnostic_versions").select("id").eq("status", "published").order("version_number", { ascending: false }).limit(1).maybeSingle();
+  const { data: definition, error: definitionError } = await client.from("diagnostic_definitions").select("id").eq("key", MANAGEABILITY_DEFINITION_KEY).maybeSingle();
+  if (definitionError || !definition) throw new DiagnosticError("not_found", "No published methodology");
+  const { data: versions, error: versionError } = await client.from("diagnostic_versions").select("id,definition_id,version_number,status").eq("definition_id", definition.id).eq("status", "published");
+  const version = selectCurrentPublishedVersion((versions ?? []) as PublishedMethodologyVersion[], definition.id);
   if (versionError || !version) throw new DiagnosticError("not_found", "No published methodology");
   const { data: firstBlock } = await client.from("diagnostic_blocks").select("id").eq("version_id", version.id).eq("is_active", true).order("position").limit(1).maybeSingle();
   if (!firstBlock) throw new DiagnosticError("not_found", "Methodology has no blocks");
