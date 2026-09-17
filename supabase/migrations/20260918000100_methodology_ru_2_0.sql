@@ -9,7 +9,7 @@ begin
   select id into v_definition from public.diagnostic_definitions where key = 'manageability';
   if v_definition is null then raise exception 'manageability definition missing'; end if;
   insert into public.diagnostic_versions (id,definition_id,version_number,status,content_hash,source_file,published_at)
-  values (v_version,v_definition,2,'published','stage12-1-mvp-question-bank-v2','METHODOLOGY_RU_2_0.csv',now())
+  values (v_version,v_definition,2,'draft','stage12-1-mvp-question-bank-v2','METHODOLOGY_RU_2_0.csv',null)
   on conflict (definition_id,version_number) do nothing;
   insert into public.diagnostic_version_translations (version_id,locale,title,description)
   values (v_version,'ru','Диагностика управляемости компании','Методика RU-2.0') on conflict do nothing;
@@ -113,5 +113,8 @@ begin
   select o2.id,t.locale,t.label from public.question_options o2 join _stage12_questions q2 on q2.new_id=o2.question_id join public.question_options old_o on old_o.question_id=q2.old_id and old_o.key=o2.key join public.question_option_translations t on t.option_id=old_o.id;
   insert into public.scoring_policies (version_id,engine_key,engine_version,schema_version,configuration,policy_hash)
   select v_version,engine_key,engine_version,schema_version,configuration,'stage12-1-mvp-question-bank-v2' from public.scoring_policies where version_id=v_old_version;
+  update public.diagnostic_versions
+  set status='published', published_at=now()
+  where id=v_version and status='draft';
 end $$;
 commit;
