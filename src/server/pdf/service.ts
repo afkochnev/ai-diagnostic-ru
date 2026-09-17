@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { createAdminClient } from "@/server/supabase/admin";
 import { renderPdf } from "./render";
 
-const templateVersion = "stage7a-2";
+const templateVersion = "stage12-1i";
 type Row = Record<string, unknown>;
 const transliterate = (value: string) => value.toLowerCase().replace(/[а-яё]/g, (char) => ({ а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"e",ж:"zh",з:"z",и:"i",й:"y",к:"k",л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"ts",ч:"ch",ш:"sh",щ:"sch",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya" }[char] ?? char)).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "company";
 

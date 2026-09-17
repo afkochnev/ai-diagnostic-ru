@@ -1,6 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/server/supabase/admin";
-import { preparePdfForReport } from "@/server/pdf/service";
+import { preparePdfForReport, templateVersion } from "@/server/pdf/service";
 import { getEmailProvider } from "./provider";
 import { buildReportEmail } from "./content";
 
@@ -20,12 +20,12 @@ export async function sendReportEmail(reportId: string, userId: string) {
   const { data: snapshot } = await db.from("diagnostic_company_snapshots").select("profile_data").eq("diagnostic_id", diagnostic.id).single();
   const { data: result } = await db.from("diagnostic_results").select("display_manageability_index,maturity_level_id").eq("diagnostic_id", diagnostic.id).single();
   if (!snapshot || !result) throw new Error("email_result_missing");
-  let artifact = await db.from("report_artifacts").select("id,ai_report_version,template_version,status,content_base64").eq("report_id", report.id).eq("ai_report_version", report.version).eq("format", "pdf").eq("template_version", "stage7a-2").eq("status", "ready").maybeSingle();
+  let artifact = await db.from("report_artifacts").select("id,ai_report_version,template_version,status,content_base64").eq("report_id", report.id).eq("ai_report_version", report.version).eq("format", "pdf").eq("template_version", templateVersion).eq("status", "ready").maybeSingle();
   let filename = `management-ai-audit-${new Date(diagnostic.completed_at ?? Date.now()).toISOString().slice(0, 10)}.pdf`;
   if (!artifact.data?.content_base64) {
     const generated = await preparePdfForReport(report.id, userId);
     filename = generated.fileName;
-    artifact = await db.from("report_artifacts").select("id,ai_report_version,template_version,status,content_base64").eq("report_id", report.id).eq("ai_report_version", report.version).eq("format", "pdf").eq("template_version", "stage7a-2").eq("status", "ready").maybeSingle();
+    artifact = await db.from("report_artifacts").select("id,ai_report_version,template_version,status,content_base64").eq("report_id", report.id).eq("ai_report_version", report.version).eq("format", "pdf").eq("template_version", templateVersion).eq("status", "ready").maybeSingle();
   }
   if (!artifact.data?.id || !artifact.data.content_base64) throw new Error("email_pdf_artifact_missing");
   const profile = (snapshot.profile_data ?? {}) as Row;
