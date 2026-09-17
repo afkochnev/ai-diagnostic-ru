@@ -53,6 +53,8 @@ describe("PDF report template", () => {
 
   it("includes Chromium page number footer configuration", () => {
     expect(buildPdfHtml(input)).toContain("Конфиденциальный отчёт");
+    expect(buildPdfHtml(input)).toContain('class="logo"');
+    expect(buildPdfHtml(input)).toContain("data:image/png;base64,");
   });
 
 });

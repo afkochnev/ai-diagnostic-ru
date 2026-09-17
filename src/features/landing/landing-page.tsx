@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ButtonLink } from "@/components/ui/button-link";
 import { Card } from "@/components/ui/card";
 import { Container } from "@/components/ui/container";
@@ -12,6 +13,9 @@ export function LandingPage({ locale, messages, authenticated = false }: { local
     <main id="main-content">
       <section className="border-b border-line py-14 sm:py-20 lg:py-25" aria-labelledby="hero-title">
         <Container>
+          <a href="https://iteam.ru" target="_blank" rel="noreferrer" className="mb-8 inline-flex rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand">
+            <Image src="/brand/iteam-logo.png" alt="iTeam" width={220} height={99} className="h-auto w-44 sm:w-56" priority />
+          </a>
           <div className="mb-7 h-1 w-12 rounded-full bg-brand/40" aria-hidden="true" />
           <h1 id="hero-title" className="max-w-4xl text-[2.25rem] leading-[1.13] font-semibold tracking-[-0.035em] sm:text-5xl lg:text-[3.65rem]">{content.title}</h1>
           <p className="mt-7 max-w-2xl text-base leading-relaxed text-muted sm:text-lg">{content.description}</p>

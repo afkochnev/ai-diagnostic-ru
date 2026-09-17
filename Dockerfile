@@ -29,6 +29,7 @@ COPY --from=build /app/package-lock.json ./package-lock.json
 COPY --from=build /app/tsconfig.json ./tsconfig.json
 COPY --from=build /app/src ./src
 COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/public ./public
 COPY --from=build /app/AI_REPORT_PROMPT_RU_1_0.md ./AI_REPORT_PROMPT_RU_1_0.md
 COPY --from=build /app/AI_REPORT_PROMPT_RU_1_1.md ./AI_REPORT_PROMPT_RU_1_1.md
 COPY --from=build /app/AI_REPORT_PROMPT_RU_1_2.md ./AI_REPORT_PROMPT_RU_1_2.md

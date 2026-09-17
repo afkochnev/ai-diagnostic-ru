@@ -17,7 +17,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!isLocale(locale)) notFound();
   const title = "Управленческий AI-аудит компании";
   const description = "Пройдите диагностику системы управления и получите AI-отчёт с ключевыми рисками, ограничениями и планом действий на 90 дней.";
-  return { title: { default: title, template: `%s | ${title}` }, description, alternates: { canonical: `https://audit.iteam.ru/${locale}` }, openGraph: { title, description, url: `https://audit.iteam.ru/${locale}`, type: "website" }, twitter: { card: "summary", title, description } };
+  const image = "https://audit.iteam.ru/og/iteam-audit.png";
+  return { title: { default: title, template: `%s | ${title}` }, description, alternates: { canonical: "https://audit.iteam.ru" }, openGraph: { title, description, url: "https://audit.iteam.ru", type: "website", images: [{ url: image, width: 1200, height: 630, alt: title }] }, twitter: { card: "summary_large_image", title, description, images: [image] } };
 }
 
 export default async function LocaleLayout({ children, params }: Props & { children: ReactNode }) {
