@@ -19,4 +19,4 @@ export const companyProfileSchema = z.object({
   main_goals: text,
 });
 export type CompanyProfileInput = z.infer<typeof companyProfileSchema>;
-export type CompanyProfileState = { error?: string; success?: string; fieldErrors?: Partial<Record<keyof CompanyProfileInput, string>> };
+export type CompanyProfileState = { error?: string; success?: string; fieldErrors?: Partial<Record<keyof CompanyProfileInput, string>>; values?: Partial<Record<keyof CompanyProfileInput, string>> };
