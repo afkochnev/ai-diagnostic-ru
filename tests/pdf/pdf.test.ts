@@ -55,6 +55,8 @@ describe("PDF report template", () => {
     expect(buildPdfHtml(input)).toContain("Конфиденциальный отчёт");
     expect(buildPdfHtml(input)).toContain('class="logo"');
     expect(buildPdfHtml(input)).toContain("data:image/png;base64,");
+    expect(buildPdfHtml(input)).toContain("width:38.5mm");
+    expect(buildPdfHtml(input)).not.toContain("Технологии корпоративного управления");
   });
 
 });
