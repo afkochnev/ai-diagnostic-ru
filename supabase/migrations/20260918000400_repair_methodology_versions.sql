@@ -12,11 +12,20 @@ declare
   v_v4 uuid;
   v_v4_status text;
   v_count integer;
+  v_maturity_count integer;
+  v_source_maturity_translation_count integer;
+  v_maturity_translation_count integer;
 begin
   select id into v_definition from public.diagnostic_definitions where key='manageability';
   if v_definition is null then raise exception 'manageability definition missing'; end if;
   select id,status into v_v1,v_v1_status from public.diagnostic_versions where definition_id=v_definition and version_number=1;
   if v_v1 is null or v_v1_status <> 'published' then raise exception 'published RU-1.0 source missing'; end if;
+  select count(*) into v_maturity_count from public.maturity_levels where version_id=v_v1;
+  if v_maturity_count<>5 then raise exception 'RU-1.0 maturity levels expected 5, got %',v_maturity_count; end if;
+  select count(*) into v_source_maturity_translation_count
+  from public.maturity_level_translations t join public.maturity_levels m on m.id=t.maturity_level_id
+  where m.version_id=v_v1;
+  if v_source_maturity_translation_count<5 then raise exception 'RU-1.0 maturity translations incomplete'; end if;
 
   create temporary table _repair_bank(block_key text, question_position integer, prompt text, block_title text, primary key(block_key,question_position)) on commit drop;
   insert into _repair_bank(block_key,question_position,prompt,block_title) values
@@ -165,7 +174,36 @@ begin
   select count(*) into v_count from public.questions q join public.diagnostic_blocks b on b.id=q.block_id where q.version_id=v_v2 and b.key='company_info'; if v_count<>2 then raise exception 'RU-2.0 general info expected 2, got %',v_count; end if;
   select count(*) into v_count from public.questions q join public.diagnostic_blocks b on b.id=q.block_id where q.version_id=v_v2 and b.key='open_questions'; if v_count<>2 then raise exception 'RU-2.0 open questions expected 2, got %',v_count; end if;
   if (select count(*) from public.scoring_policies where version_id=v_v2)<>1 then raise exception 'RU-2.0 scoring policy missing'; end if;
-  if (select count(*) from public.maturity_levels where version_id=v_v2)=0 then raise exception 'RU-2.0 maturity levels missing'; end if;
+  select count(*) into v_maturity_count from public.maturity_levels where version_id=v_v2;
+  -- A previously published v2 with zero maturity children is the known failed
+  -- deployment shape. The methodology immutability triggers cover updates/deletes
+  -- to content rows, but do not cover maturity child inserts; this narrowly scoped,
+  -- transactional repair only fills missing children from the validated v1 model.
+  if v_maturity_count=0 then
+    insert into public.maturity_levels(id,version_id,key,position,classification_config)
+      select gen_random_uuid(),v_v2,m.key,m.position,m.classification_config from public.maturity_levels m where m.version_id=v_v1;
+    insert into public.maturity_level_translations(maturity_level_id,locale,label,description)
+      select target.id,t.locale,t.label,t.description
+      from public.maturity_level_translations t
+      join public.maturity_levels source on source.id=t.maturity_level_id and source.version_id=v_v1
+      join public.maturity_levels target on target.version_id=v_v2 and target.key=source.key and target.position=source.position;
+  elsif v_maturity_count<>5 then
+    raise exception 'RU-2.0 maturity levels expected 5, got %',v_maturity_count;
+  end if;
+  select count(*) into v_maturity_translation_count
+  from public.maturity_level_translations t join public.maturity_levels m on m.id=t.maturity_level_id
+  where m.version_id=v_v2;
+  if v_maturity_translation_count=0 then
+    insert into public.maturity_level_translations(maturity_level_id,locale,label,description)
+      select target.id,t.locale,t.label,t.description
+      from public.maturity_level_translations t
+      join public.maturity_levels source on source.id=t.maturity_level_id and source.version_id=v_v1
+      join public.maturity_levels target on target.version_id=v_v2 and target.key=source.key and target.position=source.position;
+  elsif v_maturity_translation_count < v_source_maturity_translation_count then
+    raise exception 'RU-2.0 maturity translations incomplete';
+  end if;
+  if (select count(*) from public.maturity_levels where version_id=v_v2)<>5 then raise exception 'RU-2.0 maturity levels expected 5'; end if;
+  if (select count(*) from public.maturity_level_translations t join public.maturity_levels m on m.id=t.maturity_level_id where m.version_id=v_v2) < v_source_maturity_translation_count then raise exception 'RU-2.0 maturity translations incomplete'; end if;
   if (select count(*) from public.question_translations t join public.questions q on q.id=t.question_id where q.version_id=v_v2 and t.locale='ru')<>84 then raise exception 'RU-2.0 translations incomplete'; end if;
   update public.diagnostic_versions set status='published',published_at=now() where id=v_v2 and status='draft';
 
@@ -211,7 +249,8 @@ begin
   join public.question_translations t4 on t4.question_id=q4.id and t4.locale='ru'
   where q2.version_id=v_v2 and t2.prompt<>t4.prompt;
   if v_count<>1 then raise exception 'RU-2.1 must differ from RU-2.0 in exactly one question, got %',v_count; end if;
-  if (select count(*) from public.scoring_policies where version_id=v_v4)<>1 or (select count(*) from public.maturity_levels where version_id=v_v4)=0 then raise exception 'RU-2.1 scoring metadata incomplete'; end if;
+  if (select count(*) from public.scoring_policies where version_id=v_v4)<>1 or (select count(*) from public.maturity_levels where version_id=v_v4)<>5 then raise exception 'RU-2.1 scoring metadata incomplete'; end if;
+  if (select count(*) from public.maturity_level_translations t join public.maturity_levels m on m.id=t.maturity_level_id where m.version_id=v_v4) < v_source_maturity_translation_count then raise exception 'RU-2.1 maturity translations incomplete'; end if;
   update public.diagnostic_versions set status='published',published_at=now() where id=v_v4 and status='draft';
 end $$;
 commit;
