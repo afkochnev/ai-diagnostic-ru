@@ -6,7 +6,7 @@ const runner = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "ut
 
 describe("Stage 12.1 content compatibility", () => {
   it("publishes a new version and leaves RU-1.0 rows untouched", () => {
-    expect(migration).toContain("version_number,2");
+    expect(migration).toMatch(/values\s*\(v_version\s*,\s*v_definition\s*,\s*2/);
     expect(migration).toContain("v_old_version");
     expect(migration).toContain("Инновации и развитие");
     expect(migration).toContain("Процессы и операционная эффективность");

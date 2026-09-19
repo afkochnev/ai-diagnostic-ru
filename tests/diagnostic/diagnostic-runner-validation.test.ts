@@ -10,7 +10,9 @@ describe("diagnostic runner required-answer validation", () => {
     const source = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "utf8");
     expect(source).toContain('data-testid="required-answer-error"');
     expect(source).toContain("Ответьте на все обязательные вопросы, чтобы продолжить.");
-    expect(source.indexOf("clearTimeout(timer.current); timer.current = null;", source.indexOf("if (missing.length)"))).toBeLessThan(source.indexOf("setValidationError", source.indexOf("if (missing.length)")));
+    const validationBranch = source.indexOf("if (validateRequired && missing.length)");
+    expect(validationBranch).toBeGreaterThan(-1);
+    expect(source.indexOf("clearTimeout(timer.current); timer.current = null;", validationBranch)).toBeLessThan(source.indexOf("setValidationError", validationBranch));
   });
 
   it("serializes autosave and explicit block saves", () => {
