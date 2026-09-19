@@ -19,7 +19,10 @@ export async function enqueueAIReport(diagnosticId: string, version = 1) {
     throw error ?? new Error("ai_report_insert_failed");
   }
   const { error: jobError } = await db.from("jobs").insert({ kind: "ai_report", diagnostic_id: diagnosticId, deduplication_key: deduplicationKey });
-  if (jobError?.code === "23505") return report;
+  if (jobError?.code === "23505") {
+    const { data: existingJob } = await db.from("jobs").select("id").eq("kind", "ai_report").eq("diagnostic_id", diagnosticId).eq("deduplication_key", deduplicationKey).maybeSingle();
+    if (existingJob) return report;
+  }
   if (jobError) throw jobError;
   return report;
 }

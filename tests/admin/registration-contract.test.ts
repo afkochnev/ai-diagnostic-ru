@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSignupMetadata, hasCreatedAuthUser } from "@/server/auth/registration-contract";
+import { buildSignupMetadata, hasCreatedAuthUser, isDuplicateSignup } from "@/server/auth/registration-contract";
 
 describe("registration consent contract", () => {
   it("serializes consent values as booleans with database versions", () => {
@@ -7,6 +7,14 @@ describe("registration consent contract", () => {
     expect(metadata.data_processing_consent).toBe(true);
     expect(metadata.marketing_consent).toBe(false);
     expect(metadata.data_processing_version).toBe("temporary-ru-v1");
+  });
+
+  it("detects confirmed and unconfirmed duplicate-email semantics without auth.users", () => {
+    expect(isDuplicateSignup(null, { user: { identities: [] } })).toBe(true);
+    expect(isDuplicateSignup({ code: "email_exists" }, null)).toBe(true);
+    expect(isDuplicateSignup({ code: "user_already_exists" }, null)).toBe(true);
+    expect(isDuplicateSignup({ code: "over_email_send_rate_limit" }, null)).toBe(false);
+    expect(isDuplicateSignup(null, { user: { identities: [{ provider: "email" }] } })).toBe(false);
   });
 
   it("rejects missing required consent before signup", () => {

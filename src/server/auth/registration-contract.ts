@@ -19,6 +19,13 @@ export function hasCreatedAuthUser(data: SignupResult) {
   return Boolean(data?.user && Array.isArray((data.user as { identities?: unknown }).identities) && (data.user as { identities: Array<{ provider?: unknown }> }).identities.some((identity) => identity?.provider === "email"));
 }
 
+export function isDuplicateSignup(error: { code?: string } | null, data: SignupResult) {
+  if (error && ["email_exists", "user_already_exists"].includes(error.code ?? "")) return true;
+  // With email confirmation enabled GoTrue deliberately obfuscates duplicates as
+  // a successful response whose synthetic user has no identities.
+  return Boolean(!error && data?.user && Array.isArray((data.user as { identities?: unknown }).identities) && (data.user as { identities: unknown[] }).identities.length === 0);
+}
+
 export function signupIdentitySummary(data: SignupResult) {
   const identities = Array.isArray((data?.user as { identities?: unknown } | null)?.identities) ? (data?.user as { identities: Array<{ provider?: unknown }> }).identities : [];
   return {

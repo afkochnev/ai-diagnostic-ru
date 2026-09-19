@@ -8,7 +8,7 @@ import { authConfig } from "@/server/supabase/config";
 import { clearRecovery, hasRecovery, setRecovery } from "./recovery";
 import { emailSchema, loginSchema, passwordSchema, registrationSchema, type AuthState } from "@/validation/auth";
 import { getMessages } from "@/i18n/messages";
-import { buildSignupMetadata, hasCreatedAuthUser } from "./registration-contract";
+import { buildSignupMetadata, hasCreatedAuthUser, isDuplicateSignup } from "./registration-contract";
 import type { EmailOtpType } from "@supabase/supabase-js";
 
 const text = getMessages("ru").auth;
@@ -45,14 +45,13 @@ export async function registerAction(_: AuthState, form: FormData): Promise<Auth
   const { data, error } = await client.auth.signUp({ email, password, options: {
     emailRedirectTo: `${authConfig().APP_URL}/auth/confirm`, data: metadata,
   } });
+  if (isDuplicateSignup(error, data)) return { error: text.emailAlreadyRegistered };
   if (error) {
     return failure(error);
   }
   if (!hasCreatedAuthUser(data)) {
     return { error: text.technical };
   }
-  // Supabase may deliberately return an obfuscated user for duplicate emails.
-  // Always show the same confirmation state, without an enumeration endpoint.
   await clearRecovery();
   redirect("/ru/verify-email");
 }

@@ -15,6 +15,9 @@ describe("authenticated report regeneration", () => {
     expect(worker).toContain('status === "generating"');
     expect(worker).toContain("current[0]?.version ?? 0");
     expect(route).not.toContain("OPENAI_API_KEY");
+    expect(route).not.toContain("ai-regeneration:diagnostic:");
+    expect(route).toContain("[report-regeneration]");
+    expect(worker).toContain('.eq("deduplication_key", deduplicationKey)');
   });
 
   it("preserves D13 completed-report fallback and exposes deliberate UI action", () => {

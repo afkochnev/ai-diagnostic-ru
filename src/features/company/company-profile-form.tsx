@@ -8,7 +8,7 @@ type Company = Record<string, string | number> | null;
 type Props = { action: (state: CompanyProfileState, form: FormData) => Promise<CompanyProfileState>; company: Company; industries: Reference[]; revenues: Reference[]; returnTo?: string };
 const input = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
 const fields = [
-  ["name", "Название компании", "text"], ["country", "Страна", "text"], ["products", "Продукты", "textarea"], ["customer_segments", "Клиенты / клиентские сегменты", "textarea"], ["sales_channels", "Каналы продаж", "textarea"], ["employee_count", "Число сотрудников", "number"], ["company_age_years", "Возраст компании", "number"], ["management_levels", "Количество уровней управления", "number"], ["key_problems", "Ключевые проблемы компании", "textarea"], ["main_goals", "Главные цели компании", "textarea"],
+  ["name", "Название компании", "text"], ["country", "Страна", "text"], ["products", "Продукты", "textarea"], ["customer_segments", "Клиенты / клиентские сегменты", "textarea"], ["sales_channels", "Каналы продаж", "textarea"], ["employee_count", "Число сотрудников", "number"], ["company_age_years", "Возраст компании", "number"], ["management_levels", "Количество уровней управления", "number"], ["key_problems", "Назовите главные ограничения, препятствующие эффективности и динамичному развитию компании", "textarea"], ["main_goals", "Назовите стратегические цели компании в области финансов, достижений на рынке, развития собственных процессов и ресурсов", "textarea"],
 ] as const;
 
 export function CompanyProfileForm({ action, company, industries, revenues, returnTo = "/ru/dashboard" }: Props) {
