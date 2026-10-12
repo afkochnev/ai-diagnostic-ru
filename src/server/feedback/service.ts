@@ -1,13 +1,20 @@
 import "server-only";
 import { createAuthClient } from "@/server/supabase/server";
 import { feedbackSchema, normalizeFeedbackInput } from "./validation";
+import { AccountAccessError, requireDiagnosticRead } from "@/server/account/authorization";
 
 type FeedbackResult = { ok: boolean; duplicate: boolean; feedback_id: string };
 
 export async function getFeedbackStatus(diagnosticId: string) {
   const client = await createAuthClient();
-  const feedbackClient = client as unknown as { from: (table: string) => { select: (columns: string) => { eq: (column: string, value: string) => { maybeSingle: () => Promise<{ data: { id: string } | null; error: unknown }> } } } };
-  const { data, error } = await feedbackClient.from("feedback").select("id").eq("diagnostic_id", diagnosticId).maybeSingle();
+  const { data: { user }, error: authError } = await client.auth.getUser();
+  if (authError || !user?.email_confirmed_at) return false;
+  try { await requireDiagnosticRead(diagnosticId, user.id); }
+  catch (error) {
+    if (error instanceof AccountAccessError) return false;
+    throw error;
+  }
+  const { data, error } = await client.from("feedback").select("id").eq("diagnostic_id", diagnosticId).eq("user_id", user.id).maybeSingle();
   return !error && Boolean(data);
 }
 

@@ -3,6 +3,11 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createAuthClient } from "@/server/supabase/server";
 import { isAuthConfigured } from "@/server/supabase/config";
+import { listAccessibleAccounts } from "@/server/account/queries";
+import { listAccessibleCompanies } from "@/server/company/queries";
+import { workspaceDestination } from "@/features/company/workspace-routing";
+
+export { workspaceDestination } from "@/features/company/workspace-routing";
 
 export const getIdentity = cache(async () => {
   if (!isAuthConfigured()) return null;
@@ -25,16 +30,11 @@ export async function requireIdentity() {
   return identity;
 }
 
-export function workspaceDestination(hasCompany: boolean) {
-  return hasCompany ? "/ru/dashboard" : "/ru/company-profile";
-}
-
 export async function signedInDestination() {
   const identity = await getIdentity();
   if (!identity) return "/ru/login";
   if (!identity.user.email_confirmed_at) return "/ru/verify-email";
   if (identity.role === "administrator") return identity.aal === "aal2" ? "/ru/admin" : "/ru/mfa";
-  const client = await createAuthClient();
-  const { data: company } = await client.from("company_profiles").select("id").eq("owner_user_id", identity.user.id).maybeSingle();
-  return workspaceDestination(Boolean(company));
+  const [companies, accounts] = await Promise.all([listAccessibleCompanies(identity.user.id), listAccessibleAccounts(identity.user.id)]);
+  return workspaceDestination(companies.length, accounts.length);
 }

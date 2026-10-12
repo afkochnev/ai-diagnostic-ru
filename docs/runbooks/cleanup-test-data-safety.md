@@ -37,3 +37,12 @@ inventory queries or its deletion SQL to PostgreSQL. They cover omitted, `0`,
 
 V2.1R verification passed all 11 focused checks, including eight executable
 probes. The cleanup script itself was not executed against any database.
+
+## Account foundation compatibility
+
+After account tables exist, this V1 script fails closed before opening its cleanup
+transaction, for every execute value. Direct creator ownership no longer defines
+the tenant. A separate account-aware procedure must review shared membership,
+legacy provenance and all historical dependencies before permitting deletion.
+The V2.1A local test executes only the harmless extracted prefix against a
+migrated fixture and verifies refusal without modifying history.

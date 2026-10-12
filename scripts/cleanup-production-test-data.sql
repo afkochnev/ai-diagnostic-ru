@@ -24,6 +24,15 @@ select :'execute' in ('0', 'false', '1') as _cleanup_execute_valid,
   do $$ begin raise exception 'execute must be exactly 0, false or 1'; end $$;
 \endif
 
+-- This V1 allowlist is based on direct creator ownership. Account-aware deletion
+-- needs a separately reviewed tenant procedure; do not guess shared ownership.
+do $$ begin
+  if to_regclass('public.accounts') is not null
+     or to_regclass('public.account_memberships') is not null then
+    raise exception 'V1 cleanup refused: account schema requires account-aware cleanup';
+  end if;
+end $$;
+
 begin;
 create temporary table _cleanup_emails(email text primary key) on commit drop;
 insert into _cleanup_emails(email)

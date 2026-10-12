@@ -5,6 +5,11 @@ const action = readFileSync("src/server/company/actions.ts", "utf8");
 const form = readFileSync("src/features/company/company-profile-form.tsx", "utf8");
 
 describe("company profile validation preservation", () => {
+  it("submits explicit company and account context with each profile save", () => {
+    expect(form).toContain('name="company_id" value={String(company?.id ?? "")}');
+    expect(form).toContain('name="account_id" value={accountId}');
+  });
+
   it("returns submitted values with validation failures", () => {
     expect(action).toContain("function submittedValues(form: FormData)");
     expect(action).toContain("fieldErrors: fieldErrors(parsed.error.issues), values");

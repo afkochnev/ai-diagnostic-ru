@@ -18,6 +18,13 @@ describe("production cleanup execution safety", () => {
     expect(guard).toContain("raise exception 'execute must be exactly 0, false or 1'");
   });
 
+  it("refuses the account schema before opening the V1 cleanup transaction", () => {
+    expect(guard).toContain("to_regclass('public.accounts') is not null");
+    expect(guard).toContain("to_regclass('public.account_memberships') is not null");
+    expect(guard).toContain("raise exception 'V1 cleanup refused: account schema requires account-aware cleanup'");
+    expect(guard).not.toMatch(/^\s*(?:begin;|insert|delete|update|create|truncate)\b/im);
+  });
+
   it("puts every deletion behind the parsed flag and preserves rollback", () => {
     expect(executeBranch).toBeGreaterThan(transactionStart);
     expect(cleanup.indexOf("delete from")).toBeGreaterThan(executeBranch);

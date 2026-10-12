@@ -1,10 +1,15 @@
 import "server-only";
 import { createAuthClient } from "@/server/supabase/server";
+import { AccountAccessError, requireDiagnosticRead } from "@/server/account/authorization";
 
 export async function getDiagnosticResult(id: string, userId: string) {
+  let diagnostic;
+  try { diagnostic = await requireDiagnosticRead(id, userId); }
+  catch (error) {
+    if (error instanceof AccountAccessError) return null;
+    throw error;
+  }
   const c = await createAuthClient();
-  const { data: diagnostic, error } = await c.from("diagnostics").select("id,company_id,status,version_id,submitted_at,completed_at").eq("id", id).eq("created_by_user_id", userId).maybeSingle();
-  if (error || !diagnostic) return null;
   const [{ data: company }, { data: result }, { data: blocks }, { data: completedReport }, { data: processReport }] = await Promise.all([
     c.from("company_profiles").select("name").eq("id", diagnostic.company_id).single(),
     c.from("diagnostic_results").select("id,diagnostic_id,version_id,raw_manageability_index,display_manageability_index,maturity_level_id").eq("diagnostic_id", id).maybeSingle(),

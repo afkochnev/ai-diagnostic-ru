@@ -9,6 +9,21 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      accounts: {
+        Row: { id: string; name: string; status: string; legacy_origin_user_id: string | null; created_at: string; updated_at: string }
+        Insert: { id?: string; name: string; status?: string; legacy_origin_user_id?: string | null; created_at?: string; updated_at?: string }
+        Update: { id?: string; name?: string; status?: string; legacy_origin_user_id?: string | null; created_at?: string; updated_at?: string }
+        Relationships: [{ foreignKeyName: "accounts_legacy_origin_user_id_fkey"; columns: ["legacy_origin_user_id"]; isOneToOne: true; referencedRelation: "users"; referencedColumns: ["id"] }]
+      }
+      account_memberships: {
+        Row: { account_id: string; user_id: string; role: string; status: string; joined_at: string; revoked_at: string | null }
+        Insert: { account_id: string; user_id: string; role?: string; status?: string; joined_at?: string; revoked_at?: string | null }
+        Update: { account_id?: string; user_id?: string; role?: string; status?: string; joined_at?: string; revoked_at?: string | null }
+        Relationships: [
+          { foreignKeyName: "account_memberships_account_id_fkey"; columns: ["account_id"]; isOneToOne: false; referencedRelation: "accounts"; referencedColumns: ["id"] },
+          { foreignKeyName: "account_memberships_user_id_fkey"; columns: ["user_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] },
+        ]
+      }
       ai_reports: {
         Row: {
           completed_at: string | null
@@ -138,6 +153,7 @@ export type Database = {
       }
       company_profiles: {
         Row: {
+          account_id: string
           annual_revenue_key: string
           company_age_years: number
           country: string
@@ -157,6 +173,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_id?: string
           annual_revenue_key: string
           company_age_years: number
           country: string
@@ -176,6 +193,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_id?: string
           annual_revenue_key?: string
           company_age_years?: number
           country?: string
@@ -195,6 +213,7 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          { foreignKeyName: "company_profiles_account_id_fkey"; columns: ["account_id"]; isOneToOne: false; referencedRelation: "accounts"; referencedColumns: ["id"] },
           {
             foreignKeyName: "company_profiles_annual_revenue_key_fkey"
             columns: ["annual_revenue_key"]
@@ -212,7 +231,7 @@ export type Database = {
           {
             foreignKeyName: "company_profiles_owner_user_id_fkey"
             columns: ["owner_user_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },

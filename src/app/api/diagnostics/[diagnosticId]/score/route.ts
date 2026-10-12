@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getIdentity } from "@/server/auth/session";
-import { createAuthClient } from "@/server/supabase/server";
+import { AccountAccessError, requireDiagnosticRead } from "@/server/account/authorization";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const allowedStatuses = new Set(["submitted", "scoring_failed"]);
@@ -11,13 +11,14 @@ export async function POST(_: Request, { params }: { params: Promise<{ diagnosti
   if (!identity) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!uuid.test(diagnosticId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // This is deliberately an authenticated-client lookup. RLS and the explicit
-  // owner/company predicates run before the privileged worker can be reached.
-  const client = await createAuthClient();
-  const { data: diagnostic } = await client.from("diagnostics").select("id,status,company_id").eq("id", diagnosticId).eq("created_by_user_id", identity.user.id).maybeSingle();
-  if (!diagnostic) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const { data: company } = await client.from("company_profiles").select("id").eq("id", diagnostic.company_id).eq("owner_user_id", identity.user.id).maybeSingle();
-  if (!company) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  // Current membership and the diagnostic's actual company are checked through
+  // the authenticated client before any worker-compatible status is exposed.
+  let diagnostic;
+  try { diagnostic = await requireDiagnosticRead(diagnosticId, identity.user.id); }
+  catch (error) {
+    if (error instanceof AccountAccessError) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    throw error;
+  }
 
   // This endpoint is a status read/kick-compatible surface only. Production
   // execution is performed by the long-running worker, never by the browser.

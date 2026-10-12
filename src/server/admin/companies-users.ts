@@ -13,7 +13,7 @@ export async function getAdminCompanies(filters: Filters = {}) {
   await requireAdmin();
   const db = createAdminClient();
   const page = pageOf(filters.page);
-  let query = db.from("company_profiles").select("id,name,country,industry_key,employee_count,company_age_years,created_at", { count: "exact" });
+  let query = db.from("company_profiles").select("id,name,country,industry_key,employee_count,company_age_years,created_at,account_id", { count: "exact" });
   const q = text(filters.q);
   if (q) query = query.ilike("name", `%${q}%`);
   if (filters.country) query = query.eq("country", text(filters.country));
@@ -29,15 +29,15 @@ export async function getAdminCompanies(filters: Filters = {}) {
   const rows = companies ?? [];
   if (!rows.length) return { rows: [], page, pageSize: PAGE_SIZE, total: count ?? 0, totalPages: 1, filters };
   const ids = rows.map((row) => row.id);
-  const [{ data: owners }, { data: diagnostics }, { data: industries }] = await Promise.all([
-    db.from("company_profiles").select("id,owner_user_id").in("id", ids),
+  const [owners, { data: diagnostics }, { data: industries }] = await Promise.all([
+    loadActiveMemberships(db, undefined, rows.map((row) => row.account_id)),
     db.from("diagnostics").select("id,company_id").in("company_id", ids),
     db.from("industry_translations").select("industry_key,name").eq("locale", "ru").in("industry_key", rows.map((row) => row.industry_key)),
   ]);
-  const ownerCount = new Map((owners ?? []).map((row) => [row.id, row.owner_user_id ? 1 : 0]));
+  const ownerCount = countBy(owners, "account_id");
   const diagnosticCount = countBy(diagnostics ?? [], "company_id");
   const industryMap = new Map((industries ?? []).map((row) => [row.industry_key, row.name]));
-  const mapped = rows.map((row) => ({ ...row, industryLabel: industryMap.get(row.industry_key) ?? "Не указано", userCount: ownerCount.get(row.id) ?? 0, diagnosticCount: diagnosticCount.get(row.id) ?? 0 }));
+  const mapped = rows.map((row) => ({ ...row, industryLabel: industryMap.get(row.industry_key) ?? "Не указано", userCount: ownerCount.get(row.account_id) ?? 0, diagnosticCount: diagnosticCount.get(row.id) ?? 0 }));
   return { rows: mapped, page, pageSize: PAGE_SIZE, total: count ?? mapped.length, totalPages: Math.max(1, Math.ceil((count ?? mapped.length) / PAGE_SIZE)), filters };
 }
 
@@ -45,10 +45,11 @@ export async function getAdminCompanyDetail(companyId: string) {
   await requireAdmin();
   if (!uuid.test(companyId)) return null;
   const db = createAdminClient();
-  const { data: company } = await db.from("company_profiles").select("id,name,country,industry_key,employee_count,company_age_years,annual_revenue_key,management_levels,products,customer_segments,sales_channels,main_goals,key_problems,created_at,owner_user_id").eq("id", companyId).maybeSingle();
+  const { data: company } = await db.from("company_profiles").select("id,name,country,industry_key,employee_count,company_age_years,annual_revenue_key,management_levels,products,customer_segments,sales_channels,main_goals,key_problems,created_at,owner_user_id,account_id").eq("id", companyId).maybeSingle();
   if (!company) return null;
+  const memberships = await loadActiveMemberships(db, undefined, [company.account_id]);
   const [{ data: users }, { data: diagnostics }, { data: industry }, { data: revenue }, authUsers] = await Promise.all([
-    db.from("users").select("id,full_name,phone,created_at").eq("id", company.owner_user_id).order("full_name"),
+    memberships.length ? db.from("users").select("id,full_name,phone,created_at").in("id", memberships.map((row) => row.user_id)).order("full_name") : Promise.resolve({ data: [] }),
     db.from("diagnostics").select("id,created_by_user_id,status,started_at,completed_at").eq("company_id", companyId).order("started_at", { ascending: false }),
     db.from("industry_translations").select("name").eq("industry_key", company.industry_key).eq("locale", "ru").maybeSingle(),
     db.from("revenue_range_translations").select("name").eq("revenue_key", company.annual_revenue_key).eq("locale", "ru").maybeSingle(),
@@ -73,8 +74,9 @@ export async function getAdminUsers(filters: Filters = {}) {
   let query = db.from("users").select("id,full_name,phone,created_at", { count: "exact" });
   if (q) query = query.or([`full_name.ilike.%${q}%`, ...(emailIds.length ? [`id.in.(${emailIds.join(",")})`] : [])].join(","));
   if (filters.company && uuid.test(filters.company)) {
-    const { data: company } = await db.from("company_profiles").select("owner_user_id").eq("id", filters.company).maybeSingle();
-    query = company?.owner_user_id ? query.eq("id", company.owner_user_id) : query.eq("id", "00000000-0000-0000-0000-000000000000");
+    const { data: company } = await db.from("company_profiles").select("account_id").eq("id", filters.company).maybeSingle();
+    const memberships = company ? await loadActiveMemberships(db, undefined, [company.account_id]) : [];
+    query = memberships.length ? query.in("id", memberships.map((row) => row.user_id)) : query.eq("id", "00000000-0000-0000-0000-000000000000");
   }
   if (filters.hasDiagnostics === "yes" || filters.hasDiagnostics === "no") {
     const { data: diagnosticUsers } = await db.from("diagnostics").select("created_by_user_id");
@@ -86,11 +88,16 @@ export async function getAdminUsers(filters: Filters = {}) {
   if (error) throw new Error("Admin users query failed");
   const rows = users ?? [];
   if (!rows.length) return { rows: [], page, pageSize: PAGE_SIZE, total: count ?? 0, totalPages: 1, filters };
+  const memberships = await loadActiveMemberships(db, rows.map((row) => row.id));
+  const accountIds = [...new Set(memberships.map((row) => row.account_id))];
   const [{ data: companies }, { data: diagnostics }] = await Promise.all([
-    db.from("company_profiles").select("id,name,owner_user_id").in("owner_user_id", rows.map((row) => row.id)),
+    accountIds.length ? db.from("company_profiles").select("id,name,account_id").in("account_id", accountIds).order("name") : Promise.resolve({ data: [] }),
     db.from("diagnostics").select("created_by_user_id").in("created_by_user_id", rows.map((row) => row.id)),
   ]);
-  const companyMap = new Map((companies ?? []).map((row) => [row.owner_user_id, row.name]));
+  const companyMap = new Map(rows.map((user) => {
+    const memberAccountIds = new Set(memberships.filter((membership) => membership.user_id === user.id).map((membership) => membership.account_id));
+    return [user.id, (companies ?? []).filter((company) => memberAccountIds.has(company.account_id)).map((company) => company.name).join("; ")];
+  }));
   const diagnosticCount = countBy(diagnostics ?? [], "created_by_user_id");
   return { rows: rows.map((row) => ({ ...row, email: emailMap.get(row.id) ?? null, companyName: companyMap.get(row.id) ?? "Не указана", diagnosticCount: diagnosticCount.get(row.id) ?? 0 })), page, pageSize: PAGE_SIZE, total: count ?? rows.length, totalPages: Math.max(1, Math.ceil((count ?? rows.length) / PAGE_SIZE)), filters };
 }
@@ -101,13 +108,28 @@ export async function getAdminUserDetail(userId: string) {
   const db = createAdminClient();
   const { data: user } = await db.from("users").select("id,full_name,phone,locale,created_at").eq("id", userId).maybeSingle();
   if (!user) return null;
-  const [authUsers, { data: company }, { data: diagnostics }] = await Promise.all([loadAuthUsers(), db.from("company_profiles").select("id,name").eq("owner_user_id", userId).maybeSingle(), db.from("diagnostics").select("id,company_id,status,started_at,completed_at").eq("created_by_user_id", userId).order("started_at", { ascending: false })]);
+  const memberships = await loadActiveMemberships(db, [userId]);
+  const accountIds = [...new Set(memberships.map((row) => row.account_id))];
+  const [authUsers, { data: companies }, { data: diagnostics }] = await Promise.all([loadAuthUsers(), accountIds.length ? db.from("company_profiles").select("id,name,account_id").in("account_id", accountIds).order("name") : Promise.resolve({ data: [] }), db.from("diagnostics").select("id,company_id,status,started_at,completed_at").eq("created_by_user_id", userId).order("started_at", { ascending: false })]);
   const ids = (diagnostics ?? []).map((row) => row.id);
   const { data: results } = ids.length ? await db.from("diagnostic_results").select("diagnostic_id,display_manageability_index,maturity_level_id").in("diagnostic_id", ids) : { data: [] };
   const maturityIds = (results ?? []).map((row) => row.maturity_level_id).filter(Boolean);
   const { data: levels } = maturityIds.length ? await db.from("maturity_level_translations").select("maturity_level_id,label").in("maturity_level_id", maturityIds).eq("locale", "ru") : { data: [] };
   const resultMap = new Map((results ?? []).map((row) => [row.diagnostic_id, row])); const levelMap = new Map((levels ?? []).map((row) => [row.maturity_level_id, row.label]));
-  return { user: { ...user, email: authUsers.find((item) => item.id === userId)?.email ?? null }, company, diagnostics: (diagnostics ?? []).map((row) => ({ ...row, result: resultMap.get(row.id) ? { ...resultMap.get(row.id), maturityLabel: levelMap.get(resultMap.get(row.id)!.maturity_level_id) ?? null } : null })) };
+  return { user: { ...user, email: authUsers.find((item) => item.id === userId)?.email ?? null }, companies: companies ?? [], diagnostics: (diagnostics ?? []).map((row) => ({ ...row, result: resultMap.get(row.id) ? { ...resultMap.get(row.id), maturityLabel: levelMap.get(resultMap.get(row.id)!.maturity_level_id) ?? null } : null })) };
+}
+
+async function loadActiveMemberships(db: ReturnType<typeof createAdminClient>, userIds?: string[], accountIds?: string[]) {
+  let query = db.from("account_memberships").select("account_id,user_id").eq("role", "owner").eq("status", "active");
+  if (userIds) query = query.in("user_id", userIds);
+  if (accountIds) query = query.in("account_id", accountIds);
+  const { data: memberships, error } = await query;
+  if (error) throw new Error("Admin memberships query failed");
+  if (!memberships?.length) return [];
+  const { data: accounts, error: accountError } = await db.from("accounts").select("id").in("id", [...new Set(memberships.map((row) => row.account_id))]).eq("status", "active");
+  if (accountError) throw new Error("Admin accounts query failed");
+  const activeIds = new Set((accounts ?? []).map((account) => account.id));
+  return memberships.filter((membership) => activeIds.has(membership.account_id));
 }
 
 async function loadAuthUsers() { const { data } = await createAdminClient().auth.admin.listUsers({ page: 1, perPage: 1000 }); return data?.users ?? []; }
