@@ -1,0 +1,971 @@
+{
+  "audit_date": "2026-10-12",
+  "baseline": "0b8c4acb6a1071e5be06268ba8216c4215036e84",
+  "remote_changes_applied": false,
+  "environment_audits": {
+    "staging": {
+      "project_ref": "vflgxgdwlftlyjslyrmo",
+      "version3": {
+        "foreign_key_coverage": [
+          {
+            "child": "public.ai_reports",
+            "constraint": "ai_reports_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.answers",
+            "constraint": "answers_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.answers",
+            "constraint": "answers_diagnostic_id_version_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.answers",
+            "constraint": "answers_question_id_version_id_fkey",
+            "parent": "public.questions"
+          },
+          {
+            "child": "public.answers",
+            "constraint": "answers_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.consultation_notification_deliveries",
+            "constraint": "consultation_notification_deliveries_job_id_fkey",
+            "parent": "public.jobs"
+          },
+          {
+            "child": "public.consultation_notification_deliveries",
+            "constraint": "consultation_notification_deliveries_lead_request_id_fkey",
+            "parent": "public.lead_requests"
+          },
+          {
+            "child": "public.diagnostic_block_results",
+            "constraint": "diagnostic_block_results_block_id_version_id_fkey",
+            "parent": "public.diagnostic_blocks"
+          },
+          {
+            "child": "public.diagnostic_block_results",
+            "constraint": "diagnostic_block_results_result_id_fkey",
+            "parent": "public.diagnostic_results"
+          },
+          {
+            "child": "public.diagnostic_block_translations",
+            "constraint": "diagnostic_block_translations_block_id_fkey",
+            "parent": "public.diagnostic_blocks"
+          },
+          {
+            "child": "public.diagnostic_blocks",
+            "constraint": "diagnostic_blocks_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.diagnostic_company_snapshots",
+            "constraint": "diagnostic_company_snapshots_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.diagnostic_mutations",
+            "constraint": "diagnostic_mutations_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.diagnostic_results",
+            "constraint": "diagnostic_results_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.diagnostic_results",
+            "constraint": "diagnostic_results_diagnostic_id_version_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.diagnostic_results",
+            "constraint": "diagnostic_results_maturity_level_id_fkey",
+            "parent": "public.maturity_levels"
+          },
+          {
+            "child": "public.diagnostic_version_translations",
+            "constraint": "diagnostic_version_translations_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.diagnostics",
+            "constraint": "diagnostics_current_block_id_version_id_fkey",
+            "parent": "public.diagnostic_blocks"
+          },
+          {
+            "child": "public.diagnostics",
+            "constraint": "diagnostics_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.email_deliveries",
+            "constraint": "email_deliveries_ai_report_id_ai_report_version_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.email_deliveries",
+            "constraint": "email_deliveries_ai_report_id_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.email_deliveries",
+            "constraint": "email_deliveries_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.email_deliveries",
+            "constraint": "email_deliveries_pdf_artifact_id_fkey",
+            "parent": "public.report_artifacts"
+          },
+          {
+            "child": "public.feedback",
+            "constraint": "feedback_diagnostic_id_company_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.feedback",
+            "constraint": "feedback_diagnostic_id_user_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.jobs",
+            "constraint": "jobs_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.lead_requests",
+            "constraint": "lead_requests_diagnostic_id_company_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.lead_requests",
+            "constraint": "lead_requests_report_id_diagnostic_id_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.maturity_level_translations",
+            "constraint": "maturity_level_translations_maturity_level_id_fkey",
+            "parent": "public.maturity_levels"
+          },
+          {
+            "child": "public.maturity_levels",
+            "constraint": "maturity_levels_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.question_option_translations",
+            "constraint": "question_option_translations_option_id_fkey",
+            "parent": "public.question_options"
+          },
+          {
+            "child": "public.question_options",
+            "constraint": "question_options_question_id_fkey",
+            "parent": "public.questions"
+          },
+          {
+            "child": "public.question_translations",
+            "constraint": "question_translations_question_id_fkey",
+            "parent": "public.questions"
+          },
+          {
+            "child": "public.questions",
+            "constraint": "questions_block_id_version_id_fkey",
+            "parent": "public.diagnostic_blocks"
+          },
+          {
+            "child": "public.questions",
+            "constraint": "questions_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.report_artifacts",
+            "constraint": "report_artifacts_report_id_ai_report_version_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.report_artifacts",
+            "constraint": "report_artifacts_report_id_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.scoring_policies",
+            "constraint": "scoring_policies_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          }
+        ],
+        "metadata": {
+          "counts": {
+            "active_scoring_blocks": 8,
+            "active_scoring_questions": 80,
+            "company_info_questions": 2,
+            "maturity_levels": 0,
+            "open_questions": 2,
+            "scoring_blocks": 8,
+            "scoring_policies": 1,
+            "scoring_questions": 80,
+            "total_blocks": 10,
+            "total_questions": 84
+          },
+          "metadata": {
+            "content_hash": "stage12-2-1-methodology-v3",
+            "definition_key": "manageability",
+            "id": "d6e8c2e1-2f50-4f94-9b07-23c8d1f3a312",
+            "published_at": "2026-09-18T07:03:07.985973+00:00",
+            "source_file": "METHODOLOGY_RU_2_1.csv",
+            "status": "published"
+          },
+          "structure_question_3": "В распределении функций и ответственности между подразделениями нет существенного дублирования и «белых пятен», за которые фактически никто не отвечает.",
+          "translation_integrity": {
+            "missing_blocks": 0,
+            "missing_maturity": 0,
+            "missing_options": 0,
+            "missing_questions": 0,
+            "missing_version": 0,
+            "required_locale": "ru"
+          },
+          "version_number": 3
+        },
+        "table_counts": [
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "ai_reports"
+          },
+          {
+            "count": 12,
+            "schema": "public",
+            "table": "answers"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "consultation_notification_deliveries"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_block_results"
+          },
+          {
+            "count": 10,
+            "schema": "public",
+            "table": "diagnostic_block_translations"
+          },
+          {
+            "count": 10,
+            "schema": "public",
+            "table": "diagnostic_blocks"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_company_snapshots"
+          },
+          {
+            "count": 15,
+            "schema": "public",
+            "table": "diagnostic_mutations"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_results"
+          },
+          {
+            "count": 1,
+            "schema": "public",
+            "table": "diagnostic_version_translations"
+          },
+          {
+            "count": 1,
+            "schema": "public",
+            "table": "diagnostic_versions"
+          },
+          {
+            "count": 1,
+            "schema": "public",
+            "table": "diagnostics"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "email_deliveries"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "feedback"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "jobs"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "lead_requests"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "maturity_level_translations"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "maturity_levels"
+          },
+          {
+            "count": 400,
+            "schema": "public",
+            "table": "question_option_translations"
+          },
+          {
+            "count": 400,
+            "schema": "public",
+            "table": "question_options"
+          },
+          {
+            "count": 84,
+            "schema": "public",
+            "table": "question_translations"
+          },
+          {
+            "count": 84,
+            "schema": "public",
+            "table": "questions"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "report_artifacts"
+          },
+          {
+            "count": 1,
+            "schema": "public",
+            "table": "scoring_policies"
+          }
+        ]
+      },
+      "valid_versions": [
+        {
+          "counts": {
+            "active_scoring_blocks": 8,
+            "active_scoring_questions": 80,
+            "company_info_questions": 2,
+            "maturity_levels": 5,
+            "open_questions": 2,
+            "scoring_blocks": 8,
+            "scoring_policies": 1,
+            "scoring_questions": 80,
+            "total_blocks": 10,
+            "total_questions": 84
+          },
+          "metadata": {
+            "content_hash": "stage12-1-mvp-question-bank-v2",
+            "definition_key": "manageability",
+            "id": "c5d7b1d0-1f4f-4e93-8af6-12b7d0e2f201",
+            "published_at": "2026-09-17T08:58:02.78865+00:00",
+            "source_file": "METHODOLOGY_RU_2_0.csv",
+            "status": "published"
+          },
+          "structure_question_3": "В распределении функций и ответственности между подразделениями нет существенных дублирований и «белых пятен», за которые фактически никто не отвечает.",
+          "translation_integrity": {
+            "missing_blocks": 0,
+            "missing_maturity": 0,
+            "missing_options": 0,
+            "missing_questions": 0,
+            "missing_version": 0,
+            "required_locale": "ru"
+          },
+          "version_number": 2
+        },
+        {
+          "counts": {
+            "active_scoring_blocks": 8,
+            "active_scoring_questions": 80,
+            "company_info_questions": 2,
+            "maturity_levels": 5,
+            "open_questions": 2,
+            "scoring_blocks": 8,
+            "scoring_policies": 1,
+            "scoring_questions": 80,
+            "total_blocks": 10,
+            "total_questions": 84
+          },
+          "metadata": {
+            "content_hash": "stage12-2f-ru-2-1-repair",
+            "definition_key": "manageability",
+            "id": "469d40ff-1c45-44d0-8c50-631705edb7ff",
+            "published_at": "2026-09-18T11:11:06.286704+00:00",
+            "source_file": "METHODOLOGY_RU_2_1.csv",
+            "status": "published"
+          },
+          "structure_question_3": "В распределении функций и ответственности между подразделениями нет существенного дублирования и «белых пятен», за которые фактически никто не отвечает.",
+          "translation_integrity": {
+            "missing_blocks": 0,
+            "missing_maturity": 0,
+            "missing_options": 0,
+            "missing_questions": 0,
+            "missing_version": 0,
+            "required_locale": "ru"
+          },
+          "version_number": 4
+        }
+      ],
+      "ledger_columns": [
+        {
+          "default": null,
+          "name": "version",
+          "nullable": "NO",
+          "type": "text",
+          "udt": "text"
+        },
+        {
+          "default": null,
+          "name": "statements",
+          "nullable": "YES",
+          "type": "ARRAY",
+          "udt": "_text"
+        },
+        {
+          "default": null,
+          "name": "name",
+          "nullable": "YES",
+          "type": "text",
+          "udt": "text"
+        }
+      ],
+      "ledger_constraints": [
+        {
+          "definition": "PRIMARY KEY (version)",
+          "name": "schema_migrations_pkey"
+        }
+      ],
+      "relevant_ledger_rows": [
+        {
+          "name": "methodology_ru_2_0",
+          "statement_count": null,
+          "version": "20260918000100"
+        },
+        {
+          "name": "fix_methodology_definition_rls",
+          "statement_count": null,
+          "version": "20260918000200"
+        },
+        {
+          "name": "methodology_ru_2_1",
+          "statement_count": null,
+          "version": "20260918000300"
+        },
+        {
+          "name": "repair_methodology_versions",
+          "statement_count": null,
+          "version": "20260918000400"
+        }
+      ]
+    },
+    "production": {
+      "project_ref": "fhvxqeaujjeiflanqsbg",
+      "version3": {
+        "foreign_key_coverage": [
+          {
+            "child": "public.ai_reports",
+            "constraint": "ai_reports_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.answers",
+            "constraint": "answers_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.answers",
+            "constraint": "answers_diagnostic_id_version_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.answers",
+            "constraint": "answers_question_id_version_id_fkey",
+            "parent": "public.questions"
+          },
+          {
+            "child": "public.answers",
+            "constraint": "answers_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.consultation_notification_deliveries",
+            "constraint": "consultation_notification_deliveries_job_id_fkey",
+            "parent": "public.jobs"
+          },
+          {
+            "child": "public.consultation_notification_deliveries",
+            "constraint": "consultation_notification_deliveries_lead_request_id_fkey",
+            "parent": "public.lead_requests"
+          },
+          {
+            "child": "public.diagnostic_block_results",
+            "constraint": "diagnostic_block_results_block_id_version_id_fkey",
+            "parent": "public.diagnostic_blocks"
+          },
+          {
+            "child": "public.diagnostic_block_results",
+            "constraint": "diagnostic_block_results_result_id_fkey",
+            "parent": "public.diagnostic_results"
+          },
+          {
+            "child": "public.diagnostic_block_translations",
+            "constraint": "diagnostic_block_translations_block_id_fkey",
+            "parent": "public.diagnostic_blocks"
+          },
+          {
+            "child": "public.diagnostic_blocks",
+            "constraint": "diagnostic_blocks_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.diagnostic_company_snapshots",
+            "constraint": "diagnostic_company_snapshots_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.diagnostic_mutations",
+            "constraint": "diagnostic_mutations_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.diagnostic_results",
+            "constraint": "diagnostic_results_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.diagnostic_results",
+            "constraint": "diagnostic_results_diagnostic_id_version_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.diagnostic_results",
+            "constraint": "diagnostic_results_maturity_level_id_fkey",
+            "parent": "public.maturity_levels"
+          },
+          {
+            "child": "public.diagnostic_version_translations",
+            "constraint": "diagnostic_version_translations_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.diagnostics",
+            "constraint": "diagnostics_current_block_id_version_id_fkey",
+            "parent": "public.diagnostic_blocks"
+          },
+          {
+            "child": "public.diagnostics",
+            "constraint": "diagnostics_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.email_deliveries",
+            "constraint": "email_deliveries_ai_report_id_ai_report_version_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.email_deliveries",
+            "constraint": "email_deliveries_ai_report_id_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.email_deliveries",
+            "constraint": "email_deliveries_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.email_deliveries",
+            "constraint": "email_deliveries_pdf_artifact_id_fkey",
+            "parent": "public.report_artifacts"
+          },
+          {
+            "child": "public.feedback",
+            "constraint": "feedback_diagnostic_id_company_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.feedback",
+            "constraint": "feedback_diagnostic_id_user_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.jobs",
+            "constraint": "jobs_diagnostic_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.lead_requests",
+            "constraint": "lead_requests_diagnostic_id_company_id_fkey",
+            "parent": "public.diagnostics"
+          },
+          {
+            "child": "public.lead_requests",
+            "constraint": "lead_requests_report_id_diagnostic_id_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.maturity_level_translations",
+            "constraint": "maturity_level_translations_maturity_level_id_fkey",
+            "parent": "public.maturity_levels"
+          },
+          {
+            "child": "public.maturity_levels",
+            "constraint": "maturity_levels_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.question_option_translations",
+            "constraint": "question_option_translations_option_id_fkey",
+            "parent": "public.question_options"
+          },
+          {
+            "child": "public.question_options",
+            "constraint": "question_options_question_id_fkey",
+            "parent": "public.questions"
+          },
+          {
+            "child": "public.question_translations",
+            "constraint": "question_translations_question_id_fkey",
+            "parent": "public.questions"
+          },
+          {
+            "child": "public.questions",
+            "constraint": "questions_block_id_version_id_fkey",
+            "parent": "public.diagnostic_blocks"
+          },
+          {
+            "child": "public.questions",
+            "constraint": "questions_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          },
+          {
+            "child": "public.report_artifacts",
+            "constraint": "report_artifacts_report_id_ai_report_version_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.report_artifacts",
+            "constraint": "report_artifacts_report_id_fkey",
+            "parent": "public.ai_reports"
+          },
+          {
+            "child": "public.scoring_policies",
+            "constraint": "scoring_policies_version_id_fkey",
+            "parent": "public.diagnostic_versions"
+          }
+        ],
+        "metadata": {
+          "counts": {
+            "active_scoring_blocks": 0,
+            "active_scoring_questions": 0,
+            "company_info_questions": 0,
+            "maturity_levels": 0,
+            "open_questions": 0,
+            "scoring_blocks": 0,
+            "scoring_policies": 0,
+            "scoring_questions": 0,
+            "total_blocks": 0,
+            "total_questions": 0
+          },
+          "metadata": {
+            "content_hash": "stage12-2-1-methodology-v3",
+            "definition_key": "manageability",
+            "id": "d6e8c2e1-2f50-4f94-9b07-23c8d1f3a312",
+            "published_at": "2026-09-18T08:23:36.235255+00:00",
+            "source_file": "METHODOLOGY_RU_2_1.csv",
+            "status": "published"
+          },
+          "structure_question_3": null,
+          "translation_integrity": {
+            "missing_blocks": 0,
+            "missing_maturity": 0,
+            "missing_options": 0,
+            "missing_questions": 0,
+            "missing_version": 1,
+            "required_locale": "ru"
+          },
+          "version_number": 3
+        },
+        "table_counts": [
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "ai_reports"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "answers"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "consultation_notification_deliveries"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_block_results"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_block_translations"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_blocks"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_company_snapshots"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_mutations"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_results"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostic_version_translations"
+          },
+          {
+            "count": 1,
+            "schema": "public",
+            "table": "diagnostic_versions"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "diagnostics"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "email_deliveries"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "feedback"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "jobs"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "lead_requests"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "maturity_level_translations"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "maturity_levels"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "question_option_translations"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "question_options"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "question_translations"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "questions"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "report_artifacts"
+          },
+          {
+            "count": 0,
+            "schema": "public",
+            "table": "scoring_policies"
+          }
+        ]
+      },
+      "valid_versions": [
+        {
+          "counts": {
+            "active_scoring_blocks": 8,
+            "active_scoring_questions": 80,
+            "company_info_questions": 2,
+            "maturity_levels": 5,
+            "open_questions": 2,
+            "scoring_blocks": 8,
+            "scoring_policies": 1,
+            "scoring_questions": 80,
+            "total_blocks": 10,
+            "total_questions": 84
+          },
+          "metadata": {
+            "content_hash": "stage12-2f-ru-2-0-repair",
+            "definition_key": "manageability",
+            "id": "b5e06a57-0015-43a7-9044-ab6cbc10d1aa",
+            "published_at": "2026-09-18T12:30:38.316578+00:00",
+            "source_file": "METHODOLOGY_RU_2_0.csv",
+            "status": "published"
+          },
+          "structure_question_3": "В распределении функций и ответственности между подразделениями нет существенных дублирований и «белых пятен», за которые фактически никто не отвечает.",
+          "translation_integrity": {
+            "missing_blocks": 0,
+            "missing_maturity": 0,
+            "missing_options": 0,
+            "missing_questions": 0,
+            "missing_version": 0,
+            "required_locale": "ru"
+          },
+          "version_number": 2
+        },
+        {
+          "counts": {
+            "active_scoring_blocks": 8,
+            "active_scoring_questions": 80,
+            "company_info_questions": 2,
+            "maturity_levels": 5,
+            "open_questions": 2,
+            "scoring_blocks": 8,
+            "scoring_policies": 1,
+            "scoring_questions": 80,
+            "total_blocks": 10,
+            "total_questions": 84
+          },
+          "metadata": {
+            "content_hash": "stage12-2f-ru-2-1-repair",
+            "definition_key": "manageability",
+            "id": "310c53d3-91bf-4501-ac6a-0cd41771a7ef",
+            "published_at": "2026-09-18T12:30:38.316578+00:00",
+            "source_file": "METHODOLOGY_RU_2_1.csv",
+            "status": "published"
+          },
+          "structure_question_3": "В распределении функций и ответственности между подразделениями нет существенного дублирования и «белых пятен», за которые фактически никто не отвечает.",
+          "translation_integrity": {
+            "missing_blocks": 0,
+            "missing_maturity": 0,
+            "missing_options": 0,
+            "missing_questions": 0,
+            "missing_version": 0,
+            "required_locale": "ru"
+          },
+          "version_number": 4
+        }
+      ],
+      "ledger_columns": [
+        {
+          "default": null,
+          "name": "version",
+          "nullable": "NO",
+          "type": "text",
+          "udt": "text"
+        },
+        {
+          "default": null,
+          "name": "statements",
+          "nullable": "YES",
+          "type": "ARRAY",
+          "udt": "_text"
+        },
+        {
+          "default": null,
+          "name": "name",
+          "nullable": "YES",
+          "type": "text",
+          "udt": "text"
+        }
+      ],
+      "ledger_constraints": [
+        {
+          "definition": "PRIMARY KEY (version)",
+          "name": "schema_migrations_pkey"
+        }
+      ],
+      "relevant_ledger_rows": [
+        {
+          "name": "fix_methodology_definition_rls",
+          "statement_count": null,
+          "version": "20260918000200"
+        },
+        {
+          "name": "methodology_ru_2_1",
+          "statement_count": null,
+          "version": "20260918000300"
+        },
+        {
+          "name": "repair_methodology_versions",
+          "statement_count": null,
+          "version": "20260918000400"
+        }
+      ]
+    }
+  },
+  "canonical_comparison": {
+    "pass": true,
+    "versions": [
+      {
+        "version_number": 2,
+        "logically_equal": true,
+        "staging_sha256": "71ba97cf28265b86c92d38e767c609dd1b260d95a05cc90b32013ab24ac5204f",
+        "production_sha256": "71ba97cf28265b86c92d38e767c609dd1b260d95a05cc90b32013ab24ac5204f",
+        "differences": [],
+        "content_hash_difference": true,
+        "provenance_only_difference": true,
+        "integrity": {
+          "staging": [],
+          "production": []
+        },
+        "pass": true
+      },
+      {
+        "version_number": 4,
+        "logically_equal": true,
+        "staging_sha256": "ef51c46aa3eb5c8fd3fb729f835b1cd7ddcb501c8f16c3f76e03d1d967485d18",
+        "production_sha256": "ef51c46aa3eb5c8fd3fb729f835b1cd7ddcb501c8f16c3f76e03d1d967485d18",
+        "differences": [],
+        "content_hash_difference": false,
+        "provenance_only_difference": true,
+        "integrity": {
+          "staging": [],
+          "production": []
+        },
+        "pass": true
+      }
+    ]
+  }
+}

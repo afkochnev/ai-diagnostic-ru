@@ -1,12 +1,27 @@
 -- Production test-data cleanup.
 -- Safe default: DRY_RUN. Nothing is deleted unless invoked with:
 --   psql ... -v test_emails='test1@example.com,test2@example.com' -v execute=1 -f scripts/cleanup-production-test-data.sql
+-- Omitted execute, execute=0 and execute=false are DRY_RUN; all other values except 1 are errors.
 -- Run only with a service-role database connection. Never use TRUNCATE or disable constraints.
 \set ON_ERROR_STOP on
 \if :{?test_emails}
 \else
   \echo 'ERROR: provide -v test_emails="email1,email2"'
   \quit 2
+\endif
+
+-- Parse the value, not merely its presence. Reject unexpected values before opening
+-- the cleanup transaction; ON_ERROR_STOP makes the validation error exit non-zero.
+\if :{?execute}
+\else
+  \set execute 0
+\endif
+select :'execute' in ('0', 'false', '1') as _cleanup_execute_valid,
+       :'execute' = '1' as _cleanup_execute
+\gset
+\if :_cleanup_execute_valid
+\else
+  do $$ begin raise exception 'execute must be exactly 0, false or 1'; end $$;
 \endif
 
 begin;
@@ -69,7 +84,7 @@ union all select 'user_consents', count(*) from public.user_consents c join _cle
 union all select 'user_roles', count(*) from public.user_roles r join _cleanup_users u on u.user_id=r.user_id
 union all select 'private.audit_events', count(*) from private.audit_events e join _cleanup_users u on u.user_id=e.actor_id or u.user_id=e.subject_id;
 
-\if :{?execute}
+\if :_cleanup_execute
   do $$
   begin
     delete from public.email_deliveries e using _cleanup_diagnostics d where e.diagnostic_id=d.diagnostic_id;
