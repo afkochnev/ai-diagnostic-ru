@@ -14,8 +14,11 @@ describe("Stage 8D companies and users", () => {
     expect(service).not.toContain("answers");
   });
 
-  it("uses actual owner-user relation and explicit diagnostic history ordering", () => {
-    expect(service).toContain("owner_user_id");
+  it("uses current account membership and explicit creator-history ordering", () => {
+    expect(service).toContain('from("account_memberships")');
+    expect(service).toContain('.eq("role", "owner").eq("status", "active")');
+    expect(service).toContain('companies: companies ?? []');
+    expect(service).not.toContain('eq("owner_user_id", userId).maybeSingle()');
     expect(service).toContain('order("started_at", { ascending: false })');
     expect(service).toContain("industry_translations");
     expect(service).toContain("revenue_range_translations");

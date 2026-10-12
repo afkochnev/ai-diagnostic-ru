@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getIdentity } from "@/server/auth/session";
-import { requestAIReportRegeneration } from "@/server/ai/worker";
+import { requestAIReportRegeneration } from "@/server/ai/regeneration";
 import { enforceRateLimit, RateLimitExceeded } from "@/server/rate-limit";
 
 export const runtime = "nodejs";

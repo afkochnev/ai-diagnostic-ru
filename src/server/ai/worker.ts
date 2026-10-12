@@ -27,20 +27,6 @@ export async function enqueueAIReport(diagnosticId: string, version = 1) {
   return report;
 }
 
-export async function requestAIReportRegeneration(userId: string, diagnosticId: string) {
-  const db = createAdminClient();
-  const { data: diagnostic } = await db.from("diagnostics").select("id,status,created_by_user_id").eq("id", diagnosticId).eq("created_by_user_id", userId).maybeSingle();
-  if (!diagnostic || diagnostic.status !== "completed") throw new Error("not_found");
-  const { data: result } = await db.from("diagnostic_results").select("id").eq("diagnostic_id", diagnosticId).maybeSingle();
-  if (!result) throw new Error("not_found");
-  const { data: reports } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).order("version", { ascending: false });
-  const current = reports ?? [];
-  const active = current.find((report) => report.status === "queued" || report.status === "generating");
-  if (active) return active;
-  const nextVersion = (current[0]?.version ?? 0) + 1;
-  return enqueueAIReport(diagnosticId, nextVersion);
-}
-
 export type ClaimedAIJob = { job_id: string; diagnostic_id: string; lease_token: string; attempt_count: number; deduplication_key: string };
 export function isRetryableAIError(message: string) { return /timeout|aborted|429|rate.?limit|5\d\d|network|fetch failed|econnreset/i.test(message); }
 

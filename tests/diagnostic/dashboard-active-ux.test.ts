@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-const page = readFileSync("src/app/[locale]/(workspace)/dashboard/page.tsx", "utf8");
+const page = readFileSync("src/features/company/company-dashboard.tsx", "utf8");
 
 describe("active diagnostic dashboard controls", () => {
   it("renders the account heading copy", () => {

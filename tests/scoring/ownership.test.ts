@@ -3,11 +3,12 @@ import { readFileSync } from "node:fs";
 
 const route = readFileSync("src/app/api/diagnostics/[diagnosticId]/score/route.ts", "utf8");
 
-describe("Stage 9A scoring ownership boundary", () => {
-  it("authorizes the exact owner and company before the privileged worker", () => {
+describe("scoring account boundary", () => {
+  it("authorizes current membership and the diagnostic company before status access", () => {
     expect(route.indexOf("await getIdentity()")) .toBeLessThan(route.indexOf("await runScoringJob"));
-    expect(route).toContain('eq("created_by_user_id", identity.user.id)');
-    expect(route).toContain('eq("owner_user_id", identity.user.id)');
+    expect(route).toContain('requireDiagnosticRead(diagnosticId, identity.user.id)');
+    expect(route).not.toContain('eq("created_by_user_id", identity.user.id)');
+    expect(route).not.toContain('eq("owner_user_id", identity.user.id)');
     expect(route).toContain('return NextResponse.json({ error: "not_found" }, { status: 404 })');
   });
 

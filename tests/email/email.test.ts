@@ -18,7 +18,7 @@ describe("report email", () => {
     const source = readFileSync("src/server/email/service.ts", "utf8");
     expect(source).not.toContain("openai");
     expect(source).not.toContain("runScoring");
-    expect(source).toContain("created_by_user_id");
+    expect(source).toContain("requireDiagnosticRead(report.diagnostic_id, userId)");
     expect(source).toContain("ai_report_version");
     expect(source).toContain("pdf_artifact_id");
     expect(readFileSync("src/server/email/provider.ts", "utf8")).toContain("class MockEmailProvider");
