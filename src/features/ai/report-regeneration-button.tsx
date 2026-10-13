@@ -9,7 +9,7 @@ export function ReportRegenerationButton({ diagnosticId }: { diagnosticId: strin
     if (state !== "queued") return;
     let active = true;
     const timer = setInterval(async () => {
-      const response = await fetch(`/api/diagnostics/${diagnosticId}/ai`, { method: "POST", cache: "no-store" });
+      const response = await fetch(`/api/diagnostics/${diagnosticId}/ai`, { method: "GET", cache: "no-store" });
       const body = await response.json().catch(() => ({})) as { status?: string };
       if (!active) return;
       if (body.status === "completed") window.location.reload();

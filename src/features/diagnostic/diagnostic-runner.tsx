@@ -62,7 +62,7 @@ export function DiagnosticRunner({ data }: Props) {
   }, [currentBlock.id, data.diagnostic.id]);
 
   useEffect(() => {
-    if (!Object.keys(answers).length) return;
+    if (answersHash(answers) === persistedAnswersHashRef.current) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { void save(); }, 900);
     return () => { if (timer.current) clearTimeout(timer.current); };
