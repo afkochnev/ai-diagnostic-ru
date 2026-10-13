@@ -1,0 +1,107 @@
+name: V2.1A staging Phase A runner
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/v21a-staging-phase-a-runner.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v21a-staging-phase-a-runner
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: Verify and dry-run Phase A on staging
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+
+    env:
+      STAGING_PROJECT_REF: vflgxgdwlftlyjslyrmo
+      PHASE_A_FILE: 20261013000100_account_foundation.sql
+      PHASE_A_BLOB_SHA: d531aea3ccda1fcd06212398669fdf244eee45a8
+      ROLLOUT_BASE_SHA: c892fc8ea4bf61a4f96959169972b63dbfe01ca0
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+    steps:
+      - name: Checkout exact Phase A release
+        uses: actions/checkout@v4
+        with:
+          ref: c892fc8ea4bf61a4f96959169972b63dbfe01ca0
+          fetch-depth: 0
+
+      - name: Verify release checkpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROLLOUT_BASE_SHA"
+          test -f "supabase/migrations/$PHASE_A_FILE"
+          test ! -f "supabase/migrations/20261013000200_account_authorization_cutover.sql"
+          test "$(git hash-object "supabase/migrations/$PHASE_A_FILE")" = "$PHASE_A_BLOB_SHA"
+          echo "PASS: exact Phase A release; Phase B absent"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26.8.1"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify Supabase CLI version
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_version="$(./node_modules/.bin/supabase --version)"
+          echo "Supabase CLI: $cli_version"
+          test "$cli_version" = "2.117.0"
+
+      - name: Link exact staging project
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/supabase --agent no --output pretty link             --project-ref "$STAGING_PROJECT_REF"             --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Capture migration ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/supabase --agent no --output pretty migration list --linked             | tee migration-list.txt
+
+          grep -F "20261012000000" migration-list.txt
+          grep -F "20261012000100" migration-list.txt
+          grep -F "20261013000100" migration-list.txt
+
+      - name: Dry-run Phase A only
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/supabase --agent no --output pretty db push             --linked             --dry-run             --skip-vault 2>&1 | tee phase-a-dry-run.txt
+
+          mapfile -t pending < <(grep -Eo '[0-9]{14}_[A-Za-z0-9_]+\.sql' phase-a-dry-run.txt | sort -u)
+          printf 'Pending migration files:\n'
+          printf '  %s\n' "${pending[@]}"
+
+          test "${#pending[@]}" -eq 1
+          test "${pending[0]}" = "$PHASE_A_FILE"
+          ! grep -Fq "20261013000200_account_authorization_cutover.sql" phase-a-dry-run.txt
+          echo "PASS: dry-run contains exactly Phase A"
+
+      - name: Upload operator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21a-phase-a-dry-run-${{ github.sha }}
+          path: |
+            migration-list.txt
+            phase-a-dry-run.txt
+          if-no-files-found: warn
+          retention-days: 30
