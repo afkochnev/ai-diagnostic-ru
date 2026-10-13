@@ -80,7 +80,7 @@ export async function forgotAction(_: AuthState, form: FormData): Promise<AuthSt
   const parsed = emailSchema.safeParse(value(form, "email").trim());
   if (!parsed.success) return { error: text.badEmail };
   const client = await actionClient();
-  const { error } = await client.auth.resetPasswordForEmail(parsed.data, { redirectTo: `${authConfig().APP_URL}/auth/confirm` });
+  const { error } = await client.auth.resetPasswordForEmail(parsed.data, { redirectTo: `${authConfig().APP_URL}/auth/confirm?type=recovery` });
   if (error) return failure(error);
   return { success: text.sent };
 }
