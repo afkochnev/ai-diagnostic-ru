@@ -3,6 +3,7 @@ import { createAdminClient } from "@/server/supabase/admin";
 import { preparePdfForReport, templateVersion } from "@/server/pdf/service";
 import { getEmailProvider } from "./provider";
 import { buildReportEmail } from "./content";
+import { AccountAccessError, requireDiagnosticRead } from "@/server/account/authorization";
 
 type Row = Record<string, unknown>;
 const safeCompanyName = (value: unknown) => String(value ?? "компании");
@@ -11,9 +12,15 @@ const formatIndex = (value: unknown) => String(value ?? "—").replace(".", ",")
 export async function sendReportEmail(reportId: string, userId: string) {
   const db = createAdminClient();
   const { data: report } = await db.from("ai_reports").select("id,diagnostic_id,version,status").eq("id", reportId).maybeSingle();
-  if (!report || report.status !== "completed") throw new Error("email_report_not_ready");
-  const { data: diagnostic } = await db.from("diagnostics").select("id,company_id,status,completed_at,created_by_user_id").eq("id", report.diagnostic_id).eq("created_by_user_id", userId).maybeSingle();
-  if (!diagnostic || diagnostic.status !== "completed") throw new Error("email_access_denied");
+  if (!report) throw new Error("email_access_denied");
+  let diagnostic;
+  try { diagnostic = await requireDiagnosticRead(report.diagnostic_id, userId); }
+  catch (error) {
+    if (error instanceof AccountAccessError) throw new Error("email_access_denied");
+    throw error;
+  }
+  if (diagnostic.status !== "completed") throw new Error("email_access_denied");
+  if (report.status !== "completed") throw new Error("email_report_not_ready");
   const authUser = await db.auth.admin.getUserById(userId);
   const recipient = authUser.data.user?.email;
   if (!recipient) throw new Error("email_recipient_missing");

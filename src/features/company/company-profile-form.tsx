@@ -5,13 +5,13 @@ import type { CompanyProfileState } from "@/validation/company";
 
 type Reference = { industry_key: string; name: string } | { revenue_key: string; name: string };
 type Company = Record<string, string | number> | null;
-type Props = { action: (state: CompanyProfileState, form: FormData) => Promise<CompanyProfileState>; company: Company; industries: Reference[]; revenues: Reference[]; returnTo?: string };
+type Props = { action: (state: CompanyProfileState, form: FormData) => Promise<CompanyProfileState>; company: Company; industries: Reference[]; revenues: Reference[]; returnTo?: string; accountId: string };
 const input = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
 const fields = [
   ["name", "Название компании", "text"], ["country", "Страна", "text"], ["products", "Продукты", "textarea"], ["customer_segments", "Клиенты / клиентские сегменты", "textarea"], ["sales_channels", "Каналы продаж", "textarea"], ["employee_count", "Число сотрудников", "number"], ["company_age_years", "Возраст компании", "number"], ["management_levels", "Количество уровней управления", "number"], ["key_problems", "Назовите главные ограничения, препятствующие эффективности и динамичному развитию компании", "textarea"], ["main_goals", "Назовите стратегические цели компании в области финансов, достижений на рынке, развития собственных процессов и ресурсов", "textarea"],
 ] as const;
 
-export function CompanyProfileForm({ action, company, industries, revenues, returnTo = "/ru/dashboard" }: Props) {
+export function CompanyProfileForm({ action, company, industries, revenues, accountId, returnTo = "/ru/dashboard" }: Props) {
   const initialValues = Object.fromEntries(["revision", "name", "industry_key", "country", "products", "customer_segments", "sales_channels", "employee_count", "annual_revenue_key", "company_age_years", "management_levels", "key_problems", "main_goals"].map((key) => [key, String(company?.[key] ?? "")])) as Record<string, string>;
   const [values, setValues] = useState<Record<string, string>>(initialValues);
   const [state, formAction, pending] = useActionState(async (previous: CompanyProfileState, form: FormData) => {
@@ -23,6 +23,8 @@ export function CompanyProfileForm({ action, company, industries, revenues, retu
   const update = (key: string, next: string) => setValues((current) => ({ ...current, [key]: next }));
   const error = (key: string) => state.fieldErrors?.[key as keyof typeof state.fieldErrors];
   return <form action={formAction} className="space-y-5" noValidate>
+    <input type="hidden" name="company_id" value={String(company?.id ?? "")} />
+    <input type="hidden" name="account_id" value={accountId} />
     <input type="hidden" name="revision" value={String(value("revision"))} />
     <input type="hidden" name="return_to" value={returnTo} />
     {fields.slice(0, 1).map(([name, label, type]) => <Field key={name} name={name} label={label} type={type} value={value(name)} onChange={update} error={error(name)} />)}

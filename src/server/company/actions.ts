@@ -6,6 +6,9 @@ import { createAuthClient } from "@/server/supabase/server";
 import { requireIdentity } from "@/server/auth/session";
 import { companyProfileSchema, type CompanyProfileState } from "@/validation/company";
 import { getMessages } from "@/i18n/messages";
+import { AccountAccessError, requireAccountWrite, requireCompanyWrite } from "@/server/account/authorization";
+import { getOnlyAccessibleAccount } from "@/server/account/queries";
+import { getOwnCompany } from "./queries";
 
 const copy = getMessages("ru").company;
 const value = (form: FormData, name: string) => String(form.get(name) ?? "");
@@ -25,9 +28,10 @@ function fieldErrors(issues: { path: PropertyKey[] }[]) {
   }
   return result;
 }
-function destination(form: FormData) {
+function destination(form: FormData, companyId: string) {
   const requested = value(form, "return_to");
-  return requested === "/ru/dashboard" ? requested : "/ru/dashboard";
+  const companyPath = `/ru/companies/${companyId}`;
+  return [companyPath, `${companyPath}/diagnostics`].includes(requested) ? requested : companyPath;
 }
 
 export async function saveCompanyProfileAction(_: CompanyProfileState, form: FormData): Promise<CompanyProfileState> {
@@ -35,6 +39,25 @@ export async function saveCompanyProfileAction(_: CompanyProfileState, form: For
   const parsed = parsedInput(form);
   const values = submittedValues(form);
   if (!parsed.success) return { error: copy.validationError, fieldErrors: fieldErrors(parsed.error.issues), values };
+  let existing;
+  let accountId: string;
+  try {
+    const companyId = value(form, "company_id");
+    const requestedAccountId = value(form, "account_id");
+    existing = companyId ? await requireCompanyWrite(companyId, identity.user.id) : requestedAccountId ? null : await getOwnCompany(identity.user.id);
+    if (existing) {
+      accountId = existing.account_id;
+      if (requestedAccountId && requestedAccountId !== accountId) throw new AccountAccessError("not_found");
+      await requireAccountWrite(accountId, identity.user.id);
+    } else {
+      const account = requestedAccountId ? await requireAccountWrite(requestedAccountId, identity.user.id) : await getOnlyAccessibleAccount(identity.user.id);
+      accountId = account.id;
+    }
+  } catch (error) {
+    if (error instanceof AccountAccessError && error.code === "selection_required") redirect("/ru/companies");
+    if (error instanceof AccountAccessError) return { error: copy.saveError, values };
+    throw error;
+  }
   const client = await createAuthClient();
   const [{ data: industry }, { data: revenue }] = await Promise.all([
     client.from("industry_translations").select("industry_key").eq("industry_key", parsed.data.industry_key).eq("locale", "ru").maybeSingle(),
@@ -42,16 +65,17 @@ export async function saveCompanyProfileAction(_: CompanyProfileState, form: For
   ]);
   if (!industry) return { error: copy.invalidIndustry, fieldErrors: { industry_key: copy.invalidIndustry }, values };
   if (!revenue) return { error: copy.invalidRevenue, fieldErrors: { annual_revenue_key: copy.invalidRevenue }, values };
-  const { data: existing, error: readError } = await client.from("company_profiles").select("id, revision").eq("owner_user_id", identity.user.id).maybeSingle();
-  if (readError) return { error: copy.saveError, values };
   const expectedRevision = Number(value(form, "revision") || "0");
-  if (existing && expectedRevision > 0 && expectedRevision !== existing.revision) return { error: copy.conflictError, values };
-  const payload = { ...parsed.data, owner_user_id: identity.user.id, revision: existing ? existing.revision + 1 : 1 };
+  if (existing && (!Number.isInteger(expectedRevision) || expectedRevision !== existing.revision)) return { error: copy.conflictError, values };
+  const payload = { ...parsed.data, revision: existing ? existing.revision + 1 : 1 };
   const result = existing
-    ? await client.from("company_profiles").update(payload).eq("id", existing.id).eq("owner_user_id", identity.user.id).eq("revision", existing.revision).select("id").maybeSingle()
-    : await client.from("company_profiles").insert(payload).select("id").single();
+    ? await client.from("company_profiles").update(payload).eq("id", existing.id).eq("account_id", accountId).eq("revision", expectedRevision).select("id").maybeSingle()
+    : await client.from("company_profiles").insert({ ...payload, account_id: accountId, owner_user_id: identity.user.id }).select("id").single();
   if (result.error || !result.data) return { error: result.error?.code === "23505" ? copy.duplicateError : copy.saveError, values };
   revalidatePath("/ru/dashboard");
   revalidatePath("/ru/company-profile");
-  redirect(destination(form));
+  revalidatePath("/ru/companies");
+  revalidatePath(`/ru/companies/${result.data.id}`);
+  revalidatePath(`/ru/companies/${result.data.id}/profile`);
+  redirect(destination(form, result.data.id));
 }

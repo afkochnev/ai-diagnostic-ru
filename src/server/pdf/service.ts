@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { createAdminClient } from "@/server/supabase/admin";
 import { renderPdf } from "./render";
+import { AccountAccessError, requireDiagnosticRead } from "@/server/account/authorization";
 
 const templateVersion = "stage12-1i";
 type Row = Record<string, unknown>;
@@ -10,9 +11,15 @@ const transliterate = (value: string) => value.toLowerCase().replace(/[а-яё]/
 async function loadAuthorizedReport(reportId: string, userId: string) {
   const db = createAdminClient();
   const { data: report } = await db.from("ai_reports").select("id,diagnostic_id,version,status,structured_content").eq("id", reportId).maybeSingle();
-  if (!report || report.status !== "completed") throw new Error("pdf_report_not_ready");
-  const { data: diagnostic } = await db.from("diagnostics").select("id,company_id,version_id,status,completed_at,created_by_user_id").eq("id", report.diagnostic_id).eq("created_by_user_id", userId).maybeSingle();
-  if (!diagnostic || diagnostic.status !== "completed") throw new Error("pdf_access_denied");
+  if (!report) throw new Error("pdf_access_denied");
+  let diagnostic;
+  try { diagnostic = await requireDiagnosticRead(report.diagnostic_id, userId); }
+  catch (error) {
+    if (error instanceof AccountAccessError) throw new Error("pdf_access_denied");
+    throw error;
+  }
+  if (diagnostic.status !== "completed") throw new Error("pdf_access_denied");
+  if (report.status !== "completed") throw new Error("pdf_report_not_ready");
   return { db, report, diagnostic };
 }
 
@@ -69,6 +76,9 @@ async function preparePdfForReportUnlocked(reportId: string, userId: string): Pr
 
 /** Serialize duplicate preparation requests in this runtime; artifact uniqueness remains the DB boundary. */
 export async function preparePdfForReport(reportId: string, userId: string): Promise<{ status: "ready"; fileName: string }> {
+  // Every request must reauthorize before joining an operation started by a
+  // previous request; membership or the cookie session may have changed.
+  await loadAuthorizedReport(reportId, userId);
   const key = `${userId}:${reportId}:${templateVersion}`;
   const existing = preparationLocks.get(key);
   if (existing) return existing;

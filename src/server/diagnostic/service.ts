@@ -1,10 +1,12 @@
 import "server-only";
 import { createAuthClient } from "@/server/supabase/server";
+import { AccountAccessError, requireCompanyRead, requireCompanyWrite, requireDiagnosticRead, requireDiagnosticWrite } from "@/server/account/authorization";
+import { getOwnCompany } from "@/server/company/queries";
 
 export type DiagnosticAnswerInput = { question_id: string; value: number | string | null };
 export type SaveDiagnosticResult = { revision: number; current_block_id: string };
 export type DiagnosticPageData = Awaited<ReturnType<typeof getDiagnostic>>;
-export class DiagnosticError extends Error { constructor(public readonly code: "not_found" | "company_missing" | "conflict" | "invalid", message: string) { super(message); } }
+export class DiagnosticError extends Error { constructor(public readonly code: "not_found" | "company_missing" | "selection_required" | "conflict" | "invalid", message: string) { super(message); } }
 
 const MANAGEABILITY_DEFINITION_KEY = "manageability";
 
@@ -25,10 +27,19 @@ export function selectCurrentPublishedVersion(
     .sort((left, right) => right.version_number - left.version_number)[0] ?? null;
 }
 
-export async function createDiagnostic(userId: string) {
+export async function createDiagnostic(userId: string, companyId?: string) {
+  let company;
+  try {
+    company = companyId ? await requireCompanyWrite(companyId, userId) : await getOwnCompany(userId);
+  } catch (error) {
+    if (error instanceof AccountAccessError) throw new DiagnosticError(error.code, error.message);
+    throw error;
+  }
   const client = await createAuthClient();
-  const { data: company } = await client.from("company_profiles").select("id").eq("owner_user_id", userId).maybeSingle();
   if (!company) throw new DiagnosticError("company_missing", "Company profile is required");
+  const { data: existing, error: existingError } = await client.from("diagnostics").select("id").eq("company_id", company.id).eq("status", "in_progress").maybeSingle();
+  if (existingError) throw new DiagnosticError("invalid", "Diagnostic could not be loaded");
+  if (existing) return { id: existing.id, existing: true };
   const { data: definition, error: definitionError } = await client.from("diagnostic_definitions").select("id").eq("key", MANAGEABILITY_DEFINITION_KEY).maybeSingle();
   if (definitionError || !definition) throw new DiagnosticError("not_found", "No published methodology");
   const { data: versions, error: versionError } = await client.from("diagnostic_versions").select("id,definition_id,version_number,status").eq("definition_id", definition.id).eq("status", "published");
@@ -36,11 +47,9 @@ export async function createDiagnostic(userId: string) {
   if (versionError || !version) throw new DiagnosticError("not_found", "No published methodology");
   const { data: firstBlock } = await client.from("diagnostic_blocks").select("id").eq("version_id", version.id).eq("is_active", true).order("position").limit(1).maybeSingle();
   if (!firstBlock) throw new DiagnosticError("not_found", "Methodology has no blocks");
-  const { data: existing } = await client.from("diagnostics").select("id").eq("company_id", company.id).eq("created_by_user_id", userId).eq("status", "in_progress").maybeSingle();
-  if (existing) return { id: existing.id, existing: true };
   const { data, error } = await client.from("diagnostics").insert({ company_id: company.id, created_by_user_id: userId, version_id: version.id, locale: "ru", current_block_id: firstBlock.id }).select("id").single();
   if (error?.code === "23505") {
-    const { data: retry } = await client.from("diagnostics").select("id").eq("company_id", company.id).eq("created_by_user_id", userId).eq("status", "in_progress").single();
+    const { data: retry } = await client.from("diagnostics").select("id").eq("company_id", company.id).eq("status", "in_progress").single();
     if (retry) return { id: retry.id, existing: true };
   }
   if (error || !data) throw new DiagnosticError("invalid", "Diagnostic could not be created");
@@ -48,14 +57,18 @@ export async function createDiagnostic(userId: string) {
 }
 
 export async function getActiveDiagnostic(userId: string, companyId: string) {
+  await requireCompanyRead(companyId, userId);
   const client = await createAuthClient();
-  const { data } = await client.from("diagnostics").select("id,current_block_id,revision,last_saved_at,status").eq("company_id", companyId).eq("created_by_user_id", userId).eq("status", "in_progress").maybeSingle();
+  const { data, error } = await client.from("diagnostics").select("id,current_block_id,revision,last_saved_at,status").eq("company_id", companyId).eq("status", "in_progress").maybeSingle();
+  if (error) throw new DiagnosticError("invalid", "Diagnostic could not be loaded");
   return data;
 }
 
 export async function getLatestDiagnostics(userId: string, companyId: string) {
+  await requireCompanyRead(companyId, userId);
   const client = await createAuthClient();
-  const { data } = await client.from("diagnostics").select("id,status,revision,last_saved_at,submitted_at,completed_at").eq("company_id", companyId).eq("created_by_user_id", userId).order("started_at", { ascending: false }).limit(10);
+  const { data, error } = await client.from("diagnostics").select("id,status,revision,last_saved_at,submitted_at,completed_at").eq("company_id", companyId).order("started_at", { ascending: false }).limit(10);
+  if (error) throw new DiagnosticError("invalid", "Diagnostics could not be loaded");
   const rows = data ?? [];
   const completedIds = rows.filter((row) => row.status === "completed").map((row) => row.id);
   if (!completedIds.length) return rows.map((diagnostic) => ({ diagnostic, result: null }));
@@ -67,9 +80,13 @@ export async function getLatestDiagnostics(userId: string, companyId: string) {
 }
 
 export async function getDiagnostic(diagnosticId: string, userId: string) {
+  let diagnostic;
+  try { diagnostic = await requireDiagnosticRead(diagnosticId, userId); }
+  catch (error) {
+    if (error instanceof AccountAccessError) throw new DiagnosticError("not_found", "Diagnostic not found");
+    throw error;
+  }
   const client = await createAuthClient();
-  const { data: diagnostic, error } = await client.from("diagnostics").select("*").eq("id", diagnosticId).eq("created_by_user_id", userId).maybeSingle();
-  if (error || !diagnostic) throw new DiagnosticError("not_found", "Diagnostic not found");
   const [{ data: company }, { data: blocks }, { data: blockTranslations }, { data: questions }, { data: questionTranslations }, { data: options }, { data: optionTranslations }, { data: answers }] = await Promise.all([
     client.from("company_profiles").select("id,name").eq("id", diagnostic.company_id).maybeSingle(),
     client.from("diagnostic_blocks").select("id,key,position,weight,is_active").eq("version_id", diagnostic.version_id).eq("is_active", true).order("position"),
@@ -100,6 +117,11 @@ export async function getDiagnostic(diagnosticId: string, userId: string) {
 }
 
 export async function saveDiagnosticAnswers(diagnosticId: string, userId: string, expectedRevision: number, mutationId: string, currentBlockId: string, inputs: DiagnosticAnswerInput[], answersDirty = true): Promise<SaveDiagnosticResult> {
+  try { await requireDiagnosticWrite(diagnosticId, userId); }
+  catch (error) {
+    if (error instanceof AccountAccessError) throw new DiagnosticError("not_found", "Diagnostic is not editable");
+    throw error;
+  }
   const client = await createAuthClient();
   const { data, error } = await client.rpc("save_diagnostic_block", {
     p_diagnostic_id: diagnosticId,
