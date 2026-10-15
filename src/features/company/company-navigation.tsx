@@ -1,3 +1,4 @@
+import { teamFoundationEnabled } from "@/server/team/capabilities";
 import Link from "next/link";
 import { requireCompanyRead } from "@/server/account/authorization";
 import { listAccessibleCompanies } from "@/server/company/queries";
@@ -15,5 +16,6 @@ export async function CompanyNavigation({ companyId, userId }: { companyId: stri
     </details> : <span className="font-semibold">{company.name}</span>}
     <Link href={`/ru/companies/${company.id}/profile`} className="underline">Профиль</Link>
     <Link href={`/ru/companies/${company.id}/diagnostics`} className="underline">Диагностики и история</Link>
+    {teamFoundationEnabled() && <Link href={`/ru/companies/${company.id}/teams`} className="underline">Командная диагностика</Link>}
   </nav>;
 }
