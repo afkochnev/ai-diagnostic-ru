@@ -12,5 +12,5 @@ export default async function JoinPage() {
   if (!teamFoundationEnabled()) notFound();
   const identity=await getIdentity();
   const hasPending=Boolean(openInvitation((await cookies()).get("team-invitation")?.value,authConfig().AUTH_FLOW_SECRET));
-  return <main id="main-content" className="py-12"><Container><Card><h1 className="mb-5 text-3xl font-semibold">Приглашение в командную диагностику</h1><TeamJoin signedIn={Boolean(identity?.user.email_confirmed_at)} hasPending={hasPending} /></Card></Container></main>;
+  return <main id="main-content" className="py-12"><Container><Card><h1 className="mb-5 text-3xl font-semibold">Приглашение в командную диагностику</h1><TeamJoin currentEmail={identity?.user.email ?? null} emailConfirmed={Boolean(identity?.user.email_confirmed_at)} hasPending={hasPending} /></Card></Container></main>;
 }

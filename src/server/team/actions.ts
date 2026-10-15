@@ -4,6 +4,8 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireIdentity } from "@/server/auth/session";
+import { clearRecovery } from "@/server/auth/recovery";
+import { createAuthClient } from "@/server/supabase/server";
 import { authConfig } from "@/server/supabase/config";
 import { requireCompanyWrite } from "@/server/account/authorization";
 import { getConsultationProvider as getTransactionalProvider } from "@/server/consultation/provider";
@@ -26,6 +28,9 @@ function failure(error: unknown): TeamActionState {
     team_response_completed: "Ответы уже отправлены.",
     team_required_answers_missing: "Ответьте на все обязательные вопросы перед отправкой.",
     team_participant_limit: "В этой диагностике уже 100 приглашённых участников.",
+    team_invitation_unavailable: "Не удалось принять приглашение. Проверьте email текущего аккаунта: он должен совпадать с адресом, на который вас пригласили. Ссылка также может быть заменена, просрочена или недоступна после завершения сбора ответов.",
+    team_closed: "Сбор ответов завершён. Новые приглашения и отправка ответов недоступны.",
+    team_switch_account_failed: "Не удалось выйти из текущего аккаунта. Попробуйте ещё раз.",
     rate_limited: "Слишком много запросов. Попробуйте позже.",
   };
   return { error: messages[code] ?? "Не удалось выполнить действие. Проверьте данные и доступ к приглашению." };
@@ -107,6 +112,18 @@ export async function acceptTeamInvitationAction(): Promise<TeamActionState> {
     (await cookies()).set(cookieName, "", { httpOnly: true, sameSite: "lax", secure: authConfig().secure, path: "/ru", maxAge: 0 });
   } catch (error) { return failure(error); }
   redirect(`/ru/team/responses/${id}`);
+}
+export async function switchTeamInvitationAccountAction(): Promise<TeamActionState> {
+  try {
+    await origin();
+    const client = await createAuthClient();
+    const { error } = await client.auth.signOut({ scope: "local" });
+    if (error) throw new Error("team_switch_account_failed");
+    await clearRecovery();
+    // Preserve the encrypted pending invitation while replacing only this login.
+  } catch (error) { return failure(error); }
+  revalidatePath("/", "layout");
+  redirect("/ru/login?next=team-invitation");
 }
 export async function saveTeamResponseAction(previous: TeamActionState, form: FormData): Promise<TeamActionState> {
   try {
