@@ -118,3 +118,18 @@ export async function saveTeamResponseAction(previous: TeamActionState, form: Fo
     return await teamRpc<{ revision: number; status: string }>("save_team_response", { p_participant_id: input.participantId, p_expected_revision: input.revision, p_answers: input.answers, p_submit: input.submit });
   } catch (error) { return { revision: previous.revision, status: previous.status, ...failure(error) }; }
 }
+
+export async function teamResultAction(_: TeamActionState, form: FormData): Promise<TeamActionState> {
+  try {
+    await origin(); const identity = await requireIdentity();
+    const teamId = z.uuid().parse(value(form,"teamId"));
+    const record = await ownerTeam(teamId);
+    if (!record) throw new Error("team_not_found");
+    await requireCompanyWrite(record.team.company_id, identity.user.id);
+    await enforceRateLimit(`team-results:${identity.user.id}`,60,3600);
+    const intent = z.enum(["refresh","report","close"]).parse(value(form,"intent"));
+    await teamRpc(intent === "report" ? "request_team_report" : intent === "close" ? "close_team_diagnostic" : "refresh_team_results", { p_team_id: teamId });
+    revalidatePath(`/ru/companies/${record.team.company_id}/teams/${teamId}`);
+    return { status: intent === "close" ? "closed" : "requested" };
+  } catch (error) { return failure(error); }
+}

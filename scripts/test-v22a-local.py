@@ -31,7 +31,7 @@ try:
     for path in migrations:
         if path.name == '20261013000100_account_foundation.sql':
             sql((ROOT/'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
-        if 'team_diagnostic_foundation' in path.name: continue
+        if 'team_diagnostic_foundation' in path.name or 'team_aggregation_report' in path.name: continue
         sql(path.read_text())
     owner='10000000-0000-4000-8000-000000000001'
     diagnostic='30000000-0000-4000-8000-000000000001'
