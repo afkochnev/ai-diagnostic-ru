@@ -7,8 +7,8 @@ import { requireIdentity } from "@/server/auth/session";
 import { companyProfileSchema, type CompanyProfileState } from "@/validation/company";
 import { getMessages } from "@/i18n/messages";
 import { AccountAccessError, requireAccountWrite, requireCompanyWrite } from "@/server/account/authorization";
-import { getOnlyAccessibleAccount } from "@/server/account/queries";
 import { getOwnCompany } from "./queries";
+import { companyCreationContext } from "./creation";
 
 const copy = getMessages("ru").company;
 const value = (form: FormData, name: string) => String(form.get(name) ?? "");
@@ -35,6 +35,14 @@ function destination(form: FormData, companyId: string) {
 }
 
 export async function saveCompanyProfileAction(_: CompanyProfileState, form: FormData): Promise<CompanyProfileState> {
+  return saveProfile(form);
+}
+
+export async function createCompanyProfileAction(sourceCompanyId: string | null, _: CompanyProfileState, form: FormData): Promise<CompanyProfileState> {
+  return saveProfile(form, sourceCompanyId);
+}
+
+async function saveProfile(form: FormData, creationSource?: string | null): Promise<CompanyProfileState> {
   const identity = await requireIdentity();
   const parsed = parsedInput(form);
   const values = submittedValues(form);
@@ -44,13 +52,15 @@ export async function saveCompanyProfileAction(_: CompanyProfileState, form: For
   try {
     const companyId = value(form, "company_id");
     const requestedAccountId = value(form, "account_id");
-    existing = companyId ? await requireCompanyWrite(companyId, identity.user.id) : requestedAccountId ? null : await getOwnCompany(identity.user.id);
+    if (creationSource !== undefined && companyId) throw new AccountAccessError("not_found");
+    existing = creationSource !== undefined ? null : companyId ? await requireCompanyWrite(companyId, identity.user.id) : await getOwnCompany(identity.user.id);
     if (existing) {
       accountId = existing.account_id;
       if (requestedAccountId && requestedAccountId !== accountId) throw new AccountAccessError("not_found");
       await requireAccountWrite(accountId, identity.user.id);
     } else {
-      const account = requestedAccountId ? await requireAccountWrite(requestedAccountId, identity.user.id) : await getOnlyAccessibleAccount(identity.user.id);
+      const { account } = await companyCreationContext(identity.user.id, creationSource ?? undefined);
+      if (requestedAccountId && requestedAccountId !== account.id) throw new AccountAccessError("not_found");
       accountId = account.id;
     }
   } catch (error) {
@@ -77,5 +87,5 @@ export async function saveCompanyProfileAction(_: CompanyProfileState, form: For
   revalidatePath("/ru/companies");
   revalidatePath(`/ru/companies/${result.data.id}`);
   revalidatePath(`/ru/companies/${result.data.id}/profile`);
-  redirect(destination(form, result.data.id));
+  redirect(creationSource !== undefined ? `/ru/companies/${result.data.id}/profile` : destination(form, result.data.id));
 }

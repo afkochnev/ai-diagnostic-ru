@@ -78,11 +78,12 @@ import { AccountAccessError, requireAccountRead, requireCompanyRead, requireDiag
 import { listAccessibleAccounts } from "@/server/account/queries";
 import { getCompanyForAccount, getOwnCompany, listAccessibleCompanies } from "@/server/company/queries";
 import { createDiagnostic, getActiveDiagnostic, getLatestDiagnostics } from "@/server/diagnostic/service";
+import { getFeedbackStatus } from "@/server/feedback/service";
 import { getDiagnosticResult } from "@/server/diagnostic/result";
 import { getPdfForReport, preparePdfForReport } from "@/server/pdf/service";
 import { sendReportEmail } from "@/server/email/service";
 import { requestAIReportRegeneration } from "@/server/ai/regeneration";
-import { saveCompanyProfileAction } from "@/server/company/actions";
+import { createCompanyProfileAction, saveCompanyProfileAction } from "@/server/company/actions";
 import { getAdminCompanies, getAdminCompanyDetail, getAdminUsers, getAdminUserDetail } from "@/server/admin/companies-users";
 
 const USER = "10000000-0000-4000-8000-000000000001";
@@ -95,6 +96,8 @@ const DIAGNOSTIC = "80000000-0000-4000-8000-000000000008";
 const REPORT = "90000000-0000-4000-8000-000000000009";
 
 beforeEach(() => {
+  vi.stubEnv("APP_URL", "https://ai-diagnostic-staging-web.onrender.com");
+  vi.stubEnv("SUPABASE_URL", "https://vflgxgdwlftlyjslyrmo.supabase.co");
   state.actor = { id: USER, email_confirmed_at: "2026-10-12T00:00:00Z" };
   state.queries = [];
   state.writes = [];
@@ -129,7 +132,7 @@ function companyForm(extra: Record<string, string>) {
 describe("company profile mutations", () => {
   it("creates another company in the explicit account and retains existing company IDs", async () => {
     const form = companyForm({ account_id: ACCOUNT, return_to: "https://untrusted.example" });
-    await expect(saveCompanyProfileAction({}, form)).rejects.toThrow("redirect:/ru/companies/60000000-0000-4000-8000-000000000006");
+    await expect(createCompanyProfileAction(COMPANY, {}, form)).rejects.toThrow("redirect:/ru/companies/60000000-0000-4000-8000-000000000006/profile");
     expect(state.tables.company_profiles[0].id).toBe(COMPANY);
     expect(state.writes).toHaveLength(1);
     expect(state.writes[0]).toMatchObject({ table: "company_profiles", values: { account_id: ACCOUNT, owner_user_id: USER, revision: 1 } });
@@ -333,5 +336,110 @@ describe("service-role report boundaries", () => {
     completeRender(Buffer.from("prepared-pdf"));
     await expect(originalRequest).resolves.toMatchObject({ status: "ready" });
     expect(state.writes.filter((write) => write.table === "report_artifacts")).toHaveLength(1);
+  });
+});
+
+
+describe("V21B authoritative multi-company creation", () => {
+  it("derives the sole account for a first company without inserting an account or membership", async () => {
+    state.tables.company_profiles = [];
+    const before = JSON.stringify([state.tables.accounts, state.tables.account_memberships]);
+    await expect(createCompanyProfileAction(null, {}, companyForm({}))).rejects.toThrow("/profile");
+    expect(state.writes.map((write) => write.table)).toEqual(["company_profiles"]);
+    expect(state.writes[0].values).toMatchObject({ account_id: ACCOUNT, owner_user_id: USER });
+    expect(JSON.stringify([state.tables.accounts, state.tables.account_memberships])).toBe(before);
+  });
+
+  it("cannot attach a new company to a client-chosen foreign account", async () => {
+    expect(await createCompanyProfileAction(COMPANY, {}, companyForm({ account_id: OTHER_ACCOUNT }))).toHaveProperty("error");
+    expect(state.writes).toEqual([]);
+  });
+
+  it("rejects a foreign source company before any insertion", async () => {
+    expect(await createCompanyProfileAction(OTHER_COMPANY, {}, companyForm({}))).toHaveProperty("error");
+    expect(state.writes).toEqual([]);
+  });
+
+  it("rejects an alternate owned account_id instead of overriding current company context", async () => {
+    state.tables.account_memberships.push({ account_id: OTHER_ACCOUNT, user_id: USER, role: "owner", status: "active" });
+    expect(await createCompanyProfileAction(COMPANY, {}, companyForm({ account_id: OTHER_ACCOUNT }))).toHaveProperty("error");
+    expect(state.writes).toEqual([]);
+  });
+
+  it("requires selection when creation has no company context and multiple accounts", async () => {
+    state.tables.account_memberships.push({ account_id: OTHER_ACCOUNT, user_id: USER, role: "owner", status: "active" });
+    await expect(createCompanyProfileAction(null, {}, companyForm({ account_id: ACCOUNT }))).rejects.toThrow("redirect:/ru/companies");
+    expect(state.writes).toEqual([]);
+  });
+
+  it("limits additional creation to the staging preview while allowing first-company onboarding", async () => {
+    vi.stubEnv("APP_URL", "https://audit.iteam.ru");
+    expect(await createCompanyProfileAction(COMPANY, {}, companyForm({}))).toHaveProperty("error");
+    expect(state.writes).toEqual([]);
+    state.tables.company_profiles = [];
+    await expect(createCompanyProfileAction(null, {}, companyForm({}))).rejects.toThrow("/profile");
+  });
+
+  it("does not use the global administrator role as a company membership substitute", async () => {
+    state.tables.user_roles = [{ user_id: USER, role: "administrator" }];
+    state.tables.account_memberships = [];
+    await expect(requireCompanyRead(COMPANY, USER)).rejects.toMatchObject({ code: "not_found" });
+    expect(await createCompanyProfileAction(COMPANY, {}, companyForm({}))).toHaveProperty("error");
+    expect(state.writes).toEqual([]);
+  });
+
+  it("rejects unconfirmed owners even when a caller reaches the mutation service", async () => {
+    state.actor!.email_confirmed_at = null;
+    expect(await createCompanyProfileAction(COMPANY, {}, companyForm({}))).toHaveProperty("error");
+    expect(state.writes).toEqual([]);
+  });
+
+  it("keeps two same-account diagnostic histories independent", async () => {
+    const second = "a0000000-0000-4000-8000-000000000001";
+    state.tables.company_profiles.push({ id: second, account_id: ACCOUNT });
+    state.tables.diagnostics.push({ id: "second-diagnostic", company_id: second, status: "in_progress" });
+    expect((await getLatestDiagnostics(USER, COMPANY)).map((row) => row.diagnostic.id)).toEqual([DIAGNOSTIC]);
+    expect((await getLatestDiagnostics(USER, second)).map((row) => row.diagnostic.id)).toEqual(["second-diagnostic"]);
+    expect(await createDiagnostic(USER, second)).toEqual({ id: "second-diagnostic", existing: true });
+    expect((await getActiveDiagnostic(USER, COMPANY))?.id).toBe(DIAGNOSTIC);
+  });
+
+  it("loads a diagnostic's own report when a sibling company has a newer report", async () => {
+    state.tables.diagnostics[0].status = "completed";
+    state.tables.ai_reports.push({ id: "sibling-report", diagnostic_id: "sibling-diagnostic", status: "completed", version: 99 });
+    expect((await getDiagnosticResult(DIAGNOSTIC, USER))?.aiReport?.id).toBe(REPORT);
+  });
+
+  it("returns only the requested report's stored PDF within a multi-company account", async () => {
+    state.tables.diagnostics[0].status = "completed";
+    state.tables.diagnostics[0].completed_at = "2026-10-12T00:00:00Z";
+    state.tables.diagnostic_company_snapshots = [{ diagnostic_id: DIAGNOSTIC, profile_data: { name: "Company" } }];
+    state.tables.report_artifacts = [
+      { report_id: "sibling-report", ai_report_version: 1, format: "pdf", template_version: "stage12-1i", status: "ready", content_base64: Buffer.from("sibling-pdf").toString("base64") },
+      { report_id: REPORT, ai_report_version: 1, format: "pdf", template_version: "stage12-1i", status: "ready", content_base64: Buffer.from("own-pdf").toString("base64") },
+    ];
+    expect((await getPdfForReport(REPORT, USER)).bytes.toString()).toBe("own-pdf");
+    expect(renderPdf).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("V21B company resource boundaries", () => {
+  it("does not read results or PDFs belonging to another account", async () => {
+    state.tables.diagnostics[0].company_id = OTHER_COMPANY;
+    state.tables.diagnostics[0].status = "completed";
+    expect(await getDiagnosticResult(DIAGNOSTIC, USER)).toBeNull();
+    await expect(getPdfForReport(REPORT, USER)).rejects.toThrow("pdf_access_denied");
+    expect(state.writes).toEqual([]);
+  });
+
+  it("keeps feedback state scoped to the requested diagnostic within an account", async () => {
+    const second = "a0000000-0000-4000-8000-000000000001";
+    const secondDiagnostic = "b0000000-0000-4000-8000-000000000001";
+    state.tables.company_profiles.push({ id: second, account_id: ACCOUNT });
+    state.tables.diagnostics.push({ id: secondDiagnostic, company_id: second, status: "completed" });
+    state.tables.feedback = [{ id: "feedback-b", diagnostic_id: secondDiagnostic, user_id: USER }];
+    expect(await getFeedbackStatus(DIAGNOSTIC)).toBe(false);
+    expect(await getFeedbackStatus(secondDiagnostic)).toBe(true);
   });
 });

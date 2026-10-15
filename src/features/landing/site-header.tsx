@@ -14,6 +14,7 @@ export function SiteHeader({ locale, messages, signedIn }: { locale: Locale; mes
           <span>{messages.site.name}</span>
         </Link>
         <nav aria-label={messages.site.navigation} className="flex shrink-0 flex-wrap items-center justify-end gap-3 text-sm sm:gap-6">
+          {signedIn && <Link className="flex min-h-11 items-center underline" href="/ru/companies">Компании</Link>}
           {signedIn ? <form action={logoutAction}><button className="min-h-11 cursor-pointer underline">{messages.auth.logout}</button></form> : <Link className="flex min-h-11 items-center underline" href="/ru/login">{messages.auth.loginLink}</Link>}
         </nav>
       </Container>

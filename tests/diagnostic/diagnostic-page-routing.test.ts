@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   notFound: vi.fn((): never => { throw new Error("not_found"); }),
 }));
 
+vi.mock("@/features/company/company-navigation", () => ({ CompanyNavigation: () => null }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
 vi.mock("@/server/auth/session", () => ({ requireIdentity: mocks.identity }));
 vi.mock("@/server/diagnostic/service", () => ({

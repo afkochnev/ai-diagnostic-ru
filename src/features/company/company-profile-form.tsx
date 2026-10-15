@@ -35,7 +35,7 @@ export function CompanyProfileForm({ action, company, industries, revenues, acco
     <label className="block text-sm font-medium">Годовой оборот<select className={input} name="annual_revenue_key" value={value("annual_revenue_key")} onChange={(event) => update("annual_revenue_key", event.target.value)} required><option value="">Выберите диапазон</option>{revenues.map((item) => <option key={String("revenue_key" in item ? item.revenue_key : "")} value={String("revenue_key" in item ? item.revenue_key : "")}>{item.name}</option>)}</select>{error("annual_revenue_key") && <Error text={error("annual_revenue_key")!} />}</label>
     {fields.slice(6).map(([name, label, type]) => <Field key={name} name={name} label={label} type={type} value={value(name)} onChange={update} error={error(name)} />)}
     {state.error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{state.error}</p>}
-    <button disabled={pending} className="min-h-12 w-full rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-60">{pending ? "Сохранение…" : "Сохранить и перейти в кабинет"}</button>
+    <button disabled={pending} className="min-h-12 w-full rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-60">{pending ? "Сохранение…" : company ? "Сохранить и перейти в кабинет" : "Создать компанию"}</button>
   </form>;
 }
 function Error({ text }: { text: string }) { return <span className="mt-1 block text-sm text-red-700" role="alert">{text}</span>; }

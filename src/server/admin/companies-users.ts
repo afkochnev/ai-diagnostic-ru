@@ -48,19 +48,21 @@ export async function getAdminCompanyDetail(companyId: string) {
   const { data: company } = await db.from("company_profiles").select("id,name,country,industry_key,employee_count,company_age_years,annual_revenue_key,management_levels,products,customer_segments,sales_channels,main_goals,key_problems,created_at,owner_user_id,account_id").eq("id", companyId).maybeSingle();
   if (!company) return null;
   const memberships = await loadActiveMemberships(db, undefined, [company.account_id]);
-  const [{ data: users }, { data: diagnostics }, { data: industry }, { data: revenue }, authUsers] = await Promise.all([
+  const [{ data: users }, { data: diagnostics }, { data: industry }, { data: revenue }, authUsers, { data: account }, { data: accountCompanies }] = await Promise.all([
     memberships.length ? db.from("users").select("id,full_name,phone,created_at").in("id", memberships.map((row) => row.user_id)).order("full_name") : Promise.resolve({ data: [] }),
     db.from("diagnostics").select("id,created_by_user_id,status,started_at,completed_at").eq("company_id", companyId).order("started_at", { ascending: false }),
     db.from("industry_translations").select("name").eq("industry_key", company.industry_key).eq("locale", "ru").maybeSingle(),
     db.from("revenue_range_translations").select("name").eq("revenue_key", company.annual_revenue_key).eq("locale", "ru").maybeSingle(),
     loadAuthUsers(),
+    db.from("accounts").select("id,name,status").eq("id", company.account_id).maybeSingle(),
+    db.from("company_profiles").select("id,name,account_id").eq("account_id", company.account_id).order("name"),
   ]);
   const diagnosticIds = (diagnostics ?? []).map((row) => row.id);
   const { data: results } = diagnosticIds.length ? await db.from("diagnostic_results").select("diagnostic_id,display_manageability_index,maturity_level_id").in("diagnostic_id", diagnosticIds) : { data: [] };
   const maturityIds = (results ?? []).map((row) => row.maturity_level_id).filter(Boolean);
   const { data: levels } = maturityIds.length ? await db.from("maturity_level_translations").select("maturity_level_id,label").in("maturity_level_id", maturityIds).eq("locale", "ru") : { data: [] };
   const resultMap = new Map((results ?? []).map((row) => [row.diagnostic_id, row])); const levelMap = new Map((levels ?? []).map((row) => [row.maturity_level_id, row.label])); const emailMap = new Map(authUsers.map((user) => [user.id, user.email]));
-  return { company: { ...company, industryLabel: industry?.name ?? "Не указано", revenueLabel: revenue?.name ?? "Не указано" }, users: (users ?? []).map((user) => ({ ...user, email: emailMap.get(user.id) ?? null })), diagnostics: (diagnostics ?? []).map((diagnostic) => ({ ...diagnostic, result: resultMap.get(diagnostic.id) ? { ...resultMap.get(diagnostic.id), maturityLabel: levelMap.get(resultMap.get(diagnostic.id)!.maturity_level_id) ?? null } : null })) };
+  return { account, accountCompanies: accountCompanies ?? [], memberships, company: { ...company, industryLabel: industry?.name ?? "Не указано", revenueLabel: revenue?.name ?? "Не указано" }, users: (users ?? []).map((user) => ({ ...user, email: emailMap.get(user.id) ?? null })), diagnostics: (diagnostics ?? []).map((diagnostic) => ({ ...diagnostic, result: resultMap.get(diagnostic.id) ? { ...resultMap.get(diagnostic.id), maturityLabel: levelMap.get(resultMap.get(diagnostic.id)!.maturity_level_id) ?? null } : null })) };
 }
 
 export async function getAdminUsers(filters: Filters = {}) {
