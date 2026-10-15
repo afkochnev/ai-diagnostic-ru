@@ -49,12 +49,13 @@
     "/ru/team/responses/:participantId"
   ],
   "deployment": {
-    "new_migration": "20261015122324_team_diagnostic_foundation.sql",
+    "new_migration": "20261015135524_team_diagnostic_foundation.sql",
     "phase_b_file": "20261013000200_account_authorization_cutover.sql is an exact copy of the already applied staging migration; included to reproduce baseline locally, not a new rollout step",
     "remote_migrations_applied": false,
     "runtime_guard": "exact staging APP_URL plus staging Supabase URL; production disabled",
     "runtime_env_changes_required_for_foundation": [],
-    "consultation_real_email_gate": "open; worker lacks RESEND_API_KEY and EMAIL_FROM; no test lead or email created"
+    "consultation_real_email_gate": "open; worker lacks RESEND_API_KEY and EMAIL_FROM; no test lead or email created",
+    "migration_identity_note": "Same reviewed SQL bytes as draft 20261015122324; filename aligned to actual timestamp assigned by Supabase migration API."
   },
   "verification": {
     "unit_passed": 355,
