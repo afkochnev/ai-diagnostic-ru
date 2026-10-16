@@ -1,38 +1,42 @@
 "use client";
-import { useActionState, useEffect, useState } from "react";
+import {useActionState,useEffect,useState} from "react";
 import Link from "next/link";
-import { sendTeamCodeAction, verifyTeamCodeAction } from "@/server/team/passwordless-actions";
-import { getMessages } from "@/i18n/messages";
-export type TeamEntryPolicy = { versions: Record<string,string>; temporary: boolean; dataUrl: string; marketingUrl: string };
-export function TeamPasswordless({policy,pendingCode}:{policy:TeamEntryPolicy;pendingCode:boolean}) {
+import {sendTeamCodeAction,verifyTeamCodeAction} from "@/server/team/passwordless-actions";
+import {switchTeamInvitationAccountAction} from "@/server/team/actions";
+import type {TeamEntryView} from "@/server/team/entry-context";
+import {getMessages} from "@/i18n/messages";
+export type TeamEntryPolicy={versions:Record<string,string>;temporary:boolean;dataUrl:string;marketingUrl:string};
+const button="min-h-12 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-60";
+export function TeamPasswordless({policy,view}:{policy:TeamEntryPolicy;view:TeamEntryView}){
   const [sent,send,sending]=useActionState(sendTeamCodeAction,{});
   const [verified,verify,verifying]=useActionState(verifyTeamCodeAction,{});
-  const [cooldown,setCooldown]=useState(0);
+  const [switched,switchAccount,switching]=useActionState(switchTeamInvitationAccountAction,{});
+  const [now,setNow]=useState(0),[consented,setConsented]=useState(false);
+  useEffect(()=>{const tick=()=>setNow(Date.now());const timer=window.setInterval(tick,1000);return()=>window.clearInterval(timer);},[]);
+  const contextExpires=sent.contextExpires??view.expires;
+  const expired=view.phase==="expired" || sent.phase==="expired" || verified.phase==="expired" || Boolean(now && contextExpires && now>=contextExpires);
+  if(expired)return <p role="alert">Срок текущей сессии приглашения истёк. Откройте письмо-приглашение снова.</p>;
+  const wrong=view.wrongAccount || sent.phase==="wrong" || verified.phase==="wrong";
+  if(wrong)return <div className="space-y-4"><p>Это приглашение предназначено для другого адреса: {view.maskedEmail}.</p><form action={switchAccount}><button className={button} disabled={switching}>Выйти и продолжить с адресом приглашения</button></form>{switched.error && <p role="alert">{switched.error}</p>}</div>;
+  const accepted=sent.phase?sent.phase==="waiting" && sent.authRequestAccepted===true:view.phase==="waiting";
+  const codeExpires=sent.expires??view.codeExpires;
+  const waiting=accepted && !(now && codeExpires && now>=codeExpires);
+  const sentAt=sent.sentAt??view.sentAt;
+  const cooldown=sentAt?Math.max(0,Math.ceil((sentAt+60000-(now||sentAt))/1000)):0;
   const text=getMessages("ru").auth;
-  useEffect(()=>{
-    if(cooldown<=0) return;
-    const timer=window.setInterval(()=>setCooldown(value=>Math.max(0,value-1)),1000);
-    return ()=>window.clearInterval(timer);
-  },[cooldown]);
-  const hasCode=Boolean(sent.sent || pendingCode);
   return <div className="space-y-5">
-    <h2 className="text-xl font-semibold">Войти без пароля</h2>
-    <p>Отправим одноразовый код на email, указанный в приглашении. Если вы впервые участвуете, учётная запись будет создана автоматически. Пароль и профиль компании не нужны.</p>
-    <form action={send} onSubmit={()=>setCooldown(60)} className="space-y-4">
+    <div className="space-y-2"><h2 className="text-xl font-semibold">{view.company}</h2><p>{view.team}</p><p>{view.inviter} приглашает вас пройти командную диагностику.</p><p>Организатор видит статус прохождения, но не ваши индивидуальные ответы.</p></div>
+    {waiting && <div className="space-y-3" role="status"><h2 className="text-xl font-semibold">Проверьте почту</h2><p>Письмо отправлено на {view.maskedEmail}. Проверьте входящие и спам.</p><p>Нажмите кнопку в письме, чтобы продолжить в этом же браузере.</p></div>}
+    {accepted && !waiting && <p role="alert">Срок проверки письма истёк. Запросите письмо ещё раз, если сессия приглашения ещё действует.</p>}
+    <form action={send} className="space-y-4">
       {Object.entries(policy.versions).map(([kind,version])=><input key={kind} type="hidden" name={`${kind}_version`} value={version}/>)}
-      <label className="flex items-start gap-3 text-sm leading-relaxed"><input type="checkbox" name="data_processing_consent" required className="mt-1 h-5 w-5 shrink-0 accent-brand"/><span>{text.dataConsent}</span></label>
+      <label className="flex items-start gap-3 text-sm leading-relaxed"><input type="checkbox" name="data_processing_consent" required checked={consented} onChange={e=>setConsented(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-brand"/><span>{text.dataConsent}</span></label>
       <Link href={policy.dataUrl} className="block text-sm underline">{text.dataLink}</Link>
       {policy.temporary && <p className="text-xs text-muted">{text.temporaryLegal}</p>}
-      <button disabled={sending || verifying || cooldown>0} className="min-h-12 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-60">{sending?"Отправляем код…":hasCode?"Отправить код ещё раз":"Получить код на email"}</button>
-      {cooldown>0 && <p role="status">Повторная отправка через {cooldown} сек.</p>}
+      <button disabled={sending||verifying||cooldown>0} className={button}>{sending?"Продолжаем…":view.matching?"Продолжить":accepted?"Отправить ещё раз":"Продолжить"}</button>
+      {cooldown>0 && <p>Повторная отправка через {cooldown} сек.</p>}
     </form>
-    {hasCode && <div className="space-y-4">
-      <p role="status">Код отправлен на email из приглашения. Введите код из последнего письма в этом окне. Проверьте также папку «Спам».</p>
-      <form action={verify} className="space-y-4">
-        <label className="block font-medium">Код из письма<input name="code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" minLength={6} maxLength={10} required className="mt-2 block min-h-12 w-full rounded-xl border border-line px-3 py-3"/></label>
-        <button disabled={sending || verifying} className="min-h-12 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-60">{verifying?"Проверяем код…":"Войти и открыть анкету"}</button>
-      </form>
-    </div>}
-    {(verified.error || sent.error) && <p role="alert">{verified.error || sent.error}</p>}
+    {waiting && <details open={Boolean(verified.error)} className="space-y-3"><summary className="cursor-pointer underline">Или введите одноразовый код</summary><form action={verify} className="space-y-4"><label className="block font-medium">Код из письма<input name="code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" minLength={6} maxLength={10} required className="mt-2 block min-h-12 w-full rounded-xl border border-line px-3 py-3"/></label><button className={button} disabled={sending||verifying}>{verifying?"Проверяем…":"Продолжить по коду"}</button></form></details>}
+    {(verified.error||sent.error) && <p role="alert">{verified.error||sent.error}</p>}
   </div>;
 }

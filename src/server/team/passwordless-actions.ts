@@ -1,93 +1,109 @@
 "use server";
-import { createHash, createHmac } from "node:crypto";
-import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/server-runtime/supabase/admin";
-import { createAuthClient } from "@/server/supabase/server";
-import { authConfig } from "@/server/supabase/config";
-import { clearRecovery } from "@/server/auth/recovery";
-import { requireIdentity } from "@/server/auth/session";
-import { buildSignupMetadata } from "@/server/auth/registration-contract";
-import { registrationPolicy } from "@/server/auth/legal";
-import { enforceRateLimit } from "@/server/rate-limit";
-import { teamFoundationEnabled } from "./capabilities";
-import { openInvitation } from "./invitation-envelope";
-import { openTeamChallenge, sealTeamChallenge } from "./passwordless-challenge";
-import { teamRpc } from "./service";
-import { z } from "zod";
-export type TeamPasswordlessState = { error?: string; sent?: boolean };
-const invitationCookie="team-invitation", challengeCookie="team-email-challenge";
-const targetSchema=z.object({ email:z.email().max(254),display_name:z.string().trim().min(1).max(100),create_user:z.boolean() }).strict();
-async function pendingInvitation() {
-  if (!teamFoundationEnabled() || (await headers()).get("origin")!==authConfig().APP_URL) throw new Error("team_auth_unavailable");
-  const jar=await cookies(), token=openInvitation(jar.get(invitationCookie)?.value,authConfig().AUTH_FLOW_SECRET);
-  if (!token) throw new Error("team_invitation_unavailable");
-  const hash=createHash("sha256").update(token).digest("hex");
-  return {jar,token,hash};
-}
-async function target(hash: string) {
-  const {data,error}=await createAdminClient().rpc("resolve_team_invitation_auth",{p_token_hash:hash});
-  if (error) throw new Error("team_invitation_unavailable");
-  return targetSchema.parse(data);
-}
-function failure(error: unknown): TeamPasswordlessState {
+import {createHmac} from "node:crypto";
+import {redirect} from "next/navigation";
+import {revalidatePath} from "next/cache";
+import {createAuthClient} from "@/server/supabase/server";
+import {authConfig} from "@/server/supabase/config";
+import {clearRecovery} from "@/server/auth/recovery";
+import {getIdentity,requireIdentity} from "@/server/auth/session";
+import {buildSignupMetadata} from "@/server/auth/registration-contract";
+import {registrationPolicy} from "@/server/auth/legal";
+import {enforceRateLimit} from "@/server/rate-limit";
+import {sealTeamChallenge} from "./passwordless-challenge";
+import {teamRpc} from "./service";
+import {clearTeamEntry,teamEntryContext} from "./entry-context";
+export type TeamPasswordlessState={phase?:"ready"|"waiting"|"expired"|"error"|"wrong";error?:string;authRequestAccepted?:boolean;sentAt?:number;expires?:number;contextExpires?:number};
+function failure(error:unknown):TeamPasswordlessState{
   const code=error instanceof Error?error.message:"";
-  if (code==="rate_limited") return {error:"Слишком много попыток. Подождите перед повторной отправкой или проверкой кода."};
-  if (code==="team_consent_required") return {error:"Подтвердите согласие на обработку данных перед получением кода."};
-  if (code==="team_policy_changed") return {error:"Условия обновились. Обновите страницу и подтвердите согласие ещё раз."};
-  if (code==="team_code_invalid") return {error:"Код неверен или срок его действия истёк. Проверьте последнее письмо или запросите новый код."};
-  if (code==="team_invitation_unavailable") return {error:"Приглашение недоступно. Снова откройте исходную ссылку. Если сбор завершён или ссылка заменена, обратитесь к владельцу компании."};
-  return {error:"Не удалось выполнить вход. Попробуйте позже; если код уже получен, попробуйте ввести его."};
+  const messages:Record<string,string>={
+    team_context_expired:"Срок текущей сессии приглашения истёк. Откройте письмо-приглашение снова.",
+    team_invitation_unavailable:"Приглашение недоступно. Ссылка могла быть заменена, отозвана или срок сбора завершён.",
+    rate_limited:"Слишком много попыток. Подождите перед повторной отправкой или проверкой.",
+    team_consent_required:"Подтвердите согласие на обработку данных.",
+    team_policy_changed:"Условия обновились. Обновите страницу и подтвердите согласие ещё раз.",
+    team_code_invalid:"Код неверен или срок его действия истёк.",
+    team_wrong_account:"Это приглашение предназначено для другого адреса.",
+  };
+  return {phase:code==="team_context_expired" || code==="team_invitation_unavailable"?"expired":code==="team_wrong_account"?"wrong":"error",authRequestAccepted:false,error:messages[code]??"Не удалось продолжить. Попробуйте позже."};
 }
-export async function sendTeamCodeAction(previous: TeamPasswordlessState,form: FormData): Promise<TeamPasswordlessState> {
-  try {
-    const {jar,hash}=await pendingInvitation();
-    if (form.get("data_processing_consent")!=="on") throw new Error("team_consent_required");
-    const policy=await registrationPolicy();
-    for(const[k,v]of Object.entries(policy.versions)) if(form.get(`${k}_version`)!==v) throw new Error("team_policy_changed");
-    const recipient=await target(hash);
-    // Recipient is resolved from the valid invitation, never from a browser-supplied email.
-    await enforceRateLimit(`team-code-cooldown:${hash}`,1,60);
-    await enforceRateLimit(`team-code-send:${hash}`,5,3600);
-    const mailbox=createHmac("sha256",authConfig().AUTH_FLOW_SECRET).update(recipient.email).digest("hex");
-    await enforceRateLimit(`team-code-mailbox:${mailbox}`,5,3600);
-    await enforceRateLimit("team-code-send:global",100,3600);
-    const client=await createAuthClient();
-    const {error}=await client.auth.signInWithOtp({email:recipient.email,options:{
-      shouldCreateUser:recipient.create_user,emailRedirectTo:`${authConfig().APP_URL}/auth/confirm`,
-      ...(recipient.create_user?{data:buildSignupMetadata({full_name:recipient.display_name,data_processing_consent:true,marketing_consent:false,versions:Object.fromEntries(Object.entries(policy.versions).map(([k,v])=>[`${k}_version`,v]))})}:{}),
-    }});
-    if(error) throw new Error(error.status===429?"rate_limited":"team_auth_unavailable");
-    jar.set(challengeCookie,sealTeamChallenge(recipient.email,hash,authConfig().AUTH_FLOW_SECRET),{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru/team",maxAge:600});
-    return {sent:true};
-  } catch(error) {return {...failure(error),sent:previous.sent};}
+async function safeFailure(error:unknown){
+  const result=failure(error);
+  if(result.phase==="expired")await clearTeamEntry();
+  return result;
 }
-export async function verifyTeamCodeAction(_: TeamPasswordlessState,form: FormData): Promise<TeamPasswordlessState> {
-  try {
-    const {jar,hash}=await pendingInvitation();
-    const challenge=openTeamChallenge(jar.get(challengeCookie)?.value,hash,authConfig().AUTH_FLOW_SECRET);
-    const code=String(form.get("code")??"").trim();
-    if(!challenge || !/^[0-9]{6,10}$/.test(code)) throw new Error("team_code_invalid");
-    const recipient=await target(hash);
-    if(recipient.email!==challenge.email) throw new Error("team_invitation_unavailable");
-    await enforceRateLimit(`team-code-verify:${hash}`,10,600);
-    const client=await createAuthClient();
-    const {data,error}=await client.auth.verifyOtp({email:challenge.email,token:code,type:"email"});
-    if(error || !data.session || !data.user?.email_confirmed_at || data.user.email?.toLowerCase()!==challenge.email) throw new Error("team_code_invalid");
-    await clearRecovery();
-    // Clear the one-time challenge before accepting; if collection closes in the meantime,
-    // the user stays signed in but receives no participant access from this proof alone.
-    jar.set(challengeCookie,"",{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru/team",maxAge:0});
-  } catch(error) {return failure(error);}
-  // Preserve the usual role/assurance gate. No team-specific bypass for administrator sessions.
-  await requireIdentity();
-  let participant: string;
-  try {
-    const {jar,token}=await pendingInvitation();
-    participant=await teamRpc<string>("accept_team_invitation",{p_token:token});
-    jar.set(invitationCookie,"",{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru",maxAge:0});
-  } catch(error) {return failure(error);}
+async function consent(form:FormData){
+  if(form.get("data_processing_consent")!=="on")throw new Error("team_consent_required");
+  const policy=await registrationPolicy();
+  for(const [kind,version] of Object.entries(policy.versions))if(form.get(`${kind}_version`)!==version)throw new Error("team_policy_changed");
+  return policy;
+}
+async function acceptVerified(){
+  const identity=await requireIdentity();
+  let participant:string;
+  try{
+    const c=await teamEntryContext(true),client=await createAuthClient();
+    const {data:{user},error}=await client.auth.getUser();
+    if(error || !user?.email_confirmed_at || user.email?.toLowerCase()!==c.target.email)throw new Error("team_wrong_account");
+    await enforceRateLimit(`team-accept:${identity.user.id}`,20,3600);
+    participant=await teamRpc<string>("accept_team_invitation",{p_token:c.token});
+    await clearTeamEntry();
+  }catch(error){return safeFailure(error);}
   revalidatePath("/","layout");
   redirect(`/ru/team/responses/${participant}`);
+}
+export async function sendTeamCodeAction(_:TeamPasswordlessState,form:FormData):Promise<TeamPasswordlessState>{
+  try{
+    const c=await teamEntryContext(true),policy=await consent(form);
+    const identity=await getIdentity();
+    if(identity?.user.email && identity.user.email.toLowerCase()!==c.target.email)throw new Error("team_wrong_account");
+    const matching=Boolean(identity?.user.email_confirmed_at && identity.user.email?.toLowerCase()===c.target.email);
+    if(!matching){
+      await enforceRateLimit(`team-code-cooldown:${c.hash}`,1,60);
+      await enforceRateLimit(`team-code-send:${c.hash}`,5,3600);
+      const mailbox=createHmac("sha256",c.secret).update(c.target.email).digest("hex");
+      await enforceRateLimit(`team-code-mailbox:${mailbox}`,5,3600);
+      await enforceRateLimit("team-code-send:global",100,3600);
+      const client=await createAuthClient();
+      const {error}=await client.auth.signInWithOtp({email:c.target.email,options:{shouldCreateUser:c.target.create_user,emailRedirectTo:`${authConfig().APP_URL}/ru/team/confirm`,...(c.target.create_user?{data:buildSignupMetadata({full_name:c.target.display_name,data_processing_consent:true,marketing_consent:false,versions:Object.fromEntries(Object.entries(policy.versions).map(([k,v])=>[`${k}_version`,v]))})}:{})}});
+      if(error)throw new Error(error.status===429?"rate_limited":"team_auth_unavailable");
+      const now=Date.now();
+      c.jar.set("team-email-challenge",sealTeamChallenge(c.target.email,c.hash,c.secret,now),{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru/team",maxAge:600});
+      console.info("[team-auth]",{event:"auth_request",authRequestAccepted:true,mailboxReceiptConfirmed:false});
+      return {phase:"waiting",authRequestAccepted:true,sentAt:now,expires:now+600000,contextExpires:c.expires};
+    }
+  }catch(error){return safeFailure(error);}
+  return acceptVerified();
+}
+export async function verifyTeamCodeAction(_:TeamPasswordlessState,form:FormData):Promise<TeamPasswordlessState>{
+  try{
+    const c=await teamEntryContext(true),code=String(form.get("code")??"").trim();
+    if(!c.challenge || !/^[0-9]{6,10}$/.test(code))throw new Error("team_code_invalid");
+    if(c.challenge.email!==c.target.email)throw new Error("team_invitation_unavailable");
+    const client=await createAuthClient();
+    // Do not prime React-cached getIdentity before establishing the new session.
+    const {data:{user:currentUser}}=await client.auth.getUser();
+    if(currentUser?.email && currentUser.email.toLowerCase()!==c.target.email)throw new Error("team_wrong_account");
+    await enforceRateLimit(`team-code-verify:${c.hash}`,10,600);
+    const {data,error}=await client.auth.verifyOtp({email:c.target.email,token:code,type:"email"});
+    if(error || !data.session || !data.user?.email_confirmed_at || data.user.email?.toLowerCase()!==c.target.email)throw new Error("team_code_invalid");
+    await clearRecovery();
+  }catch(error){return safeFailure(error);}
+  return acceptVerified();
+}
+export async function confirmTeamEmailAction(_:TeamPasswordlessState,form:FormData):Promise<TeamPasswordlessState>{
+  try{
+    const c=await teamEntryContext(true),hash=String(form.get("token_hash")??"");
+    if(!c.challenge || c.challenge.email!==c.target.email)throw new Error("team_context_expired");
+    if(!/^[A-Za-z0-9_-]{32,256}$/.test(hash) || form.get("type")!=="email")throw new Error("team_code_invalid");
+    const client=await createAuthClient();
+    // Do not prime React-cached getIdentity before establishing the new session.
+    const {data:{user:currentUser}}=await client.auth.getUser();
+    if(currentUser?.email && currentUser.email.toLowerCase()!==c.target.email)throw new Error("team_wrong_account");
+    await enforceRateLimit(`team-code-verify:${c.hash}`,10,600);
+    const {data,error}=await client.auth.verifyOtp({token_hash:hash,type:"email"});
+    if(error || !data.session || !data.user?.email_confirmed_at || data.user.email?.toLowerCase()!==c.target.email)throw new Error("team_code_invalid");
+    await clearRecovery();
+    console.info("[team-auth]",{event:"email_verification",verificationSucceeded:true});
+  }catch(error){return safeFailure(error);}
+  return acceptVerified();
 }

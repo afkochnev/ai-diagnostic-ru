@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 const state = vi.hoisted(() => ({ origin: "https://ai-diagnostic-staging-web.onrender.com", jar: new Map<string, string>(), signOut: vi.fn(), rpc: vi.fn(), redirect: vi.fn(), createClient: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ origin: state.origin }), cookies: async () => ({ get: (n: string) => state.jar.has(n) ? { value: state.jar.get(n) } : undefined, set: (n: string, v: string) => state.jar.set(n, v), delete: (n: string) => state.jar.delete(n) }) }));
-vi.mock("next/navigation", () => ({ redirect: state.redirect }));
+vi.mock("next/navigation", () => ({ redirect: state.redirect, useRouter:()=>({refresh:vi.fn()}) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/server/supabase/server", () => ({ createAuthClient: state.createClient }));
 vi.mock("@/server/supabase/config", () => ({ authConfig: () => ({ APP_URL: "https://ai-diagnostic-staging-web.onrender.com", AUTH_FLOW_SECRET: "synthetic-secret", secure: true }) }));
@@ -14,7 +14,8 @@ vi.mock("@/server/account/authorization", () => ({ requireCompanyWrite: vi.fn() 
 vi.mock("@/server/rate-limit", () => ({ enforceRateLimit: vi.fn() }));
 vi.mock("@/server/team/service", () => ({ teamRpc: state.rpc, ownerTeam: vi.fn() }));
 vi.mock("@/server/consultation/provider", () => ({ getConsultationProvider: vi.fn() }));
-import { acceptTeamInvitationAction, prepareTeamInvitationAction, switchTeamInvitationAccountAction } from "@/server/team/actions";
+import { prepareTeamInvitationAction, switchTeamInvitationAccountAction } from "@/server/team/actions";
+vi.mock("@/server/team/passwordless-actions",()=>({sendTeamCodeAction:vi.fn(),verifyTeamCodeAction:vi.fn()}));
 import { TeamJoin } from "@/features/team/join";
 const policy={versions:{data_processing:"v1",marketing:"v1"},temporary:false,dataUrl:"/ru/legal/data-processing",marketingUrl:"/ru/legal/marketing"};
 beforeEach(() => {
@@ -29,10 +30,6 @@ describe("invitation account change", () => {
     await expect(switchTeamInvitationAccountAction()).rejects.toThrow("redirect:/ru/team/join");
     expect(state.signOut).toHaveBeenCalledExactlyOnceWith({ scope: "local" });
     expect(state.jar.get("team-invitation")).toBe(pending); expect(state.jar.has("auth-recovery")).toBe(false); expect(state.rpc).not.toHaveBeenCalled();
-    state.rpc.mockResolvedValue("participant-id");
-    await expect(acceptTeamInvitationAction()).rejects.toThrow("redirect:/ru/team/responses/participant-id");
-    expect(state.rpc).toHaveBeenCalledExactlyOnceWith("accept_team_invitation", { p_token: "a".repeat(64) });
-    expect(state.jar.get("team-invitation")).toBe("");
   });
   it("rejects a foreign origin before touching the session or invitation", async () => {
     state.origin = "https://foreign.example.test"; state.jar.set("team-invitation", "pending");
@@ -44,29 +41,25 @@ describe("invitation account change", () => {
     const result = await switchTeamInvitationAccountAction();
     expect(result.error).toContain("Не удалось выйти"); expect(result.error).not.toContain("private"); expect(state.jar.get("team-invitation")).toBe("pending"); expect(state.redirect).not.toHaveBeenCalled();
   });
-  it("explains an unavailable invitation without exposing the intended recipient", async () => {
-    const form = new FormData(); form.set("token", "a".repeat(64)); await prepareTeamInvitationAction({}, form);
-    state.rpc.mockRejectedValue(new Error("team_invitation_unavailable"));
-    const result = await acceptTeamInvitationAction();
-    expect(result.error).toContain("email текущего аккаунта"); expect(state.jar.get("team-invitation")).toBeTruthy(); expect(state.redirect).not.toHaveBeenCalled();
-  });
 });
-describe("invitation sign-in states", () => {
-  it("shows the current account and an account-change action before acceptance", () => {
-    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: "owner@example.test", emailConfirmed: true, hasPending: true, policy }));
-    expect(html).toContain("owner@example.test"); expect(html).toContain("Войти под другим email"); expect(html).toContain("Принять приглашение");
-  });
-  it("gives unconfirmed users a confirmation path instead of the already-signed-in login loop", () => {
-    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: "participant@example.test", emailConfirmed: false, hasPending: true, policy }));
-    expect(html).toContain("Получить код на email"); expect(html).toContain("Войти под другим email"); expect(html).not.toContain("Войти для участия"); expect(html).not.toContain("Принять приглашение");
-  });
-  it("offers passwordless entry to anonymous participants without the old registration detour", () => {
-    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: null, emailConfirmed: false, hasPending: true, policy }));
-    expect(html).toContain("Получить код на email"); expect(html).not.toContain("/ru/login"); expect(html).not.toContain("type=\"password\""); expect(html).not.toContain("Вы вошли как"); expect(html).not.toContain("Принять приглашение");
-  });
-  it("restores code entry after a reload with a pending challenge and keeps consent unchecked", () => {
-    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: null, emailConfirmed: false, hasPending: true, policy, pendingCode: true }));
-    expect(html).toContain("Войти и открыть анкету"); expect(html).toContain('autoComplete="one-time-code"');
-    expect(html).not.toContain('checked=""'); expect(html).not.toContain('type="password"');
-  });
+const ready={phase:"ready" as const,company:"Invited company",team:"Team title",inviter:"Inviter",maskedEmail:"a***@example.test",flowId:"flow",expires:Date.now()+1800000};
+describe("invitation sign-in states",()=>{
+ it("explains a wrong session with masked recipient and a safe logout action",()=>{
+  const html=renderToStaticMarkup(createElement(TeamJoin,{view:{...ready,wrongAccount:true},policy}));
+  expect(html).toContain("другого адреса");expect(html).toContain("a***@example.test");expect(html).toContain("Выйти и продолжить");
+  expect(html).not.toContain("participant@example.test");expect(html).not.toContain("name=\"code\"");
+ });
+ it("offers context and consent before authentication without a password or code input",()=>{
+  const html=renderToStaticMarkup(createElement(TeamJoin,{view:ready,policy}));
+  for(const text of ["Invited company","Team title","Inviter","Продолжить","data_processing_consent"])expect(html).toContain(text);
+  expect(html).not.toContain('name="code"');expect(html).not.toContain('type="password"');expect(html).not.toContain('checked=""');expect(html).not.toContain("/ru/login");
+ });
+ it("restores only a valid server-side waiting state with secondary collapsed code fallback",()=>{
+  const html=renderToStaticMarkup(createElement(TeamJoin,{view:{...ready,phase:"waiting",sentAt:Date.now(),codeExpires:Date.now()+600000},policy}));
+  expect(html).toContain("Проверьте почту");expect(html).toContain("Нажмите кнопку в письме");expect(html).toContain("one-time-code");expect(html).toContain("<details");expect(html).not.toContain('<details open');expect(html).not.toContain('checked=""');
+ });
+ it("expired context has no stale sent claim, resend action or code form",()=>{
+  const html=renderToStaticMarkup(createElement(TeamJoin,{view:{phase:"expired"},policy}));
+  expect(html).toContain("сессии приглашения истёк");expect(html).not.toContain("Письмо отправлено");expect(html).not.toContain('name="code"');expect(html).not.toContain("Отправить ещё раз");
+ });
 });

@@ -10,9 +10,9 @@ vi.mock("@/server/account/authorization",()=>({requireCompanyWrite:vi.fn()}));
 vi.mock("@/server/supabase/config",()=>({authConfig:()=>({APP_URL:"https://ai-diagnostic-staging-web.onrender.com",AUTH_FLOW_SECRET:"synthetic-secret",secure:true})}));
 vi.mock("@/server/team/capabilities",()=>({teamFoundationEnabled:()=>true}));
 vi.mock("@/server/rate-limit",()=>({enforceRateLimit:vi.fn()}));
-vi.mock("@/server/team/service",()=>({teamRpc:state.rpc,ownerTeam:async()=>({team:{company_id:"company",title:"Synthetic team"},participants:[]})}));
-vi.mock("@/server/consultation/provider",()=>({getConsultationProvider:()=>({name:state.provider,send:state.send})}));
-import { inviteTeamAction, prepareTeamInvitationAction, saveTeamResponseAction } from "@/server/team/actions";
+vi.mock("@/server/team/service",()=>({teamRpc:state.rpc,invitationCompany:async()=>"Synthetic company",ownerTeam:async()=>({team:{company_id:"company",title:"Synthetic team"},participants:[{id:"10000000-0000-4000-8000-000000000001",email:"participant@example.test"}]})}));
+vi.mock("@/server/team/invitation-email",async(importOriginal)=>({...await importOriginal<typeof import("@/server/team/invitation-email")>(),getTeamInvitationProvider:()=>({name:state.provider,send:state.send})}));
+import { inviteTeamAction, prepareTeamInvitationAction, renewTeamInvitationAction, saveTeamResponseAction } from "@/server/team/actions";
 const id="10000000-0000-4000-8000-000000000001";
 function invitation() { const f=new FormData(); f.set("teamId",id); f.set("email","participant@example.test"); f.set("displayName","Participant"); return f; }
 beforeEach(()=>{vi.clearAllMocks();state.origin="https://ai-diagnostic-staging-web.onrender.com";state.provider="mock";state.rpc.mockResolvedValue(id);state.send.mockResolvedValue({providerMessageId:"synthetic-receipt"});});
@@ -20,7 +20,7 @@ describe("team invitation side effects",()=>{
   it("sends one email only after scoped invitation creation, binding recipient and token hash",async()=>{
     const result=await inviteTeamAction({},invitation());
     expect(result.emailStatus).toBe("mock"); expect(state.rpc).toHaveBeenCalledTimes(1); expect(state.send).toHaveBeenCalledTimes(1);
-    expect(state.send.mock.calls[0][0]).toMatchObject({to:"participant@example.test",subject:"Приглашение: Synthetic team"});
+    expect(state.send.mock.calls[0][0]).toMatchObject({to:"participant@example.test",subject:"Приглашение в командную диагностику — Synthetic company"});
     expect(state.send.mock.calls[0][0].text).toContain(result.invitationUrl);
     expect(state.rpc.mock.calls[0][0]).toBe("invite_team_participant");
     const link=new URL(result.invitationUrl!);
@@ -63,4 +63,18 @@ it("retains the last saved revision across a validation error so correction can 
   state.rpc.mockResolvedValue({revision:4,status:"completed"});
   expect(await saveTeamResponseAction(result,f)).toEqual({revision:4,status:"completed"});
   expect(state.rpc.mock.calls[1][1].p_expected_revision).toBe(3);
+});
+
+it("hides the raw link on successful real invitation delivery",async()=>{
+ state.provider="resend";const result=await inviteTeamAction({},invitation());
+ expect(result).toMatchObject({emailStatus:"sent",recipient:"participant@example.test",providerMessageId:"synthetic-receipt"});
+ expect(result).not.toHaveProperty("invitationUrl");expect(state.send).toHaveBeenCalledOnce();
+ expect(state.send.mock.calls[0][0].html).toContain("Принять приглашение");
+});
+it("renewal rotates the hash through the existing RPC and sends one replacement without creating a participant",async()=>{
+ const first=await inviteTeamAction({},invitation());const oldHash=state.rpc.mock.calls[0][1].p_token_hash;
+ state.rpc.mockClear();state.send.mockClear();const f=new FormData();f.set("teamId",id);f.set("participantId",id);
+ const renewed=await renewTeamInvitationAction({},f);
+ expect(state.rpc).toHaveBeenCalledExactlyOnceWith("renew_team_invitation",{p_participant_id:id,p_token_hash:expect.any(String)});
+ expect(state.rpc.mock.calls[0][1].p_token_hash).not.toBe(oldHash);expect(renewed.invitationUrl).not.toBe(first.invitationUrl);expect(state.send).toHaveBeenCalledOnce();
 });

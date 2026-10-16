@@ -8,12 +8,14 @@ import { clearRecovery } from "@/server/auth/recovery";
 import { createAuthClient } from "@/server/supabase/server";
 import { authConfig } from "@/server/supabase/config";
 import { requireCompanyWrite } from "@/server/account/authorization";
-import { getConsultationProvider as getTransactionalProvider } from "@/server/consultation/provider";
+import { getTeamInvitationProvider, teamInvitationMessage } from "./invitation-email";
+import { sealInvitationDetails,openInvitationDetails } from "./invitation-details";
 import { enforceRateLimit } from "@/server/rate-limit";
 import { invitationToken, teamCreation, teamInvitation, teamSave, type TeamActionState } from "./contracts";
-import { openInvitation, sealInvitation } from "./invitation-envelope";
-import { ownerTeam, teamRpc } from "./service";
+import { sealInvitation } from "./invitation-envelope";
+import { invitationCompany, ownerTeam, teamRpc } from "./service";
 import { teamFoundationEnabled } from "./capabilities";
+import { sendTeamCodeAction } from "./passwordless-actions";
 import { z } from "zod";
 const cookieName = "team-invitation";
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
@@ -56,23 +58,28 @@ export async function inviteTeamAction(_: TeamActionState, form: FormData): Prom
     const record = await ownerTeam(input.teamId);
     if (!record) throw new Error("team_not_found");
     await requireCompanyWrite(record.team.company_id, identity.user.id);
+    const company=await invitationCompany(record.team.company_id);
     await enforceRateLimit(`team-invite:${identity.user.id}`, 100, 86400);
     const token = randomBytes(32).toString("hex"), hash = createHash("sha256").update(token).digest("hex");
     const participantId = await teamRpc<string>("invite_team_participant", { p_team_id: input.teamId, p_email: input.email, p_display_name: input.displayName, p_token_hash: hash });
-    const result = await deliverInvitation(participantId, input.email, record.team.title, token, hash);
+    const result = await deliverInvitation(participantId, input.email, record.team.title, token, hash,company,identity.user.user_metadata?.full_name ?? "Организатор");
     revalidatePath(`/ru/companies/${record.team.company_id}/teams/${input.teamId}`);
     return result;
   } catch (error) { return failure(error); }
 }
-async function deliverInvitation(participantId: string, email: string, title: string, token: string, hash: string): Promise<TeamActionState> {
-  const invitationUrl = `${authConfig().APP_URL}/ru/team/join#invitation=${token}`;
+async function deliverInvitation(participantId: string, email: string, title: string, token: string, hash: string,company:string,inviter:string): Promise<TeamActionState> {
+  const details=sealInvitationDetails({email,company:company.slice(0,200),team:title,inviter:String(inviter).slice(0,100),invitationHash:hash},authConfig().AUTH_FLOW_SECRET);
+  const invitationUrl = `${authConfig().APP_URL}/ru/team/join#invitation=${token}&context=${details}`;
   let emailStatus: TeamActionState["emailStatus"] = "failed";
   try {
-    const provider = getTransactionalProvider();
-    await provider.send({ to: email, subject: `Приглашение: ${title}`, text: `Вас пригласили пройти командную диагностику «${title}».\n\n${invitationUrl}\n\nСсылка действует 7 дней. Войдите под ${email} с подтверждённым email. Владелец компании увидит только статус прохождения, без ваших ответов.`, idempotencyKey: `team-invitation/${participantId}/${hash}` });
+    const provider = getTeamInvitationProvider();
+    const receipt=await provider.send({ to: email,...teamInvitationMessage({company,team:title,inviter,url:invitationUrl}), idempotencyKey: `team-invitation/${participantId}/${hash}` });
     emailStatus = provider.name === "mock" ? "mock" : "sent";
+    console.info("[team-email]",{event:"invitation_delivery",provider:provider.name,providerAccepted:true,providerMessageId:receipt.providerMessageId,correlation:hash.slice(0,12)});
+    return {emailStatus,recipient:email,participantId,provider:provider.name,providerMessageId:receipt.providerMessageId,...(emailStatus==="mock"?{invitationUrl}:{})};
   } catch { /* Keep link available and explicitly report email delivery failure. */ }
-  return { invitationUrl, emailStatus };
+  console.info("[team-email]",{event:"invitation_delivery",providerAccepted:false,correlation:hash.slice(0,12)});
+  return { invitationUrl, emailStatus,recipient:email,participantId };
 }
 export async function renewTeamInvitationAction(_: TeamActionState, form: FormData): Promise<TeamActionState> {
   try {
@@ -80,10 +87,12 @@ export async function renewTeamInvitationAction(_: TeamActionState, form: FormDa
     const participantId = z.uuid().parse(value(form,"participantId")), teamId = z.uuid().parse(value(form,"teamId"));
     const record = await ownerTeam(teamId), participant = record?.participants.find((p) => p.id === participantId);
     if (!record || !participant) throw new Error("team_not_found");
+    await requireCompanyWrite(record.team.company_id,identity.user.id);
+    const company=await invitationCompany(record.team.company_id);
     await enforceRateLimit(`team-invite:${identity.user.id}`, 100, 86400);
     const token = randomBytes(32).toString("hex"), hash = createHash("sha256").update(token).digest("hex");
     await teamRpc<null>("renew_team_invitation", { p_participant_id: participantId, p_token_hash: hash });
-    return await deliverInvitation(participantId, participant.email, record.team.title, token, hash);
+    return await deliverInvitation(participantId, participant.email, record.team.title, token, hash,company,identity.user.user_metadata?.full_name ?? "Организатор");
   } catch (error) { return failure(error); }
 }
 export async function revokeTeamAction(form: FormData) {
@@ -97,22 +106,15 @@ export async function prepareTeamInvitationAction(_: TeamActionState, form: Form
   try {
     await origin();
     const token = invitationToken.parse(value(form,"token"));
+    const details=value(form,"context"),hash=createHash("sha256").update(token).digest("hex");
+    if(details && !openInvitationDetails(details,hash,authConfig().AUTH_FLOW_SECRET))throw new Error("team_invitation_unavailable");
     (await cookies()).set(cookieName, sealInvitation(token, authConfig().AUTH_FLOW_SECRET), { httpOnly: true, sameSite: "lax", secure: authConfig().secure, path: "/ru", maxAge: 1800 });
+    (await cookies()).set("team-invitation-details",details,{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru",maxAge:1800});
+    (await cookies()).set("team-email-challenge","",{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru/team",maxAge:0});
     return { status: "prepared" };
   } catch (error) { return failure(error); }
 }
-export async function acceptTeamInvitationAction(): Promise<TeamActionState> {
-  let id: string;
-  try {
-    await origin(); const identity = await requireIdentity();
-    await enforceRateLimit(`team-accept:${identity.user.id}`, 20, 3600);
-    const token = openInvitation((await cookies()).get(cookieName)?.value, authConfig().AUTH_FLOW_SECRET);
-    if (!token) throw new Error("team_invitation_unavailable");
-    id = await teamRpc<string>("accept_team_invitation", { p_token: token });
-    (await cookies()).set(cookieName, "", { httpOnly: true, sameSite: "lax", secure: authConfig().secure, path: "/ru", maxAge: 0 });
-  } catch (error) { return failure(error); }
-  redirect(`/ru/team/responses/${id}`);
-}
+export async function acceptTeamInvitationAction(_:TeamActionState,form:FormData): Promise<TeamActionState> { return sendTeamCodeAction({},form); }
 export async function switchTeamInvitationAccountAction(): Promise<TeamActionState> {
   try {
     await origin();

@@ -42,4 +42,10 @@ export async function ownerTeam(teamId: string) {
   if (participantError) throw new Error("team_request_failed");
   return { team, participants: participants ?? [] };
 }
+export async function invitationCompany(companyId:string) {
+  const {client}=await teamClient();
+  const {data,error}=await client.from("company_profiles").select("name").eq("id",companyId).single();
+  if(error || !data)throw new Error("team_not_found");
+  return data.name;
+}
 export function participantResponse(participantId: string) { return teamRpc<TeamResponse>("read_team_response", { p_participant_id: participantId }); }
