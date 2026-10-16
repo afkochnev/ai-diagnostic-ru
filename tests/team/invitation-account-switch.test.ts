@@ -26,10 +26,10 @@ beforeEach(() => {
 describe("invitation account change", () => {
   it("preserves the encrypted invitation across a local sign-out until the new actor accepts", async () => {
     const form = new FormData(); form.set("token", "a".repeat(64));
-    await prepareTeamInvitationAction({}, form); const pending = state.jar.get("team-invitation"); state.jar.set("auth-recovery", "old-recovery");
+    await prepareTeamInvitationAction({}, form); const pending = state.jar.get("team-invitation"); state.jar.set("auth-recovery", "old-recovery"); state.jar.set("team-invitation-auth", "synthetic-proof");
     await expect(switchTeamInvitationAccountAction()).rejects.toThrow("redirect:/ru/team/join");
     expect(state.signOut).toHaveBeenCalledExactlyOnceWith({ scope: "local" });
-    expect(state.jar.get("team-invitation")).toBe(pending); expect(state.jar.has("auth-recovery")).toBe(false); expect(state.rpc).not.toHaveBeenCalled();
+    expect(state.jar.get("team-invitation")).toBe(pending); expect(state.jar.get("team-invitation-auth")).toBe("synthetic-proof"); expect(state.jar.has("auth-recovery")).toBe(false); expect(state.rpc).not.toHaveBeenCalled();
   });
   it("rejects a foreign origin before touching the session or invitation", async () => {
     state.origin = "https://foreign.example.test"; state.jar.set("team-invitation", "pending");
@@ -54,12 +54,17 @@ describe("invitation sign-in states",()=>{
   for(const text of ["Invited company","Team title","Inviter","Продолжить","data_processing_consent"])expect(html).toContain(text);
   expect(html).not.toContain('name="code"');expect(html).not.toContain('type="password"');expect(html).not.toContain('checked=""');expect(html).not.toContain("/ru/login");
  });
- it("restores only a valid server-side waiting state with secondary collapsed code fallback",()=>{
+ it("restores a valid waiting state with email CTA instructions and no numeric entry",()=>{
   const html=renderToStaticMarkup(createElement(TeamJoin,{view:{...ready,phase:"waiting",sentAt:Date.now(),codeExpires:Date.now()+600000},policy}));
-  expect(html).toContain("Проверьте почту");expect(html).toContain("Нажмите кнопку в письме");expect(html).toContain("one-time-code");expect(html).toContain("<details");expect(html).not.toContain('<details open');expect(html).not.toContain('checked=""');
+  expect(html).toContain("Проверьте почту");expect(html).toContain("Нажмите кнопку в письме");expect(html).not.toContain("one-time-code");expect(html).not.toContain('name="code"');expect(html).not.toContain("одноразовый код");expect(html).not.toContain('checked=""');
  });
  it("expired context has no stale sent claim, resend action or code form",()=>{
   const html=renderToStaticMarkup(createElement(TeamJoin,{view:{phase:"expired"},policy}));
   expect(html).toContain("сессии приглашения истёк");expect(html).not.toContain("Письмо отправлено");expect(html).not.toContain('name="code"');expect(html).not.toContain("Отправить ещё раз");
+ });
+ it("an expired combined sign-in link requests organizer renewal rather than reopening the same expired proof",()=>{
+  const html=renderToStaticMarkup(createElement(TeamJoin,{view:{phase:"expired",singleEmail:true},policy}));
+  expect(html).toContain("Попросите организатора отправить новое приглашение");
+  expect(html).not.toContain("Откройте письмо-приглашение снова");expect(html).not.toContain('name="code"');
  });
 });

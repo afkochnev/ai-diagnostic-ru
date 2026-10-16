@@ -8,6 +8,7 @@ import {teamFoundationEnabled} from "./capabilities";
 import {openInvitationContext} from "./invitation-envelope";
 import {openInvitationDetails,maskTeamEmail} from "./invitation-details";
 import {openTeamChallenge} from "./passwordless-challenge";
+import {openInvitationAuthProof} from "./invitation-auth-proof";
 const targetSchema=z.object({email:z.email().max(254),display_name:z.string().min(1).max(100),create_user:z.boolean()}).strict();
 export async function teamEntryContext(checkOrigin=false){
   if(!teamFoundationEnabled())throw new Error("team_auth_unavailable");
@@ -23,18 +24,21 @@ export async function teamEntryContext(checkOrigin=false){
   const details=openInvitationDetails(encodedDetails,hash,secret);
   if(encodedDetails && (!details || details.email!==target.email))throw new Error("team_invitation_unavailable");
   const challenge=openTeamChallenge(jar.get("team-email-challenge")?.value,hash,secret);
-  return {jar,secret,token:invitation.token,hash,target,details,challenge,expires:invitation.expires,flowId:createHash("sha256").update(envelope!).digest("hex").slice(0,16)};
+  const encodedProof=jar.get("team-invitation-auth")?.value;
+  const proof=openInvitationAuthProof(encodedProof,hash,secret);
+  if(encodedProof && (!proof || proof.email!==target.email))throw new Error("team_context_expired");
+  return {jar,secret,token:invitation.token,hash,target,details,challenge,proof,expires:proof?Math.min(invitation.expires,proof.expires):invitation.expires,flowId:createHash("sha256").update(envelope!).digest("hex").slice(0,16)};
 }
 export async function clearTeamEntry(){
   const jar=await cookies();
-  for(const name of ["team-invitation","team-invitation-details","team-email-challenge"]){
-    jar.set(name,"",{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:name==="team-email-challenge"?"/ru/team":"/ru",maxAge:0});
+  for(const name of ["team-invitation","team-invitation-details","team-email-challenge","team-invitation-auth"]){
+    jar.set(name,"",{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:name==="team-email-challenge" || name==="team-invitation-auth"?"/ru/team":"/ru",maxAge:0});
   }
 }
-export type TeamEntryView={phase:"ready"|"waiting"|"expired";company?:string;team?:string;inviter?:string;maskedEmail?:string;flowId?:string;expires?:number;sentAt?:number;codeExpires?:number;matching?:boolean;wrongAccount?:boolean};
+export type TeamEntryView={phase:"ready"|"waiting"|"expired";company?:string;team?:string;inviter?:string;maskedEmail?:string;flowId?:string;expires?:number;sentAt?:number;codeExpires?:number;matching?:boolean;wrongAccount?:boolean;singleEmail?:boolean};
 export async function teamEntryView(currentEmail:string|null,confirmed:boolean):Promise<TeamEntryView>{
   try{
     const c=await teamEntryContext();
-    return {phase:c.challenge?"waiting":"ready",company:c.details?.company??"Компания из вашего приглашения",team:c.details?.team??"Командная диагностика",inviter:c.details?.inviter??"Организатор",maskedEmail:maskTeamEmail(c.target.email),flowId:c.flowId,expires:c.expires,...(c.challenge?{sentAt:c.challenge.expires-600000,codeExpires:c.challenge.expires}:{}),matching:confirmed && currentEmail?.toLowerCase()===c.target.email,wrongAccount:Boolean(currentEmail && currentEmail.toLowerCase()!==c.target.email)};
-  }catch{return {phase:"expired"};}
+    return {phase:c.challenge?"waiting":"ready",company:c.details?.company??"Компания из вашего приглашения",team:c.details?.team??"Командная диагностика",inviter:c.details?.inviter??"Организатор",maskedEmail:maskTeamEmail(c.target.email),flowId:c.flowId,expires:c.expires,singleEmail:Boolean(c.proof),...(c.challenge?{sentAt:c.challenge.expires-600000,codeExpires:c.challenge.expires}:{}),matching:confirmed && currentEmail?.toLowerCase()===c.target.email,wrongAccount:Boolean(currentEmail && currentEmail.toLowerCase()!==c.target.email)};
+  }catch{return {phase:"expired",singleEmail:Boolean((await cookies()).get("team-invitation-auth")?.value)};}
 }

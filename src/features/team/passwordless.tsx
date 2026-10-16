@@ -1,22 +1,22 @@
 "use client";
 import {useActionState,useEffect,useState} from "react";
 import Link from "next/link";
-import {sendTeamCodeAction,verifyTeamCodeAction} from "@/server/team/passwordless-actions";
+import {sendTeamCodeAction} from "@/server/team/passwordless-actions";
+import {continueSingleEmailAction} from "@/server/team/single-email-actions";
 import {switchTeamInvitationAccountAction} from "@/server/team/actions";
 import type {TeamEntryView} from "@/server/team/entry-context";
 import {getMessages} from "@/i18n/messages";
 export type TeamEntryPolicy={versions:Record<string,string>;temporary:boolean;dataUrl:string;marketingUrl:string};
 const button="min-h-12 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-60";
 export function TeamPasswordless({policy,view}:{policy:TeamEntryPolicy;view:TeamEntryView}){
-  const [sent,send,sending]=useActionState(sendTeamCodeAction,{});
-  const [verified,verify,verifying]=useActionState(verifyTeamCodeAction,{});
+  const [sent,send,sending]=useActionState(view.singleEmail?continueSingleEmailAction:sendTeamCodeAction,{});
   const [switched,switchAccount,switching]=useActionState(switchTeamInvitationAccountAction,{});
   const [now,setNow]=useState(0),[consented,setConsented]=useState(false);
   useEffect(()=>{const tick=()=>setNow(Date.now());const timer=window.setInterval(tick,1000);return()=>window.clearInterval(timer);},[]);
   const contextExpires=sent.contextExpires??view.expires;
-  const expired=view.phase==="expired" || sent.phase==="expired" || verified.phase==="expired" || Boolean(now && contextExpires && now>=contextExpires);
-  if(expired)return <p role="alert">Срок текущей сессии приглашения истёк. Откройте письмо-приглашение снова.</p>;
-  const wrong=view.wrongAccount || sent.phase==="wrong" || verified.phase==="wrong";
+  const expired=view.phase==="expired" || sent.phase==="expired" || Boolean(now && contextExpires && now>=contextExpires);
+  if(expired)return <p role="alert">{sent.error??(view.singleEmail?"Срок ссылки для входа истёк. Попросите организатора отправить новое приглашение.":"Срок текущей сессии приглашения истёк. Откройте письмо-приглашение снова.")}</p>;
+  const wrong=view.wrongAccount || sent.phase==="wrong";
   if(wrong)return <div className="space-y-4"><p>Это приглашение предназначено для другого адреса: {view.maskedEmail}.</p><form action={switchAccount}><button className={button} disabled={switching}>Выйти и продолжить с адресом приглашения</button></form>{switched.error && <p role="alert">{switched.error}</p>}</div>;
   const accepted=sent.phase?sent.phase==="waiting" && sent.authRequestAccepted===true:view.phase==="waiting";
   const codeExpires=sent.expires??view.codeExpires;
@@ -33,10 +33,9 @@ export function TeamPasswordless({policy,view}:{policy:TeamEntryPolicy;view:Team
       <label className="flex items-start gap-3 text-sm leading-relaxed"><input type="checkbox" name="data_processing_consent" required checked={consented} onChange={e=>setConsented(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-brand"/><span>{text.dataConsent}</span></label>
       <Link href={policy.dataUrl} className="block text-sm underline">{text.dataLink}</Link>
       {policy.temporary && <p className="text-xs text-muted">{text.temporaryLegal}</p>}
-      <button disabled={sending||verifying||cooldown>0} className={button}>{sending?"Продолжаем…":view.matching?"Продолжить":accepted?"Отправить ещё раз":"Продолжить"}</button>
+      <button disabled={sending||cooldown>0} className={button}>{sending?"Продолжаем…":view.matching?"Продолжить":accepted?"Отправить ещё раз":"Продолжить"}</button>
       {cooldown>0 && <p>Повторная отправка через {cooldown} сек.</p>}
     </form>
-    {waiting && <details open={Boolean(verified.error)} className="space-y-3"><summary className="cursor-pointer underline">Или введите одноразовый код</summary><form action={verify} className="space-y-4"><label className="block font-medium">Код из письма<input name="code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6,10}" minLength={6} maxLength={10} required className="mt-2 block min-h-12 w-full rounded-xl border border-line px-3 py-3"/></label><button className={button} disabled={sending||verifying}>{verifying?"Проверяем…":"Продолжить по коду"}</button></form></details>}
-    {(verified.error||sent.error) && <p role="alert">{verified.error||sent.error}</p>}
+    {sent.error && <p role="alert">{sent.error}</p>}
   </div>;
 }

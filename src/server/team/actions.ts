@@ -17,6 +17,8 @@ import { invitationCompany, ownerTeam, teamRpc } from "./service";
 import { teamFoundationEnabled } from "./capabilities";
 import { sendTeamCodeAction } from "./passwordless-actions";
 import { z } from "zod";
+import { singleEmailCredential } from "./single-email";
+import { openInvitationAuthProof } from "./invitation-auth-proof";
 const cookieName = "team-invitation";
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 async function origin() {
@@ -32,6 +34,7 @@ function failure(error: unknown): TeamActionState {
     team_participant_limit: "В этой диагностике уже 100 приглашённых участников.",
     team_invitation_unavailable: "Не удалось принять приглашение. Проверьте email текущего аккаунта: он должен совпадать с адресом, на который вас пригласили. Ссылка также может быть заменена, просрочена или недоступна после завершения сбора ответов.",
     team_closed: "Сбор ответов завершён. Новые приглашения и отправка ответов недоступны.",
+    team_auth_link_expired: "Ссылка для входа недействительна или срок её действия истёк. Попросите организатора отправить новое приглашение.",
     team_switch_account_failed: "Не удалось выйти из текущего аккаунта. Попробуйте ещё раз.",
     rate_limited: "Слишком много запросов. Попробуйте позже.",
   };
@@ -73,7 +76,13 @@ async function deliverInvitation(participantId: string, email: string, title: st
   let emailStatus: TeamActionState["emailStatus"] = "failed";
   try {
     const provider = getTeamInvitationProvider();
-    const receipt=await provider.send({ to: email,...teamInvitationMessage({company,team:title,inviter,url:invitationUrl}), idempotencyKey: `team-invitation/${participantId}/${hash}` });
+    let emailedUrl=invitationUrl;
+    if(provider.name!=="mock"){
+      const credential=await singleEmailCredential(hash);
+      if(credential.email!==email)throw new Error("team_invitation_unavailable");
+      emailedUrl+=`&auth=${credential.envelope}`;
+    }
+    const receipt=await provider.send({ to: email,...teamInvitationMessage({company,team:title,inviter,url:emailedUrl,singleEmail:provider.name!=="mock"}), idempotencyKey: `team-invitation/${participantId}/${hash}` });
     emailStatus = provider.name === "mock" ? "mock" : "sent";
     console.info("[team-email]",{event:"invitation_delivery",provider:provider.name,providerAccepted:true,providerMessageId:receipt.providerMessageId,correlation:hash.slice(0,12)});
     return {emailStatus,recipient:email,participantId,provider:provider.name,providerMessageId:receipt.providerMessageId,...(emailStatus==="mock"?{invitationUrl}:{})};
@@ -108,9 +117,12 @@ export async function prepareTeamInvitationAction(_: TeamActionState, form: Form
     const token = invitationToken.parse(value(form,"token"));
     const details=value(form,"context"),hash=createHash("sha256").update(token).digest("hex");
     if(details && !openInvitationDetails(details,hash,authConfig().AUTH_FLOW_SECRET))throw new Error("team_invitation_unavailable");
+    const proof=value(form,"auth");
+    if(proof && !openInvitationAuthProof(proof,hash,authConfig().AUTH_FLOW_SECRET))throw new Error("team_auth_link_expired");
     (await cookies()).set(cookieName, sealInvitation(token, authConfig().AUTH_FLOW_SECRET), { httpOnly: true, sameSite: "lax", secure: authConfig().secure, path: "/ru", maxAge: 1800 });
     (await cookies()).set("team-invitation-details",details,{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru",maxAge:1800});
     (await cookies()).set("team-email-challenge","",{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru/team",maxAge:0});
+    (await cookies()).set("team-invitation-auth",proof,{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru/team",maxAge:proof?1800:0});
     return { status: "prepared" };
   } catch (error) { return failure(error); }
 }

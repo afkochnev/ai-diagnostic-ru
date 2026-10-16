@@ -62,7 +62,7 @@ try:
  migrations=sorted((ROOT/'supabase/migrations').glob('*.sql'))
  new=next(x for x in migrations if 'team_aggregation_report' in x.name)
  for path in migrations:
-  if path==new or 'team_participant_passwordless' in path.name:continue
+  if path==new or 'team_participant_passwordless' in path.name or 'team_single_email_consent' in path.name:continue
   if path.name=='20261013000100_account_foundation.sql':sql((ROOT/'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
   sql(path.read_text())
  sql((ROOT/'supabase/tests/team-foundation.sql').read_text());sql("update public.accounts set status='active'")
@@ -89,6 +89,10 @@ try:
  assert old_policies==sql("select md5(string_agg(to_jsonb(p)::text,',' order by to_jsonb(p)::text)) from pg_policies p")
  sql(auth_migration.read_text(),error='already exists')
  passed('passwordless resolver migration transactional/additive; original rows and policies unchanged; duplicate rejected')
+ single_email=next((x for x in migrations if 'team_single_email_consent' in x.name),None)
+ if single_email:
+  preserved=snapshot();sql(single_email.read_text());assert preserved==snapshot()
+  passed('single-email pending-identity migration preserves all existing rows before full Team regression')
 
  for n in range(6,11):
   meta={'full_name':'Synthetic account','marketing_consent':False,'marketing_version':'temporary-ru-v1','data_processing_consent':True,'data_processing_version':'temporary-ru-v1'}

@@ -8,8 +8,8 @@ describe("Team-scoped Auth template and callback contract",()=>{
   const match=template.match(/^\{\{ if eq \.RedirectTo "https:\/\/ai-diagnostic-staging-web\.onrender\.com\/ru\/team\/confirm" \}\}\n([\s\S]+)\n\{\{ else \}\}\n([\s\S]+)\n\{\{ end \}\}\n$/)!;
   expect(match).not.toBeNull();expect(hash(match[2])).toBe(before);
   expect(match[1]).toContain('href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=email"');
-  expect(match[1]).toContain(cta);expect(match[1]).toContain("{{ .Token }}");
-  expect(match[1].indexOf(cta)).toBeLessThan(match[1].indexOf("{{ .Token }}"));
+  expect(match[1]).toContain(cta);expect(match[1]).not.toContain("{{ .Token }}");
+  expect(match[1]).not.toMatch(/введите код|код подтверждения|одноразовый код/i);
   expect(match[1]).not.toContain("?token");expect(match[1]).not.toContain("participantId");expect(match[1]).not.toContain("invitation=");
  });
  it("never reads Auth or invitation secrets through GET query parameters or generic next",()=>{
