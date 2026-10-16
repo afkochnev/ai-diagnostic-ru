@@ -123,7 +123,7 @@ export async function switchTeamInvitationAccountAction(): Promise<TeamActionSta
     // Preserve the encrypted pending invitation while replacing only this login.
   } catch (error) { return failure(error); }
   revalidatePath("/", "layout");
-  redirect("/ru/login?next=team-invitation");
+  redirect("/ru/team/join");
 }
 export async function saveTeamResponseAction(previous: TeamActionState, form: FormData): Promise<TeamActionState> {
   try {

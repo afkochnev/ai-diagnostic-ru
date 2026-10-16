@@ -16,6 +16,7 @@ vi.mock("@/server/team/service", () => ({ teamRpc: state.rpc, ownerTeam: vi.fn()
 vi.mock("@/server/consultation/provider", () => ({ getConsultationProvider: vi.fn() }));
 import { acceptTeamInvitationAction, prepareTeamInvitationAction, switchTeamInvitationAccountAction } from "@/server/team/actions";
 import { TeamJoin } from "@/features/team/join";
+const policy={versions:{data_processing:"v1",marketing:"v1"},temporary:false,dataUrl:"/ru/legal/data-processing",marketingUrl:"/ru/legal/marketing"};
 beforeEach(() => {
   vi.clearAllMocks(); state.jar.clear(); state.origin = "https://ai-diagnostic-staging-web.onrender.com";
   state.signOut.mockResolvedValue({ error: null }); state.createClient.mockResolvedValue({ auth: { signOut: state.signOut } });
@@ -25,7 +26,7 @@ describe("invitation account change", () => {
   it("preserves the encrypted invitation across a local sign-out until the new actor accepts", async () => {
     const form = new FormData(); form.set("token", "a".repeat(64));
     await prepareTeamInvitationAction({}, form); const pending = state.jar.get("team-invitation"); state.jar.set("auth-recovery", "old-recovery");
-    await expect(switchTeamInvitationAccountAction()).rejects.toThrow("redirect:/ru/login?next=team-invitation");
+    await expect(switchTeamInvitationAccountAction()).rejects.toThrow("redirect:/ru/team/join");
     expect(state.signOut).toHaveBeenCalledExactlyOnceWith({ scope: "local" });
     expect(state.jar.get("team-invitation")).toBe(pending); expect(state.jar.has("auth-recovery")).toBe(false); expect(state.rpc).not.toHaveBeenCalled();
     state.rpc.mockResolvedValue("participant-id");
@@ -52,15 +53,20 @@ describe("invitation account change", () => {
 });
 describe("invitation sign-in states", () => {
   it("shows the current account and an account-change action before acceptance", () => {
-    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: "owner@example.test", emailConfirmed: true, hasPending: true }));
+    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: "owner@example.test", emailConfirmed: true, hasPending: true, policy }));
     expect(html).toContain("owner@example.test"); expect(html).toContain("Войти под другим email"); expect(html).toContain("Принять приглашение");
   });
   it("gives unconfirmed users a confirmation path instead of the already-signed-in login loop", () => {
-    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: "participant@example.test", emailConfirmed: false, hasPending: true }));
-    expect(html).toContain("/ru/verify-email"); expect(html).toContain("Войти под другим email"); expect(html).not.toContain("Войти для участия"); expect(html).not.toContain("Принять приглашение");
+    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: "participant@example.test", emailConfirmed: false, hasPending: true, policy }));
+    expect(html).toContain("Получить код на email"); expect(html).toContain("Войти под другим email"); expect(html).not.toContain("Войти для участия"); expect(html).not.toContain("Принять приглашение");
   });
-  it("sends anonymous participants through login with the invitation return route", () => {
-    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: null, emailConfirmed: false, hasPending: true }));
-    expect(html).toContain("/ru/login?next=team-invitation"); expect(html).not.toContain("Вы вошли как"); expect(html).not.toContain("Принять приглашение");
+  it("offers passwordless entry to anonymous participants without the old registration detour", () => {
+    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: null, emailConfirmed: false, hasPending: true, policy }));
+    expect(html).toContain("Получить код на email"); expect(html).not.toContain("/ru/login"); expect(html).not.toContain("type=\"password\""); expect(html).not.toContain("Вы вошли как"); expect(html).not.toContain("Принять приглашение");
+  });
+  it("restores code entry after a reload with a pending challenge and keeps consent unchecked", () => {
+    const html = renderToStaticMarkup(createElement(TeamJoin, { currentEmail: null, emailConfirmed: false, hasPending: true, policy, pendingCode: true }));
+    expect(html).toContain("Войти и открыть анкету"); expect(html).toContain('autoComplete="one-time-code"');
+    expect(html).not.toContain('checked=""'); expect(html).not.toContain('type="password"');
   });
 });

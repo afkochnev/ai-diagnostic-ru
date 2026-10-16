@@ -62,7 +62,7 @@ try:
  migrations=sorted((ROOT/'supabase/migrations').glob('*.sql'))
  new=next(x for x in migrations if 'team_aggregation_report' in x.name)
  for path in migrations:
-  if path==new:continue
+  if path==new or 'team_participant_passwordless' in path.name:continue
   if path.name=='20261013000100_account_foundation.sql':sql((ROOT/'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
   sql(path.read_text())
  sql((ROOT/'supabase/tests/team-foundation.sql').read_text());sql("update public.accounts set status='active'")
@@ -80,9 +80,55 @@ try:
  assert sql("select count(*) from private.team_scoring_snapshots") == sql('select count(*) from public.team_diagnostics')
  sql("update private.team_scoring_snapshots set snapshot='{}'",error='team_immutable')
  passed('existing team scoring snapshot backfill and immutability')
+ # Passwordless entry adds one service-only resolver without changing legacy data/policies.
+ auth_migration=next(x for x in migrations if 'team_participant_passwordless' in x.name)
+ before_auth=snapshot();old_policies=sql("select md5(string_agg(to_jsonb(p)::text,',' order by to_jsonb(p)::text)) from pg_policies p")
+ sql(auth_migration.read_text().rsplit('commit;',1)[0]+'select deliberately_invalid_passwordless_transaction();commit;',error='does not exist')
+ assert sql("select to_regprocedure('public.resolve_team_invitation_auth(text)') is null")=='t'
+ sql(auth_migration.read_text());assert before_auth==snapshot()
+ assert old_policies==sql("select md5(string_agg(to_jsonb(p)::text,',' order by to_jsonb(p)::text)) from pg_policies p")
+ sql(auth_migration.read_text(),error='already exists')
+ passed('passwordless resolver migration transactional/additive; original rows and policies unchanged; duplicate rejected')
+
  for n in range(6,11):
   meta={'full_name':'Synthetic account','marketing_consent':False,'marketing_version':'temporary-ru-v1','data_processing_consent':True,'data_processing_version':'temporary-ru-v1'}
   sql(f"insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values('{uid(n)}','v22b-{n}@example.test',now(),{jsonliteral(meta)})")
+ # Entry resolution never exposes mailbox details to a normal authenticated user.
+ ta=team('Passwordless entry fixture');auth_token=secrets.token_hex(32)
+ auth_hash=sql(f"select encode(sha256(convert_to('{auth_token}','UTF8')),'hex')")
+ pa=actor(1,f"select public.invite_team_participant('{ta}','new-passwordless@example.test','Passwordless fixture','{auth_hash}')")
+ def resolve_auth():return json.loads(rpc('resolve_team_invitation_auth',f"'{auth_hash}'"))
+ resolved=resolve_auth();assert resolved=={'email':'new-passwordless@example.test','display_name':'Passwordless fixture','create_user':True}
+ for n in [1,4,6]:actor(n,f"select public.resolve_team_invitation_auth('{auth_hash}')",error='permission denied')
+ sql(f"set role anon;select public.resolve_team_invitation_auth('{auth_hash}')",error='permission denied')
+ worker("select public.resolve_team_invitation_auth('invalid')",error='team_invitation_unavailable')
+ sql("begin;set local role service_role;set local request.jwt.claims='{\"role\":\"authenticated\"}';select public.resolve_team_invitation_auth('"+auth_hash+"');commit;",error='team_invitation_unavailable')
+ passed('passwordless resolver only grants signed service-role callers; owner/admin/participant/anon cannot enumerate recipients')
+ # The real identity trigger consumes exactly the metadata used by passwordless signup.
+ passwordless_meta={'full_name':'Passwordless fixture','marketing_consent':False,'marketing_version':'temporary-ru-v1','data_processing_consent':True,'data_processing_version':'temporary-ru-v1'}
+ sql(f"insert into auth.users(id,email,raw_user_meta_data) values('{uid(11)}','new-passwordless@example.test',{jsonliteral(passwordless_meta)})")
+ assert resolve_auth()['create_user']==False
+ assert sql(f"select role from public.user_roles where user_id='{uid(11)}'")=='user'
+ assert sql(f"select count(*) from public.account_memberships m join public.accounts a on a.id=m.account_id where m.user_id='{uid(11)}' and a.legacy_origin_user_id=m.user_id")=='1'
+ assert sql(f"select count(*) from public.account_memberships where user_id='{uid(11)}' and account_id=(select account_id from public.company_profiles where id=(select company_id from public.team_diagnostics where id='{ta}'))")=='0'
+ assert sql(f"select count(*) from public.company_profiles where owner_user_id='{uid(11)}'")=='0'
+ assert json.loads(sql(f"select jsonb_object_agg(kind,granted) from public.user_consents where user_id='{uid(11)}'"))=={'data_processing':True,'marketing':False}
+ actor(11,f"select public.accept_team_invitation('{auth_token}')",error='team_invitation_unavailable')
+ sql(f"update auth.users set email_confirmed_at=now() where id='{uid(11)}'")
+ assert actor(11,f"select public.accept_team_invitation('{auth_token}')")==pa
+ actor(1,f"select public.read_team_response('{pa}')",error='team_response_unavailable')
+ assert sql(f"select user_id from private.team_responses where participant_id='{pa}'")==uid(11)
+ passed('passwordless signup preserves legacy personal Account provisioning, creates no Company or team-owner membership; consent and confirmed email-bound actor checks pass')
+ # Temporary invalid states are rolled back. No fixture restoration writes needed.
+ def denied_resolver(change):
+  sql("begin;"+change+";set local request.jwt.claims='{\"role\":\"service_role\"}';set local role service_role;select public.resolve_team_invitation_auth('"+auth_hash+"');commit;",error='team_invitation_unavailable')
+ denied_resolver(f"update public.team_participants set revoked_at=now() where id='{pa}'")
+ denied_resolver(f"update private.team_invitations set expires_at=now()-interval '1 second' where participant_id='{pa}'")
+ denied_resolver(f"update public.team_diagnostics set status='closed' where id='{ta}'")
+ denied_resolver(f"update public.accounts set status='archived' where id=(select account_id from public.company_profiles where id=(select company_id from public.team_diagnostics where id='{ta}'))")
+ assert resolve_auth()['email']=='new-passwordless@example.test'
+ passed('passwordless resolver refuses revoked/expired/closed/inactive invitations without altering prior grants or answers')
+
  t=team('Team report local acceptance');ps={n:invite(t,n) for n in range(6,11)}
  for n in range(6,9):
   assert results(t)['status']=='threshold' and results(t)['completed_count']==n-6
