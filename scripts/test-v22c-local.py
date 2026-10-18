@@ -11,6 +11,7 @@ assert info['HostConfig']['NetworkMode']=='none' and not any(info['NetworkSettin
 db='v22c_'+secrets.token_hex(6);checks=[]
 fixture=json.loads((ROOT/'supabase/tests/fixtures/team-rich-texts.json').read_text())
 candidate=next((ROOT/'supabase/migrations').glob('*_rich_team_ai_report_v2.sql'))
+repair_migration=next((ROOT/'supabase/migrations').glob('*_team_synthesis_bounded_repair.sql'))
 def execute(q,database=None):
  return subprocess.run(['docker','exec','-i',args.container,'psql','-XqAt','-v','ON_ERROR_STOP=1','-U','postgres','-d',database or db],input=q,text=True,capture_output=True)
 def sql(q,error=None,database=None):
@@ -63,7 +64,7 @@ try:
  sql('create database '+db,database='postgres')
  sql((ROOT/'supabase/tests/fixtures/methodology-retirement-local-auth.sql').read_text())
  for path in sorted((ROOT/'supabase/migrations').glob('*.sql')):
-  if path==candidate:continue
+  if path in (candidate,repair_migration):continue
   if path.name=='20261013000100_account_foundation.sql':sql((ROOT/'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
   if 'team_aggregation_report' in path.name:sql((ROOT/'supabase/tests/team-foundation.sql').read_text());sql("update public.accounts set status='active'")
   sql(path.read_text())
@@ -88,6 +89,12 @@ try:
  sql(candidate.read_text().rsplit('commit;',1)[0]+'select v22c_intentionally_missing();commit;',error='does not exist')
  assert before==protected();assert sql("select count(*) from information_schema.columns where table_schema='private' and table_name='team_jobs' and column_name='pipeline_version'")=='0'
  sql(candidate.read_text());assert before==protected()
+ validator_before=sql("select md5(pg_get_functiondef('private.validate_team_output(uuid,jsonb)'::regprocedure))")
+ sql(repair_migration.read_text().rsplit('commit;',1)[0]+'select intentionally_missing_repair_probe();commit;',error='does not exist')
+ assert sql("select count(*) from pg_proc where proname='get_team_synthesis_privacy_corpus'")=='0'
+ assert before==protected()
+ sql(repair_migration.read_text());assert before==protected()
+ assert validator_before==sql("select md5(pg_get_functiondef('private.validate_team_output(uuid,jsonb)'::regprocedure))")
  passed('full baseline chain; atomic migration rollback/apply; every pre-existing row preserved, nullable job version extension classified')
  rid2=actor(1,f"select public.request_team_report('{team}')")
  assert rid2!=rid1 and rid2==actor(1,f"select public.request_team_report('{team}')")
@@ -96,6 +103,45 @@ try:
  assert claim(False)==[]
  jobs=claim();assert len(jobs)==1 and jobs[0]['pipeline_version']=='TEAM-RU-2';j=jobs[0];assert claim()==[]
  prepared=json.loads(rpc('prepare_team_report_job',j));e=prepared['report_input'];q=e['questions']
+ # Worker-only corpus is separate from AI inputs and includes the original private texts.
+ for n in [1,2,4,6]:actor(n,'select public.get_team_synthesis_privacy_corpus('+jobargs(j)+')',error='permission denied')
+ sql('set role anon;select public.get_team_synthesis_privacy_corpus('+jobargs(j)+')',error='permission denied')
+ service("select public.get_team_synthesis_privacy_corpus('"+j['id']+"',gen_random_uuid())",error='team_lease_lost')
+ corpus=json.loads(rpc('get_team_synthesis_privacy_corpus',j))
+ assert corpus['threshold']==32 and len(corpus['answers'])==16 and not any(k in json.dumps(corpus['answers']) for k in ['user_id','participant_id','email','display_name'])
+ assert any('v22c-6@example.test' in a['text'] for a in corpus['answers'])
+ assert fixture['open_answers'][0][1] in [a['text'] for a in corpus['answers']]
+ def inspect(output,source=corpus):
+  result=subprocess.run(['node','--import','tsx','scripts/inspect-team-synthesis-local.ts'],cwd=ROOT,input=json.dumps({'output':output,'corpus':source}),capture_output=True,text=True)
+  assert result.returncode==0,'local inspector failed (payload omitted)'
+  return json.loads(result.stdout)
+ sample=fixture['open_answers'][0][1]
+ examples=[{'field':sample},{'nested':{'future':[{'value':sample.upper()}]}},{'left':sample[:20],'right':sample[20:]},
+           {'field':sample[:31]},{'field':sample[:32]},{'field':'Самостоятельная безопасная управленческая интерпретация.'}]
+ for output in examples:
+  local=inspect(output);remote=execute('select private.validate_team_output(\''+team+'\','+lit(output)+')')
+  if remote.returncode:assert 'team_privacy_rejected' in remote.stderr and (local['overlaps'] or local['policyViolation']),'validator parity regression'
+ assert inspect({'nested':{'future':[sample]}})['overlaps']
+ assert not inspect({'field':'Самостоятельная безопасная управленческая интерпретация.'})['overlaps']
+ sql("""begin;do $draft$
+ declare pid uuid; qid text; token text:=repeat('9',64); corpus jsonb; marker text:='Synthetic draft-only confidential observation must never become AI evidence.';
+ begin
+ perform set_config('request.jwt.claims',jsonb_build_object('sub','"""+uid(1)+"""','role','authenticated','aal','aal1')::text,true);
+ pid:=public.invite_team_participant('"""+team+"""','v22c-11@example.test','Synthetic draft participant',encode(sha256(convert_to(token,'UTF8')),'hex'));
+ perform set_config('request.jwt.claims',jsonb_build_object('sub','"""+uid(11)+"""','role','authenticated','aal','aal1')::text,true);
+ perform public.accept_team_invitation(token);
+ select q->>'id' into qid from private.team_questionnaires tq cross join jsonb_array_elements(tq.questions) q where tq.team_diagnostic_id='"""+team+"""' and q->>'answer_type'='text' limit 1;
+ perform public.save_team_response(pid,0,jsonb_build_object(qid,marker),false);
+ perform set_config('request.jwt.claims','{"role":"service_role"}',true);
+ corpus:=public.get_team_synthesis_privacy_corpus("""+jobargs(j)+""");
+ if not exists(select 1 from jsonb_array_elements(corpus->'answers') a where a->>'text'=marker) then raise exception 'draft_corpus_missing';end if;
+ perform set_config('request.jwt.claims',jsonb_build_object('sub','"""+uid(1)+"""','role','authenticated','aal','aal1')::text,true);
+ perform public.revoke_team_participant(pid);
+ perform set_config('request.jwt.claims','{"role":"service_role"}',true);
+ corpus:=public.get_team_synthesis_privacy_corpus("""+jobargs(j)+""");
+ if not exists(select 1 from jsonb_array_elements(corpus->'answers') a where a->>'text'=marker) then raise exception 'revoked_corpus_missing';end if;
+ end $draft$;rollback;""")
+ passed('corpus migration rollback/apply leaves DB validator/rows unchanged; worker-only/current-lease-only raw sources; recursive local/DB parity')
  assert len(e['blocks'])==8 and len(q)==80
  assert set(e)=={'participant_count','company_context','methodology','overall','blocks','questions'}
  assert not any(s in json.dumps(e) for s in ['participant_id','user_id','display_name','email','raw_responses','invitation_token','individual_answer_vector','_question_id'])
@@ -150,6 +196,9 @@ try:
  aggregate();actor(1,f"select public.request_team_report('{threshold}')");j=claim()[0];prepared=json.loads(rpc('prepare_team_report_job',j))
  assert 0<len(prepared['qualitative_input']['groups'])<4
  assert all(g['response_count']>=3 and len(g['texts'])==g['response_count'] for g in prepared['qualitative_input']['groups'])
+ private_corpus=json.loads(rpc('get_team_synthesis_privacy_corpus',j))
+ assert any(sum(a['question_index']==pos for a in private_corpus['answers'])==2 for pos in range(1,85))
+ assert all(g['response_count']>=3 for g in prepared['qualitative_input']['groups']) # local-only corpus never replaces eligible evidence
  m=node_mock(prepared);rpc('store_team_synthesis',j,','+lit(m['synthesis'])+",'mock','local-v2'");rpc('publish_team_report',j,','+lit(m['report'])+",'local-v2'")
  assert claim()==[]
  passed('per-open-question threshold excludes 1/2-text groups and accepts >=3 without relaxing normal validator; queues clear')

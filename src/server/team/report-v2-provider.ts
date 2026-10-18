@@ -4,30 +4,41 @@ import { join } from "node:path";
 import { z } from "zod";
 import { teamAIProvider } from "./report-provider";
 import { mainTeamReportInputV2, parseQualitativeInputV2, teamReportV2Schema, teamSynthesisV2Schema, TEAM_REPORT_V2, type TeamReportInputV2, type TeamSynthesisV2, type QualitativeInputV2 } from "./report-v2-contracts";
+import { repairResponseSchema, type RepairField } from "./synthesis-repair";
 
-async function structuredV2<T>(kind: "synthesis" | "report", input: unknown, schema: z.ZodType<T>) {
+export type TeamCallCounts = { synthesis_call_count: number; repair_call_count: number; report_call_count: number };
+export const emptyTeamCallCounts = (): TeamCallCounts => ({synthesis_call_count:0,repair_call_count:0,report_call_count:0});
+
+async function structuredV2<T>(kind: "synthesis" | "report" | "repair", input: unknown, schema: z.ZodType<T>, counts?: TeamCallCounts) {
   const config = teamAIProvider(TEAM_REPORT_V2);
-  const prompt = readFileSync(join(process.cwd(), kind === "synthesis" ? "TEAM_SYNTHESIS_PROMPT_RU_2.md" : "TEAM_REPORT_PROMPT_RU_2.md"), "utf8");
+  const prompt = readFileSync(join(process.cwd(), kind === "synthesis" ? "TEAM_SYNTHESIS_PROMPT_RU_2.md" : kind === "repair" ? "TEAM_SYNTHESIS_REPAIR_PROMPT_RU_2.md" : "TEAM_REPORT_PROMPT_RU_2.md"), "utf8");
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 180000 });
+  if(counts) counts[kind==="synthesis" ? "synthesis_call_count" : kind==="repair" ? "repair_call_count" : "report_call_count"]++;
   const response = await client.responses.create({
-    model: config.model, store: false, max_output_tokens: kind === "synthesis" ? 6000 : 14000,
+    model: config.model, store: false, max_output_tokens: kind === "report" ? 14000 : 6000,
     input: [{ role: "system", content: prompt }, { role: "user", content: `<UNTRUSTED_TEAM_EVIDENCE>\n${JSON.stringify(input)}\n</UNTRUSTED_TEAM_EVIDENCE>` }],
-    text: { format: { type: "json_schema", name: kind === "synthesis" ? "team_synthesis_ru_2" : "team_report_ru_2", strict: true, schema: z.toJSONSchema(schema) } },
+    text: { format: { type: "json_schema", name: kind === "synthesis" ? "team_synthesis_ru_2" : kind === "repair" ? "team_synthesis_repair_ru_2" : "team_report_ru_2", strict: true, schema: z.toJSONSchema(schema) } },
   });
   // Never log provider bodies, partial output, prompts or evidence on failure.
   if (response.status !== "completed" || !response.output_text) throw new Error("team_schema_rejected");
   return schema.parse(JSON.parse(response.output_text));
 }
 
-export async function synthesizeTeamTextsV2(value: unknown): Promise<TeamSynthesisV2> {
+export async function synthesizeTeamTextsV2(value: unknown, counts?: TeamCallCounts): Promise<TeamSynthesisV2> {
   const input = parseQualitativeInputV2(value);
   if (!input.groups.length || teamAIProvider(TEAM_REPORT_V2).provider === "mock") return mockTeamSynthesisV2(input);
-  return structuredV2("synthesis", input, teamSynthesisV2Schema);
+  return structuredV2("synthesis", input, teamSynthesisV2Schema, counts);
 }
-export async function generateTeamReportV2(aggregates: unknown, summary: unknown) {
+export async function repairSynthesisFields(fields: RepairField[], counts?: TeamCallCounts) {
+  const schema=repairResponseSchema(fields.map(f=>f.path));
+  if(teamAIProvider(TEAM_REPORT_V2).provider==="mock") throw new Error("team_privacy_rejected");
+  // Reconstruct exact allowlist. No raw answers, corpus, identities, full summary or numeric context.
+  return structuredV2("repair", {fields:fields.map(({path,value})=>({path,value}))}, schema, counts);
+}
+export async function generateTeamReportV2(aggregates: unknown, summary: unknown, counts?: TeamCallCounts) {
   const input = mainTeamReportInputV2(aggregates, summary);
   if (teamAIProvider(TEAM_REPORT_V2).provider === "mock") return mockTeamReportV2(input, input.qualitative_summary);
-  return structuredV2("report", input, teamReportV2Schema);
+  return structuredV2("report", input, teamReportV2Schema, counts);
 }
 
 /** Deterministic fixtures exercise the complete shape; they are never presented as real AI quality. */

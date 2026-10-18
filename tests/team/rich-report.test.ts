@@ -18,6 +18,7 @@ vi.mock("openai", () => ({ default: class {
 vi.stubGlobal("React", React);
 const input = () => ({ company_context:v2Evidence().company_context,block_aggregates:v2Evidence().blocks,groups:[{question:"Общий управленческий вопрос",question_position:1,block_title:"Общая информация",response_count:4,relevant_block:null,texts:["Встречи и решения требуют проверки ответственности.","Решения о приоритетах принимаются на встречах.","Ответственность за решения обсуждают повторно.","Встречи помогают выбирать продуктовые приоритеты."]}] });
 const summary = () => mockTeamSynthesisV2(input());
+const privacyCorpus = () => ({threshold:32,answers:input().groups.flatMap(g=>g.texts.map(text=>({question_index:g.question_position,text}))),identifiers:[]});
 afterEach(() => vi.unstubAllEnvs());
 
 describe("rich Team V2 contract and privacy boundary", () => {
@@ -83,16 +84,16 @@ describe("rich Team V2 contract and privacy boundary", () => {
   });
   it("requires V2 synthesis storage validation before the main provider and publishes only a complete rich report", async () => {
     vi.stubEnv("TEAM_AI_PROVIDER","mock");
-    const rpc=vi.fn(async(name:string)=>({data:name==="prepare_team_report_job"?{status:"generating",pipeline_version:"TEAM-RU-2",qualitative_input:input(),report_input:v2Evidence()}:"stored",error:null}));
+    const rpc=vi.fn(async(name:string)=>({data:name==="prepare_team_report_job"?{status:"generating",pipeline_version:"TEAM-RU-2",qualitative_input:input(),report_input:v2Evidence()}:name==="get_team_synthesis_privacy_corpus"?privacyCorpus():"stored",error:null}));
     await processTeamJob({id:"job",kind:"team_ai_report",lease_token:"lease",attempts:1,pipeline_version:"TEAM-RU-2"},rpc);
-    expect(rpc.mock.calls.map(c=>c[0])).toEqual(["prepare_team_report_job","store_team_synthesis","publish_team_report"]);
+    expect(rpc.mock.calls.map(c=>c[0])).toEqual(["prepare_team_report_job","get_team_synthesis_privacy_corpus","store_team_synthesis","publish_team_report"]);
   });
   it("uses exactly two separate model calls with retries disabled; raw text never enters the final payload", async () => {
     vi.stubEnv("TEAM_AI_PROVIDER","mock");const completed=await generateTeamReportV2(v2Evidence(),summary());
     vi.stubEnv("TEAM_AI_PROVIDER","openai");vi.stubEnv("OPENAI_API_KEY","synthetic-unit-key");
     model.create.mockReset();model.options.length=0;
     model.create.mockResolvedValueOnce({status:"completed",output_text:JSON.stringify(summary())}).mockResolvedValueOnce({status:"completed",output_text:JSON.stringify(completed)});
-    const rpc=vi.fn(async(name:string)=>({data:name==="prepare_team_report_job"?{status:"generating",pipeline_version:"TEAM-RU-2",qualitative_input:input(),report_input:v2Evidence()}:"stored",error:null}));
+    const rpc=vi.fn(async(name:string)=>({data:name==="prepare_team_report_job"?{status:"generating",pipeline_version:"TEAM-RU-2",qualitative_input:input(),report_input:v2Evidence()}:name==="get_team_synthesis_privacy_corpus"?privacyCorpus():"stored",error:null}));
     await processTeamJob({id:"job",kind:"team_ai_report",lease_token:"lease",attempts:1,pipeline_version:"TEAM-RU-2"},rpc);
     expect(model.create).toHaveBeenCalledTimes(2);
     expect(model.options.every(o=>o.maxRetries===0)).toBe(true);
@@ -106,9 +107,9 @@ describe("rich Team V2 contract and privacy boundary", () => {
   it("does not call the main model after the database rejects a real synthesis", async () => {
     vi.stubEnv("TEAM_AI_PROVIDER","openai");vi.stubEnv("OPENAI_API_KEY","synthetic-unit-key");
     model.create.mockReset();model.create.mockResolvedValueOnce({status:"completed",output_text:JSON.stringify(summary())});
-    const rpc=vi.fn(async(name:string)=>name==="prepare_team_report_job"?{data:{status:"generating",pipeline_version:"TEAM-RU-2",qualitative_input:input(),report_input:v2Evidence()},error:null}:name==="store_team_synthesis"?{data:null,error:{message:"team_privacy_rejected"}}:{data:null,error:null});
+    const rpc=vi.fn(async(name:string)=>name==="prepare_team_report_job"?{data:{status:"generating",pipeline_version:"TEAM-RU-2",qualitative_input:input(),report_input:v2Evidence()},error:null}:name==="get_team_synthesis_privacy_corpus"?{data:privacyCorpus(),error:null}:name==="store_team_synthesis"?{data:null,error:{message:"team_privacy_rejected"}}:{data:null,error:null});
     await processTeamJob({id:"job",kind:"team_ai_report",lease_token:"lease",attempts:1,pipeline_version:"TEAM-RU-2"},rpc);
     expect(model.create).toHaveBeenCalledOnce();
-    expect(rpc.mock.calls.map(c=>c[0])).toEqual(["prepare_team_report_job","store_team_synthesis","fail_team_job"]);
+    expect(rpc.mock.calls.map(c=>c[0])).toEqual(["prepare_team_report_job","get_team_synthesis_privacy_corpus","store_team_synthesis","fail_team_job"]);
   });
 });
