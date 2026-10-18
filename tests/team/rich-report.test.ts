@@ -70,6 +70,7 @@ describe("rich Team V2 contract and privacy boundary", () => {
     for(const key of ["main_diagnosis","manageability_index_text","growth_constraint"] as const)expect(report[key].split("\n\n").length).toBeGreaterThanOrEqual(2);
     expect(report.plan_30_days).toHaveLength(5);expect(report.plan_60_days).not.toEqual(report.plan_30_days);expect(report.plan_90_days).not.toEqual(report.plan_60_days);
     expect(report.team_analysis.divergence.join(" ")).toContain("скрывает противоположные оценки");
+    expect(report.team_analysis.divergence[0]).toContain("В вопросе из блока «Блок 1» среднее 2 по шкале 0–4");
     expect(report.team_analysis.alignment.join(" ")).toContain("согласие вокруг слабости");
     const html=renderToStaticMarkup(createElement(RichTeamReport,{content:report}));
     for(const [title] of [...teamCoreSections,...teamDynamicsSections])expect(html).toContain(title);
