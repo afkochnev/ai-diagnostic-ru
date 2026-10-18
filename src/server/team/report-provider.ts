@@ -2,11 +2,11 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { mainTeamReportInput, qualitativeGroupsSchema, synthesisSchema, teamReportSchema, type TeamReportInput, type TeamSynthesis } from "./report-contracts";
 
-export function teamAIProvider() {
+export function teamAIProvider(pipelineVersion = "TEAM-RU-1") {
   const provider = process.env.TEAM_AI_PROVIDER ?? "mock";
   if (provider !== "mock" && provider !== "openai") throw new Error("team_provider_invalid");
   if (provider === "openai" && !process.env.OPENAI_API_KEY) throw new Error("team_provider_not_configured");
-  return { provider, model: provider === "mock" ? "team-mock-v1" : process.env.TEAM_AI_MODEL || process.env.OPENAI_MODEL || "gpt-5.6-sol" };
+  return { provider, model: provider === "mock" ? pipelineVersion === "TEAM-RU-2" ? "team-mock-v2" : "team-mock-v1" : process.env.TEAM_AI_MODEL || process.env.OPENAI_MODEL || "gpt-5.6-sol" };
 }
 async function structured<T>(kind: string, input: unknown, schema: z.ZodType<T>, instruction: string): Promise<T> {
   const config = teamAIProvider();
