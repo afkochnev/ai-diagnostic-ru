@@ -9,15 +9,15 @@ import { repairResponseSchema, type RepairField } from "./synthesis-repair";
 export type TeamCallCounts = { synthesis_call_count: number; repair_call_count: number; report_call_count: number };
 export const emptyTeamCallCounts = (): TeamCallCounts => ({synthesis_call_count:0,repair_call_count:0,report_call_count:0});
 
-async function structuredV2<T>(kind: "synthesis" | "report" | "repair", input: unknown, schema: z.ZodType<T>, counts?: TeamCallCounts) {
+async function structuredV2<T>(kind: "synthesis" | "report" | "repair" | "report_repair", input: unknown, schema: z.ZodType<T>, counts?: TeamCallCounts) {
   const config = teamAIProvider(TEAM_REPORT_V2);
-  const prompt = readFileSync(join(process.cwd(), kind === "synthesis" ? "TEAM_SYNTHESIS_PROMPT_RU_2.md" : kind === "repair" ? "TEAM_SYNTHESIS_REPAIR_PROMPT_RU_2.md" : "TEAM_REPORT_PROMPT_RU_2.md"), "utf8");
+  const prompt = readFileSync(join(process.cwd(), kind === "synthesis" ? "TEAM_SYNTHESIS_PROMPT_RU_2.md" : kind === "repair" ? "TEAM_SYNTHESIS_REPAIR_PROMPT_RU_2.md" : kind === "report_repair" ? "TEAM_REPORT_REPAIR_PROMPT_RU_2.md" : "TEAM_REPORT_PROMPT_RU_2.md"), "utf8");
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 180000 });
-  if(counts) counts[kind==="synthesis" ? "synthesis_call_count" : kind==="repair" ? "repair_call_count" : "report_call_count"]++;
+  if(counts) counts[kind==="synthesis" ? "synthesis_call_count" : kind==="repair" || kind==="report_repair" ? "repair_call_count" : "report_call_count"]++;
   const response = await client.responses.create({
     model: config.model, store: false, max_output_tokens: kind === "report" ? 14000 : 6000,
     input: [{ role: "system", content: prompt }, { role: "user", content: `<UNTRUSTED_TEAM_EVIDENCE>\n${JSON.stringify(input)}\n</UNTRUSTED_TEAM_EVIDENCE>` }],
-    text: { format: { type: "json_schema", name: kind === "synthesis" ? "team_synthesis_ru_2" : kind === "repair" ? "team_synthesis_repair_ru_2" : "team_report_ru_2", strict: true, schema: z.toJSONSchema(schema) } },
+    text: { format: { type: "json_schema", name: kind === "synthesis" ? "team_synthesis_ru_2" : kind === "repair" ? "team_synthesis_repair_ru_2" : kind === "report_repair" ? "team_report_repair_ru_2" : "team_report_ru_2", strict: true, schema: z.toJSONSchema(schema) } },
   });
   // Never log provider bodies, partial output, prompts or evidence on failure.
   if (response.status !== "completed" || !response.output_text) throw new Error("team_schema_rejected");
@@ -34,6 +34,10 @@ export async function repairSynthesisFields(fields: RepairField[], counts?: Team
   if(teamAIProvider(TEAM_REPORT_V2).provider==="mock") throw new Error("team_privacy_rejected");
   // Reconstruct exact allowlist. No raw answers, corpus, identities, full summary or numeric context.
   return structuredV2("repair", {fields:fields.map(({path,value})=>({path,value}))}, schema, counts);
+}
+export async function repairReportFields(fields: RepairField[], counts?: TeamCallCounts) {
+  if(teamAIProvider(TEAM_REPORT_V2).provider==="mock") throw new Error("team_privacy_rejected");
+  return structuredV2("report_repair",{fields:fields.map(({path,value})=>({path,value}))},repairResponseSchema(fields.map(f=>f.path)),counts);
 }
 export async function generateTeamReportV2(aggregates: unknown, summary: unknown, counts?: TeamCallCounts) {
   const input = mainTeamReportInputV2(aggregates, summary);
@@ -76,9 +80,10 @@ export function mockTeamReportV2(input: TeamReportInputV2, synthesis: TeamSynthe
   const agreement = [...input.blocks].sort((a,b) => a.stddev_pop-b.stddev_pop || a.position-b.position)[0];
   const split = input.questions.find(q => q.distribution[0]+q.distribution[1]>0 && q.distribution[3]+q.distribution[4]>0 && q.distribution[2]===0);
   const sameLow = input.questions.find(q => q.distribution[0]+q.distribution[1]===q.participant_count);
-  const goal = typeof input.company_context.main_goals === "string" ? input.company_context.main_goals : "согласованных целей компании";
+  // Fixed mock templates never echo arbitrary company free text or cached synthesis.
+  const goal = "улучшения совместного исполнения";
   const plans = (phase: number) => [
-    phase===30 ? `Разобрать сквозной процесс, связанный с целью ${goal}. Результат — согласованная карта решений и точек передачи ответственности.` : phase===60 ? "Провести пилот согласованного процесса на рабочем цикле. Руководитель процесса фиксирует отклонения и результат каждого перехода." : "Сравнить работу пилотной практики с исходной картиной. Решение о закреплении принимается по фактам исполнения и наблюдаемым ограничениям.",
+    phase===30 ? `Разобрать сквозной процесс, связанный с целью ${goal}. Результат — карта решений и точек передачи ответственности.` : phase===60 ? "Провести пилот согласованного процесса на рабочем цикле. Руководитель процесса фиксирует отклонения и результат каждого перехода." : "Сравнить работу пилотной практики с исходной картиной. Решение о закреплении принимается по фактам исполнения и наблюдаемым ограничениям.",
     phase===30 ? "Согласовать критерии завершения задачи между функциями. Контрольная точка — одинаковое понимание результата на разобранном примере." : phase===60 ? "Проверить критерии завершения на нескольких переходах между функциями. Итог — список устранимых причин повторной работы." : "Уточнить правила передачи задач с учётом пилота. Закрепить только те изменения, которые улучшили предсказуемость результата.",
     phase===30 ? "Определить доступную исходную базу управленческих показателей. Не назначать целевые значения до проверки качества данных." : phase===60 ? "Сопоставить решения руководителей с доступными показателями. Зафиксировать, какие данные действительно меняют выбор действия." : "Оценить устойчивость показателей и договориться о следующем цикле наблюдения. Отделить временный эффект от воспроизводимой практики.",
     phase===30 ? "Провести общую сессию по различающимся оценкам без обсуждения авторства. Результат — проверяемые гипотезы о рабочих ситуациях." : phase===60 ? "Вернуться к гипотезам сессии с материалами пилота. Каждое уточнение связывать с наблюдением, а не с предполагаемым автором ответа." : "Подвести итоги общих гипотез и снять те, которые не подтвердились. Оставшиеся ограничения включить в следующий план изменений.",
@@ -96,9 +101,9 @@ export function mockTeamReportV2(input: TeamReportInputV2, synthesis: TeamSynthe
     plan_30_days: plans(30), plan_60_days: plans(60), plan_90_days: plans(90),
     next_step: "В ближайшие пять рабочих дней организуйте рабочую сессию по одной сквозной задаче. Руководитель должен принести критерии ожидаемого результата, а обсуждение — завершиться выбором одного проверяемого изменения и контрольной точки.\n\nТакой шаг связывает числовые наблюдения с практикой, сохраняя анонимность ответов. По итогам следует получить рабочую гипотезу ограничения и план пилота, а не перечень общих пожеланий.",
     team_analysis: {
-      alignment: [`В блоке «${agreement.title}» оценки относительно близки. Их общий уровень следует читать отдельно от разброса: близость оценок не означает автоматически сильную практику.`, ...(sameLow ? [`В вопросе из блока «${sameLow.block_title}» все нормализованные оценки относятся к нижней части шкалы. Это согласие вокруг слабости, а не сильная сторона; полезно выбрать общее действие по признанному ограничению.`] : []), ...synthesis.alignment_signals.slice(0,2)],
+      alignment: [`В блоке «${agreement.title}» оценки относительно близки. Их общий уровень следует читать отдельно от разброса: близость оценок не означает автоматически сильную практику.`, ...(sameLow ? [`В вопросе из блока «${sameLow.block_title}» все нормализованные оценки относятся к нижней части шкалы. Это согласие вокруг слабости, а не сильная сторона; полезно выбрать общее действие по признанному ограничению.`] : []), ...(synthesis.themes.length ? ["Есть материал для общей проверки управленческих гипотез. Само наличие темы не доказывает согласие по каждому вопросу."] : [])],
       divergence: split ? [`В вопросе из блока «${split.block_title}» среднее ${number(split.mean)} по шкале 0–4 скрывает противоположные оценки: в распределении одновременно есть низкие и высокие значения. Это разные картины ситуации среди завершивших участников, а не доказанный конфликт. На сессии следует уточнить условия применения соответствующей практики.`] : ["Распределения следует сопоставить с наблюдаемыми рабочими ситуациями. Сам разброс не даёт основания приписывать группе конфликт или общую причину различий."],
-      qualitative_signals: synthesis.themes.map(t => `${t.title}. ${t.summary} Управленческое следствие — выбрать конкретную рабочую ситуацию для общей проверки и согласовать признак результата.`),
+      qualitative_signals: synthesis.themes.length ? ["Тестовая рекомендация: обсудить сквозную рабочую задачу и проверить, как решение доходит до результата. Содержание частных ответов и формулировки синтеза в тестовый отчёт не переносятся."] : [],
       discussion_questions: ["Какие условия исполнения помогают объяснить разные оценки одной управленческой практики?", "В какой сквозной задаче проще всего проверить признанное слабое место?", `Как выбранное изменение поможет цели ${goal}?`, "Где формальное правило расходится с повседневным исполнением и как это проверить без поиска авторов ответов?", "Какие признаки результата позволят решить, что пилот следует закрепить?", "Что руководителю необходимо изменить в ритме проверки договорённостей, чтобы решения доходили до результата?"],
     },
   });

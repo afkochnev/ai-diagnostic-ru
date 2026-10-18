@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { mainTeamReportInput, qualitativeGroupsSchema, synthesisSchema, teamReportSchema, type TeamReportInput, type TeamSynthesis } from "./report-contracts";
 
-export function teamAIProvider(pipelineVersion = "TEAM-RU-1") {
+export function teamAIProvider(pipelineVersion = "TEAM-RU-1"): {provider: "mock" | "openai"; model: string} {
   const provider = process.env.TEAM_AI_PROVIDER ?? "mock";
   if (provider !== "mock" && provider !== "openai") throw new Error("team_provider_invalid");
   if (provider === "openai" && !process.env.OPENAI_API_KEY) throw new Error("team_provider_not_configured");

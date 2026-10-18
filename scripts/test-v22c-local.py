@@ -27,9 +27,10 @@ def jobargs(j):return f"'{j['id']}','{j['lease_token']}'"
 def claim(v2=True):return json.loads(service("select coalesce(jsonb_agg(j),'[]') from public."+('claim_team_jobs_v2' if v2 else 'claim_team_jobs')+'(2,600) j'))
 def rpc(name,j,extra='',error=None):return service('select public.'+name+'('+jobargs(j)+extra+')',error)
 def passed(name):checks.append(name);print('PASS '+name,flush=True)
-def submit(team,n,index,optional_blank=False,poison=False):
+def submit(team,n,index,optional_blank=False,poison=False,display_name=None):
  token=secrets.token_hex(32)
- pid=actor(1,f"select public.invite_team_participant('{team}','v22c-{n}@example.test','V22C synthetic person {n}',encode(sha256(convert_to('{token}','UTF8')),'hex'))")
+ display_name=display_name or f"V22C synthetic person {n}"
+ pid=actor(1,f"select public.invite_team_participant('{team}','v22c-{n}@example.test','{display_name}',encode(sha256(convert_to('{token}','UTF8')),'hex'))")
  actor(n,f"select public.accept_team_invitation('{token}')")
  questionnaire=json.loads(actor(n,f"select public.read_team_response('{pid}')"))
  snap=json.loads(sql(f"select snapshot from private.team_scoring_snapshots where team_diagnostic_id='{team}'"))
@@ -53,6 +54,7 @@ def aggregate(v2=True):
   if not jobs:break
   for j in jobs:assert j['kind']=='team_aggregate';assert rpc('process_team_aggregate',j) in ('completed','superseded')
 def node_mock(prepared):
+ prepared={**prepared,"privacy_corpus":json.loads(rpc("get_team_synthesis_privacy_corpus",j))}
  r=subprocess.run(['node','--import','tsx','scripts/v22c-mock-providers.ts'],cwd=ROOT,input=json.dumps(prepared),capture_output=True,text=True,env={**os.environ,'TEAM_AI_PROVIDER':'mock'})
  assert r.returncode==0,'mock provider fixture failed (payload omitted)'
  return json.loads(r.stdout)
@@ -163,6 +165,7 @@ try:
  assert sql(f"select count(*) from private.team_qualitative_syntheses where team_diagnostic_id='{team}' and source_fingerprint='{fp}'")=='2'
  assert json.loads(rpc('prepare_team_report_job',j))['synthesis']==mock['synthesis']
  bad={**mock['report'],'team_analysis':{**mock['report']['team_analysis'],'discussion_questions':['safe']*4+['v22c-6@example.test']}}
+ assert inspect(bad)['policyViolation']
  rpc('publish_team_report',j,','+lit(bad)+",'local-v2'",error='team_privacy_rejected')
  rpc('publish_team_report',j,','+lit(mock['report'])+",'local-v2'")
  assert claim()==[]
@@ -191,8 +194,9 @@ try:
  passed('real source change yields next V2 version and stale history; distributions visible safely; downgrade retains report continuity and blocks new Team')
  # Separate local threshold fixture: optional open questions with only two answers stay out.
  service(f"select public.assign_account_plan('{aid}','advanced')")
- threshold=actor(1,f"select public.create_team_diagnostic('{company}','V22C local threshold')")
- for i,n in enumerate(range(6,9)):submit(threshold,n,i,optional_blank=i==2)
+ sql(f"update public.company_profiles set main_goals='{fixture['open_answers'][0][0]}' where id='{company}'")
+ threshold=actor(1,f"select public.create_team_diagnostic('{company}','FoodTech-like report privacy regression')")
+ for i,n in enumerate(range(6,9)):submit(threshold,n,i,optional_blank=i==2,display_name=["Алексей","Сергей","Анна"][i])
  aggregate();actor(1,f"select public.request_team_report('{threshold}')");j=claim()[0];prepared=json.loads(rpc('prepare_team_report_job',j))
  assert 0<len(prepared['qualitative_input']['groups'])<4
  assert all(g['response_count']>=3 and len(g['texts'])==g['response_count'] for g in prepared['qualitative_input']['groups'])
@@ -201,7 +205,7 @@ try:
  assert all(g['response_count']>=3 for g in prepared['qualitative_input']['groups']) # local-only corpus never replaces eligible evidence
  m=node_mock(prepared);rpc('store_team_synthesis',j,','+lit(m['synthesis'])+",'mock','local-v2'");rpc('publish_team_report',j,','+lit(m['report'])+",'local-v2'")
  assert claim()==[]
- passed('per-open-question threshold excludes 1/2-text groups and accepts >=3 without relaxing normal validator; queues clear')
+ passed('FoodTech-like3participants/company-goal=private-open-text/Анна: local+DB mock report publish PASS; per-question threshold preserved; queues clear')
  print(json.dumps({'status':'PASS','groups':len(checks),'realAIRequests':0,'productionTouched':False}))
 finally:
  execute('drop database if exists '+db+' with (force)',database='postgres')

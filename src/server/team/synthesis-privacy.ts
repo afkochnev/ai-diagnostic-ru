@@ -37,10 +37,11 @@ function dbStringLeaves(value: unknown, tokens: (string | number)[] = [], path =
 const policy = /[\p{L}\p{N}._%+\-]+@[\p{L}\p{N}.\-]+\.[\p{L}]{2,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\+?[0-9][0-9 ()\-]{7,}[0-9]|https?:\/\/|www\.|ignore\s+previous\s+instructions|system\s+prompt|developer\s+message|игнорируй\s+предыдущ|(?:респондент|участник|respondent)\s*[0-9]|(?:со слов|по словам)\s+(?:участник|респондент|руководител)|(?:один|одна|анонимный)\s+(?:из\s+)?(?:участник|респондент)|(?:участник|респондент)\s+(?:сообщил|отметил|считает|сказал)/iu;
 
 /** No raw fragments/identities/generated values escape in diagnostics or exceptions. */
-export function inspectSynthesisPrivacy(output: unknown, corpus: PrivacyCorpus): PrivacyInspection {
+export function inspectTeamOutputPrivacy(output: unknown, corpus: PrivacyCorpus) {
   if (corpus.answers.reduce((n,a)=>n+Array.from(a.text).length,0)>500000) throw new Error("team_privacy_rejected");
   const leaves = stringLeaves(output), found = new Map<string,OverlapDiagnostic>();
   let policyViolation = false;
+  const policyFields = new Set<string>();
   const modes = [(s:string)=>s.toLowerCase(), normalizePrivacyText];
   for (const normalize of modes) {
     const index = new Map<string,number>();
@@ -50,7 +51,17 @@ export function inspectSynthesisPrivacy(output: unknown, corpus: PrivacyCorpus):
     }
     const identifiers = corpus.identifiers.map(normalize);
     const scan = (text: string, paths: string[] | ((offset: number,length: number)=>string[])) => {
-      if (policy.test(text) || identifiers.some(id=>id && text.includes(id))) policyViolation = true;
+      const flagPolicy = (start: number, length: number) => {
+        policyViolation = true;
+        const offset=Array.from(text.slice(0,start)).length;
+        for(const path of typeof paths==="function" ? paths(offset,Array.from(text.slice(start,start+length)).length) : paths) policyFields.add(path);
+      };
+      for(const match of text.matchAll(new RegExp(policy.source,policy.flags+"g"))) flagPolicy(match.index,match[0].length);
+      for(const id of identifiers) {
+        if(!id) continue;
+        let at=text.indexOf(id);
+        while(at>=0) {flagPolicy(at,id.length);at=text.indexOf(id,at+id.length);}
+      }
       const chars=Array.from(text);
       for (let i=0;i<=chars.length-SYNTHESIS_OVERLAP_THRESHOLD;i++) {
         const q=index.get(chars.slice(i,i+SYNTHESIS_OVERLAP_THRESHOLD).join(""));
@@ -70,5 +81,12 @@ export function inspectSynthesisPrivacy(output: unknown, corpus: PrivacyCorpus):
     scan(parts.map(leaf=>leaf.text).join(normalize===normalizePrivacyText?" ":"\n"),
       (start,length)=>ranges.filter(r=>r.start<start+length&&r.end>start).map(r=>r.path));
   }
-  return {overlaps:[...found.values()],policyViolation};
+  const overlaps=[...found.values()];
+  // Zero length/source denotes a policy match, not a fragment of an open answer.
+  const violations=[...overlaps,...[...policyFields].filter(path=>!found.has(path)).map(field_path=>({field_path,match_length:0,source_question_index:0}))];
+  return {overlaps,policyViolation,violations};
+}
+export function inspectSynthesisPrivacy(output: unknown, corpus: PrivacyCorpus): PrivacyInspection {
+  const {overlaps,policyViolation}=inspectTeamOutputPrivacy(output,corpus);
+  return {overlaps,policyViolation};
 }

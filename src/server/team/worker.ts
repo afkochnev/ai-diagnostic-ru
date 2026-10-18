@@ -1,14 +1,16 @@
 import { createAdminClient } from "@/server-runtime/supabase/admin";
 import { generateTeamReport, synthesizeTeamTexts, teamAIProvider } from "./report-provider";
-import { emptyTeamCallCounts, generateTeamReportV2, synthesizeTeamTextsV2, repairSynthesisFields } from "./report-v2-provider";
+import { emptyTeamCallCounts, generateTeamReportV2, synthesizeTeamTextsV2, repairSynthesisFields, repairReportFields } from "./report-v2-provider";
 import { parseQualitativeInputV2 } from "./report-v2-contracts";
-import { inspectSynthesisPrivacy, privacyCorpusSchema } from "./synthesis-privacy";
+import { inspectSynthesisPrivacy, privacyCorpusSchema, type PrivacyCorpus } from "./synthesis-privacy";
 import { validateAndRepairSynthesis } from "./synthesis-repair";
+import { validateAndRepairReport } from "./report-privacy";
 export type TeamJob = { id: string; kind: "team_aggregate" | "team_ai_report"; lease_token: string; attempts: number; pipeline_version?: string | null };
 type Rpc = (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
 export async function processTeamJob(job: TeamJob, rpc: Rpc) {
   const counts=emptyTeamCallCounts();
-  let rich=false, localPass=false, storingSynthesis=false;
+  let rich=false, localPass=false, storingSynthesis=false, publishing=false, reportLocalPass=false;
+  let corpus: PrivacyCorpus | null=null;
   const identity = { p_job_id: job.id, p_lease_token: job.lease_token };
   const call = async (name: string, args: Record<string, unknown> = {}) => {
     const r = await rpc(name, { ...identity, ...args });
@@ -24,7 +26,7 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
     let summary: unknown;
     if(rich) {
       const input=parseQualitativeInputV2(prepared.qualitative_input);
-      const corpus=privacyCorpusSchema.parse(await call("get_team_synthesis_privacy_corpus"));
+      corpus=privacyCorpusSchema.parse(await call("get_team_synthesis_privacy_corpus"));
       if(prepared.synthesis) {
         // A successful cached synthesis is immutable: validate, never repair/overwrite it.
         const check=inspectSynthesisPrivacy(prepared.synthesis,corpus);
@@ -43,20 +45,27 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
       storingSynthesis=false;
       if (stored === "superseded") return stored;
     }
-    const content = await (rich ? generateTeamReportV2(prepared.report_input, summary,counts) : generateTeamReport(prepared.report_input, summary));
+    const generated = await (rich ? generateTeamReportV2(prepared.report_input, summary,counts) : generateTeamReport(prepared.report_input, summary));
+    const content=rich && corpus ? await validateAndRepairReport(generated,prepared.report_input,corpus,config.provider,
+      fields=>repairReportFields(fields,counts),event=>console.info("[team-ai]",event)) : generated;
+    reportLocalPass=rich;
+    publishing=true;
     return await call("publish_team_report", { p_content: content, p_model: config.model });
   } catch (error) {
     // Never persist/log provider output, exception details, raw input or answer values.
     const message = error instanceof Error ? error.message : "";
     if(rich && localPass && storingSynthesis && message.includes("team_privacy_rejected")) console.info("[team-ai]",{event:"team_validator_parity_bug"});
+    if(rich && reportLocalPass && publishing && message.includes("team_privacy_rejected")) console.info("[team-ai]",{event:"team_validator_parity_bug",phase:"report"});
     // A V2 job that attempted an external call cannot silently start a new synthesis
     // or repair on a later worker tick. Owner-approved explicit retry is a new run.
     const attempted=counts.synthesis_call_count+counts.repair_call_count+counts.report_call_count;
-    const retryable = (!rich || attempted===0) && /timeout|aborted|429|5\d\d|network|fetch failed|econnreset|team_aggregate_pending/i.test(message);
-    const code = ["team_privacy_rejected","team_schema_rejected","team_numeric_integrity","team_aggregate_pending"].includes(message) ? message : retryable ? "team_provider_retryable" : "team_processing_failed";
+    const deterministic=["team_privacy_rejected","team_schema_rejected","team_numeric_integrity"].find(code=>message.includes(code));
+    const retryable = !deterministic && (!rich || attempted===0) && /timeout|aborted|429|5\d\d|network|fetch failed|econnreset|team_aggregate_pending/i.test(message);
+    const code = deterministic ?? (message==="team_aggregate_pending" ? message : retryable ? "team_provider_retryable" : "team_processing_failed");
     await rpc("fail_team_job", { ...identity, p_error_code: code, p_retryable: retryable });
     return "failed";
   } finally {
+    corpus=null;
     if(rich) console.info("[team-ai]",{event:"team_ai_call_counts",...counts});
   }
 }
