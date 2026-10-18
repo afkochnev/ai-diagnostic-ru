@@ -1,6 +1,7 @@
 /** Offline transport simulation only. No network or database credentials; all fetches are replaced. */
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, renameSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { createConnection } from "node:net";
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
 import { v2Evidence } from "../tests/team/v2-fixtures.ts";
@@ -29,21 +30,21 @@ for(const scenario of ["clean","repair","still_leaks","wrong_paths","gate_before
   let exited=false,stdout="",stderr="";const exit=new Promise<number|null>(resolve=>child!.once("exit",code=>{exited=true;resolve(code);}));
   child.stdout!.on("data",chunk=>stdout+=chunk);child.stderr!.on("data",chunk=>stderr+=chunk);
   const wait=async(test:()=>boolean)=>{const end=Date.now()+12000;while(!test()){if(exited||Date.now()>end)throw Error("offline_driver_wait_failed");await new Promise(resolve=>setTimeout(resolve,25));}};
-  let sequence=0;const command=(value:unknown)=>{const path=join(directory,"command-"+String(++sequence).padStart(4,"0"));writeFileSync(path+".pending",JSON.stringify(value),{mode:0o600});renameSync(path+".pending",path+".json");};
+  const command=(value:unknown)=>new Promise<Record<string,unknown>>((resolve,reject)=>{const socket=createConnection(join(directory,"control.sock"));let raw="";socket.setEncoding("utf8");socket.once("error",reject);socket.on("data",chunk=>raw+=chunk);socket.once("end",()=>{try{resolve(JSON.parse(raw));}catch{reject(Error("bad_ipc_reply"));}});socket.once("connect",()=>socket.end(JSON.stringify(value)));});
   await wait(()=>existsSync(join(directory,"driver-ready.json")));assert(!existsSync(join(directory,"OPENAI_API_KEY.txt")));
   const identity={teamId:"450f7c30-bde0-47fb-9749-d38672e29914",jobId:"85b3a17b-9792-4849-a4dd-90b20c95c215",source:"af0a3cfa3269796dfecd7a71c565d8bc083c5020f97d4274e67dd3a6062f694b",participantCount:5,leaseExpiresAt:new Date(Date.now()+600000).toISOString()};
-  if(scenario==="gate_before_synthesis")command({action:"report"});
+  if(scenario==="gate_before_synthesis")await command({action:"report"});
   else {
-   command({action:"synthesize",identity,prepared,privacyCorpus:corpus});
+   await command({action:"synthesize",identity,prepared,privacyCorpus:corpus});
    await wait(()=>existsSync(join(directory,"synthesis-schema-pass.json"))||existsSync(join(directory,"driver-failure.json")));
    if(["clean","repair","extra_report"].includes(scenario)){
-    const validatedSynthesis=JSON.parse(readFileSync(join(directory,"synthesis-output.private.json"),"utf8"));
+    const validatedSynthesis=(await command({action:"get_synthesis"})).summary;
     const request={action:"report",gate:{status:"DB_STORED_PRIVACY_SCHEMA_PASS",jobId:identity.jobId,source:identity.source,sourceCurrent:true},validatedSynthesis};
-    command(request);await wait(()=>existsSync(join(directory,"report-schema-pass.json")));
-    command(scenario==="extra_report"?request:{action:"stop"});
+    await command(request);await wait(()=>existsSync(join(directory,"report-schema-pass.json")));
+    await command(scenario==="extra_report"?request:{action:"stop"});
    }
   }
-  const code=await Promise.race([exit,new Promise<null>(resolve=>setTimeout(()=>resolve(null),12000))]);assert.equal(code,0);assert.equal(stderr,"");
+  const code=await Promise.race([exit,new Promise<null>(resolve=>setTimeout(()=>resolve(null),12000))]);assert.equal(code,0);assert.equal(stderr,"");assert(!existsSync(join(directory,"synthesis-output.private.json")));assert(!existsSync(join(directory,"report-output.private.json")));
   const closed=stdout.trim().split("\n").map(x=>JSON.parse(x)).find(x=>x.event==="driver_closed");
   const expected=scenario==="clean"?2:scenario==="gate_before_synthesis"?0:["still_leaks","wrong_paths"].includes(scenario)?2:3;
   assert.equal(closed.realCallsSent,expected);assert(closed.sentByKind.synthesis<=1&&closed.sentByKind.repair<=1&&closed.sentByKind.report<=1);
