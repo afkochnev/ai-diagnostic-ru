@@ -3,7 +3,7 @@
 import argparse,json,secrets,subprocess,re
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--container',required=True);a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--container',required=True);p.add_argument('--suite');a=p.parse_args()
 info=json.loads(subprocess.check_output(['docker','inspect',a.container]))[0]
 if not a.container.startswith('ai-diagnostic-v22b-') or info['Config']['Image']!='ai-diagnostic-v22b-pgtap:local' or any(info['NetworkSettings']['Ports'].values()) or info['HostConfig']['NetworkMode']!='none':raise SystemExit('isolated local pgTAP container required')
 def sql(db,q):
@@ -24,8 +24,10 @@ checkpoints={
  'methodology-ru-2-1.test.sql':'20260918000300',
  'methodology-repair.test.sql':'20261012000100',
 }
+if a.suite and a.suite not in checkpoints:raise SystemExit("unknown suite")
 results=[]
 for name,cutoff in checkpoints.items():
+ if a.suite and name!=a.suite:continue
  db='tap_'+secrets.token_hex(6)
  try:
   sql('postgres','create database '+db)

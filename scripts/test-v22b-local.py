@@ -62,6 +62,7 @@ try:
  migrations=sorted((ROOT/'supabase/migrations').glob('*.sql'))
  new=next(x for x in migrations if 'team_aggregation_report' in x.name)
  for path in migrations:
+  if 'plans_entitlements_billing_foundation' in path.name:continue
   if path==new or 'team_participant_passwordless' in path.name or 'team_single_email_consent' in path.name:continue
   if path.name=='20261013000100_account_foundation.sql':sql((ROOT/'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
   sql(path.read_text())
@@ -93,6 +94,13 @@ try:
  if single_email:
   preserved=snapshot();sql(single_email.read_text());assert preserved==snapshot()
   passed('single-email pending-identity migration preserves all existing rows before full Team regression')
+
+ billing=next((x for x in migrations if 'plans_entitlements_billing_foundation' in x.name),None)
+ if billing:
+  preserved=snapshot();sql(billing.read_text());assert preserved==snapshot()
+  owner_account=sql("select id from public.accounts where legacy_origin_user_id='"+uid(1)+"'")
+  worker("select public.assign_account_plan('"+owner_account+"','advanced')")
+  passed('V2.3 backfill preserves prior data; Team owner explicitly Advanced for full current-schema regression')
 
  for n in range(6,11):
   meta={'full_name':'Synthetic account','marketing_consent':False,'marketing_version':'temporary-ru-v1','data_processing_consent':True,'data_processing_version':'temporary-ru-v1'}

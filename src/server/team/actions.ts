@@ -19,6 +19,7 @@ import { sendTeamCodeAction } from "./passwordless-actions";
 import { z } from "zod";
 import { singleEmailCredential } from "./single-email";
 import { openInvitationAuthProof } from "./invitation-auth-proof";
+import { requireEntitlement } from "@/server/entitlements";
 const cookieName = "team-invitation";
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 async function origin() {
@@ -27,6 +28,7 @@ async function origin() {
 function failure(error: unknown): TeamActionState {
   const code = error instanceof Error ? error.message : "";
   const messages: Record<string, string> = {
+    advanced_required: "Эта возможность доступна на тарифе Advanced.",
     team_already_invited: "Этот участник уже приглашён. При необходимости выпустите новую ссылку.",
     team_revision_conflict: "Ответы изменились в другой вкладке. Обновите страницу перед сохранением.",
     team_response_completed: "Ответы уже отправлены.",
@@ -47,7 +49,8 @@ export async function createTeamAction(_: TeamActionState, form: FormData): Prom
     await origin(); const identity = await requireIdentity();
     const input = teamCreation.parse({ companyId: value(form,"companyId"), title: value(form,"title") });
     companyId = input.companyId;
-    await requireCompanyWrite(companyId, identity.user.id);
+    const company = await requireCompanyWrite(companyId, identity.user.id);
+    await requireEntitlement(company.account_id, "team_diagnostics");
     await enforceRateLimit(`team-create:${identity.user.id}`, 20, 86400);
     id = await teamRpc<string>("create_team_diagnostic", { p_company_id: companyId, p_title: input.title });
   } catch (error) { return failure(error); }
@@ -60,7 +63,8 @@ export async function inviteTeamAction(_: TeamActionState, form: FormData): Prom
     const input = teamInvitation.parse({ teamId: value(form,"teamId"), email: value(form,"email"), displayName: value(form,"displayName") });
     const record = await ownerTeam(input.teamId);
     if (!record) throw new Error("team_not_found");
-    await requireCompanyWrite(record.team.company_id, identity.user.id);
+    const owningCompany = await requireCompanyWrite(record.team.company_id, identity.user.id);
+    await requireEntitlement(owningCompany.account_id, "team_diagnostics");
     const company=await invitationCompany(record.team.company_id);
     await enforceRateLimit(`team-invite:${identity.user.id}`, 100, 86400);
     const token = randomBytes(32).toString("hex"), hash = createHash("sha256").update(token).digest("hex");

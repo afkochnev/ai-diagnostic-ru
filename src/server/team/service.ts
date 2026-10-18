@@ -22,7 +22,7 @@ export async function teamRpc<T>(name: string, args: Record<string, unknown>): P
   const { client } = await teamClient();
   const { data, error } = await (client as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: T; error: { message: string } | null }> }).rpc(name, args);
   if (error) {
-    const safe = ["team_not_found", "team_closed", "team_invalid_input", "team_already_invited", "team_participant_limit", "team_invitation_unavailable", "team_response_unavailable", "team_revision_conflict", "team_response_completed", "team_invalid_answers", "team_required_answers_missing", "team_methodology_missing", "team_policy_changed"];
+    const safe = ["advanced_required", "team_not_found", "team_closed", "team_invalid_input", "team_already_invited", "team_participant_limit", "team_invitation_unavailable", "team_response_unavailable", "team_revision_conflict", "team_response_completed", "team_invalid_answers", "team_required_answers_missing", "team_methodology_missing", "team_policy_changed"];
     throw new Error(safe.includes(error.message) ? error.message : "team_request_failed");
   }
   return data;
@@ -49,3 +49,13 @@ export async function invitationCompany(companyId:string) {
   return data.name;
 }
 export function participantResponse(participantId: string) { return teamRpc<TeamResponse>("read_team_response", { p_participant_id: participantId }); }
+
+/** Owner-safe history counts, scoped to the same Company; never reads answers. */
+export async function listTeamHistory(companyId: string) {
+  const teams = await listTeams(companyId);
+  if (!teams.length) return [];
+  const { client } = await teamClient();
+  const { data, error } = await client.from("team_participants").select("team_diagnostic_id,status,revoked_at").in("team_diagnostic_id", teams.map(t => t.id));
+  if (error) throw new Error("team_request_failed");
+  return teams.map(team => ({ ...team, completedParticipants: (data ?? []).filter(p => p.team_diagnostic_id === team.id && !p.revoked_at && p.status === "completed").length }));
+}

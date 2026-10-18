@@ -9,6 +9,7 @@ import { getMessages } from "@/i18n/messages";
 import { AccountAccessError, requireAccountWrite, requireCompanyWrite } from "@/server/account/authorization";
 import { getOwnCompany } from "./queries";
 import { companyCreationContext } from "./creation";
+import { AdvancedRequiredError, advancedRequiredMessage } from "@/server/entitlements";
 
 const copy = getMessages("ru").company;
 const value = (form: FormData, name: string) => String(form.get(name) ?? "");
@@ -64,6 +65,7 @@ async function saveProfile(form: FormData, creationSource?: string | null): Prom
       accountId = account.id;
     }
   } catch (error) {
+    if (error instanceof AdvancedRequiredError) return { error: advancedRequiredMessage, values };
     if (error instanceof AccountAccessError && error.code === "selection_required") redirect("/ru/companies");
     if (error instanceof AccountAccessError) return { error: copy.saveError, values };
     throw error;
@@ -81,7 +83,7 @@ async function saveProfile(form: FormData, creationSource?: string | null): Prom
   const result = existing
     ? await client.from("company_profiles").update(payload).eq("id", existing.id).eq("account_id", accountId).eq("revision", expectedRevision).select("id").maybeSingle()
     : await client.from("company_profiles").insert({ ...payload, account_id: accountId, owner_user_id: identity.user.id }).select("id").single();
-  if (result.error || !result.data) return { error: result.error?.code === "23505" ? copy.duplicateError : copy.saveError, values };
+  if (result.error || !result.data) return { error: result.error?.message === "advanced_required" ? advancedRequiredMessage : result.error?.code === "23505" ? copy.duplicateError : copy.saveError, values };
   revalidatePath("/ru/dashboard");
   revalidatePath("/ru/company-profile");
   revalidatePath("/ru/companies");

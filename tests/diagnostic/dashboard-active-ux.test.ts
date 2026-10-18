@@ -12,22 +12,14 @@ describe("active diagnostic dashboard controls", () => {
     expect(messages).toContain('"greeting": "Добро пожаловать"');
   });
 
-  it("disables new diagnostic while an active attempt exists", () => {
-    const activeBranch = page.slice(page.indexOf("{activeDiagnostic ?"), page.indexOf(": <form action={startDiagnosticAction}"));
-    expect(activeBranch).toContain('href={`/ru/diagnostics/${activeDiagnostic.id}`}');
-    expect(activeBranch).toContain('type="button" disabled');
-    expect(activeBranch).not.toContain("<form action={startDiagnosticAction}");
-    const disabledControl = activeBranch.slice(activeBranch.indexOf('<button type="button" disabled'), activeBranch.indexOf('</button>') + '</button>'.length);
-    expect(disabledControl).not.toContain('href=');
-    expect(disabledControl).not.toContain('formAction=');
-    expect(disabledControl).not.toContain('onClick=');
-    expect(disabledControl).toContain('aria-disabled="true"');
-    expect(disabledControl).toContain('tabIndex={-1}');
+  it("opens the unified chooser without creating a diagnostic from the dashboard", () => {
+    expect(page).toContain('href={`/ru/companies/${company.id}/diagnostics?new=1`}');
+    expect(page).not.toContain('startDiagnosticAction');
+    expect(page).not.toContain('<form');
+    expect(page).toContain('Начать диагностику');
   });
-
-  it("keeps creation available only in the no-active branch", () => {
-    const noActiveBranch = page.slice(page.indexOf(": <form action={startDiagnosticAction}"));
-    expect(noActiveBranch).toContain("startDiagnosticAction");
-    expect(noActiveBranch).toContain('type="submit"');
+  it("retains the active individual attempt while allowing a separate Team choice", () => {
+    expect(page).toContain('href={`/ru/diagnostics/${activeDiagnostic.id}`}');
+    expect(page).toContain('Продолжить индивидуальную диагностику');
   });
 });

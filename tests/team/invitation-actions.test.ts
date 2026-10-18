@@ -1,12 +1,13 @@
+vi.mock("@/server/entitlements",()=>({requireEntitlement:vi.fn(async()=>{if(!state.entitled)throw Error("advanced_required");})}));
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const state=vi.hoisted(()=>({rpc:vi.fn(),send:vi.fn(),credential:vi.fn(),revalidate:vi.fn(),origin:"https://ai-diagnostic-staging-web.onrender.com",provider:"mock",cookieSet:vi.fn()}));
+const state=vi.hoisted(()=>({entitled:true,rpc:vi.fn(),send:vi.fn(),credential:vi.fn(),revalidate:vi.fn(),origin:"https://ai-diagnostic-staging-web.onrender.com",provider:"mock",cookieSet:vi.fn()}));
 vi.mock("server-only",()=>({}));
 vi.mock("next/headers",()=>({headers:async()=>new Headers({origin:state.origin}),cookies:async()=>({set:state.cookieSet,get:()=>undefined})}));
 vi.mock("next/navigation",()=>({redirect:vi.fn()}));
 vi.mock("next/cache",()=>({revalidatePath:state.revalidate}));
 vi.mock("@/server/auth/session",()=>({requireIdentity:async()=>({user:{id:"owner",email_confirmed_at:"confirmed"}})}));
-vi.mock("@/server/account/authorization",()=>({requireCompanyWrite:vi.fn()}));
+vi.mock("@/server/account/authorization",()=>({requireCompanyWrite:vi.fn(async()=>({account_id:"account"}))}));
 vi.mock("@/server/supabase/config",()=>({authConfig:()=>({APP_URL:"https://ai-diagnostic-staging-web.onrender.com",AUTH_FLOW_SECRET:"synthetic-secret",secure:true})}));
 vi.mock("@/server/team/capabilities",()=>({teamFoundationEnabled:()=>true}));
 vi.mock("@/server/team/single-email",()=>({singleEmailCredential:state.credential}));
@@ -16,7 +17,7 @@ vi.mock("@/server/team/invitation-email",async(importOriginal)=>({...await impor
 import { inviteTeamAction, prepareTeamInvitationAction, renewTeamInvitationAction, saveTeamResponseAction } from "@/server/team/actions";
 const id="10000000-0000-4000-8000-000000000001";
 function invitation() { const f=new FormData(); f.set("teamId",id); f.set("email","participant@example.test"); f.set("displayName","Participant"); return f; }
-beforeEach(()=>{vi.clearAllMocks();state.origin="https://ai-diagnostic-staging-web.onrender.com";state.provider="mock";state.rpc.mockResolvedValue(id);state.send.mockResolvedValue({providerMessageId:"synthetic-receipt"});state.credential.mockResolvedValue({email:"participant@example.test",envelope:"synthetic-private-proof"});});
+beforeEach(()=>{state.entitled=true;vi.clearAllMocks();state.origin="https://ai-diagnostic-staging-web.onrender.com";state.provider="mock";state.rpc.mockResolvedValue(id);state.send.mockResolvedValue({providerMessageId:"synthetic-receipt"});state.credential.mockResolvedValue({email:"participant@example.test",envelope:"synthetic-private-proof"});});
 describe("team invitation side effects",()=>{
   it("sends one email only after scoped invitation creation, binding recipient and token hash",async()=>{
     const result=await inviteTeamAction({},invitation());
@@ -87,4 +88,14 @@ it("renewal rotates the hash through the existing RPC and sends one replacement 
  const renewed=await renewTeamInvitationAction({},f);
  expect(state.rpc).toHaveBeenCalledExactlyOnceWith("renew_team_invitation",{p_participant_id:id,p_token_hash:expect.any(String)});
  expect(state.rpc.mock.calls[0][1].p_token_hash).not.toBe(oldHash);expect(renewed.invitationUrl).not.toBe(first.invitationUrl);expect(state.send).toHaveBeenCalledOnce();
+});
+
+it("denies new Free invitations before RPC or email side effects",async()=>{
+ state.entitled=false;const result=await inviteTeamAction({},invitation());
+ expect(result.error).toContain("Advanced");expect(state.rpc).not.toHaveBeenCalled();expect(state.send).not.toHaveBeenCalled();
+});
+it("keeps existing invitation renewal available after downgrade",async()=>{
+ state.entitled=false;const f=invitation();f.set("participantId",id);
+ const result=await renewTeamInvitationAction({},f);
+ expect(result.emailStatus).toBe("mock");expect(state.rpc.mock.calls[0][0]).toBe("renew_team_invitation");
 });

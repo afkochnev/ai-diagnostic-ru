@@ -70,6 +70,10 @@ for path in sorted((ROOT / 'supabase/migrations').glob('*.sql')):
     sql(path.read_text())
 sql("update public.accounts set status='active'")
 owner = '10000000-0000-4000-8000-000000000001'
+if any('plans_entitlements_billing_foundation' in p.name for p in (ROOT / 'supabase/migrations').glob('*.sql')):
+    owner_account = sql("select id from public.accounts where legacy_origin_user_id='" + owner + "'")
+    as_role('service_role', "select public.assign_account_plan('" + owner_account + "','advanced')")
+
 team = as_role('authenticated', "select public.create_team_diagnostic('20000000-0000-4000-8000-000000000001','Real local Auth fixture')", owner)
 token = secrets.token_hex(32)
 token_hash = hashlib.sha256(token.encode()).hexdigest()

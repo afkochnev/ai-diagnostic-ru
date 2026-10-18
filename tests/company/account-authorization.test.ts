@@ -1,3 +1,8 @@
+vi.mock("@/server/entitlements", () => ({
+  requireEntitlement: vi.fn(),
+  getAccountPlan: async () => ({ plan: "advanced", display_name: "Advanced", entitlements: {multi_company: true, team_diagnostics: true} }),
+  AdvancedRequiredError: class extends Error {}, advancedRequiredMessage: "Эта возможность доступна на тарифе Advanced.",
+}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));

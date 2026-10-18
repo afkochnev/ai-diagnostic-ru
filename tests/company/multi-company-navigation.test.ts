@@ -1,7 +1,13 @@
+vi.mock("@/server/entitlements", () => ({
+  requireEntitlement: vi.fn(),
+  getAccountPlan: async () => ({ plan: data.advanced ? "advanced" : "free", display_name: data.advanced ? "Advanced" : "Free", entitlements: {multi_company: data.advanced, team_diagnostics: data.advanced} }),
+  AdvancedRequiredError: class extends Error {}, advancedRequiredMessage: "Эта возможность доступна на тарифе Advanced.",
+}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 const data = vi.hoisted(() => ({
+  advanced: true,
   companies: [
     { id: "a1", account_id: "account-a", name: "Компания A1", industry_key: "consulting", country: "Россия", employee_count: 10 },
     { id: "a2", account_id: "account-a", name: "Компания A2", industry_key: "consulting", country: "Россия", employee_count: 20 },
@@ -24,6 +30,7 @@ import { CompanyNavigation } from "@/features/company/company-navigation";
 import { CompanyList } from "@/features/company/company-list";
 
 beforeEach(() => {
+  data.advanced = true;
   vi.stubEnv("APP_URL", "https://ai-diagnostic-staging-web.onrender.com");
   vi.stubEnv("SUPABASE_URL", "https://vflgxgdwlftlyjslyrmo.supabase.co");
 });
@@ -32,6 +39,8 @@ describe("V21B company navigation", () => {
   it("shows the current company and only switches to siblings in the current account", async () => {
     const html = renderToStaticMarkup(await CompanyNavigation({ companyId: "a2", userId: "owner-a" }));
     expect(html).toContain("Компания A1");
+    expect(html).toContain(">Диагностики</a>");
+    expect(html).not.toContain(">Командная диагностика</a>");
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('href="/ru/companies/a1"');
     expect(html).toContain('href="/ru/companies/a2/profile"');
@@ -79,4 +88,12 @@ describe("V21B company navigation", () => {
       expect(html).toContain('href="/ru/companies/new"');
     } finally { data.companies = original; }
   });
+  it("shows the Advanced lock while keeping both pre-existing Free Companies visible", async () => {
+    data.advanced = false;
+    const html = renderToStaticMarkup(await CompanyList({userId:"owner-a"}));
+    expect(html).toContain("Компания A1"); expect(html).toContain("Компания A2");
+    expect(html).toContain("Несколько компаний доступны на тарифе Advanced.");
+    expect(html).not.toContain('/companies/new?from=');
+  });
+
 });

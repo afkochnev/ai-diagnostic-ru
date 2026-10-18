@@ -61,6 +61,7 @@ try:
     migrations = sorted((ROOT / 'supabase/migrations').glob('*.sql'))
     candidate = next(p for p in migrations if 'team_single_email_consent' in p.name)
     for migration in migrations:
+        if 'plans_entitlements_billing_foundation' in migration.name: continue
         if migration == candidate:
             continue
         if 'account_foundation.sql' in migration.name:
@@ -82,6 +83,13 @@ try:
     assert before == snapshot()
     sql(candidate.read_text(), 'already exists')
     passed('transactional migration, no baseline row changes, duplicate apply fails')
+
+    billing = next((p for p in migrations if 'plans_entitlements_billing_foundation' in p.name), None)
+    if billing:
+        preserved = snapshot(); sql(billing.read_text()); assert preserved == snapshot()
+        owner_account = sql("select id from public.accounts where legacy_origin_user_id='" + uid(1) + "'")
+        service("select public.assign_account_plan('" + owner_account + "','advanced')")
+        passed('V2.3 current-schema onboarding regression: inviter Advanced, participant personal Account remains Free')
 
     team = actor(1, "select public.create_team_diagnostic('20000000-0000-4000-8000-000000000001','Single email fixture')")
     token = secrets.token_hex(32)
