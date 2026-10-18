@@ -43,7 +43,11 @@ export async function createCompanyProfileAction(sourceCompanyId: string | null,
   return saveProfile(form, sourceCompanyId);
 }
 
-async function saveProfile(form: FormData, creationSource?: string | null): Promise<CompanyProfileState> {
+export async function createCompanyForAccountAction(accountId: string, sourceCompanyId: string | null, _: CompanyProfileState, form: FormData): Promise<CompanyProfileState> {
+  return saveProfile(form, sourceCompanyId, accountId);
+}
+
+async function saveProfile(form: FormData, creationSource?: string | null, creationAccountId?: string): Promise<CompanyProfileState> {
   const identity = await requireIdentity();
   const parsed = parsedInput(form);
   const values = submittedValues(form);
@@ -60,7 +64,7 @@ async function saveProfile(form: FormData, creationSource?: string | null): Prom
       if (requestedAccountId && requestedAccountId !== accountId) throw new AccountAccessError("not_found");
       await requireAccountWrite(accountId, identity.user.id);
     } else {
-      const { account } = await companyCreationContext(identity.user.id, creationSource ?? undefined);
+      const { account } = await companyCreationContext(identity.user.id, creationSource ?? undefined, creationAccountId);
       if (requestedAccountId && requestedAccountId !== account.id) throw new AccountAccessError("not_found");
       accountId = account.id;
     }

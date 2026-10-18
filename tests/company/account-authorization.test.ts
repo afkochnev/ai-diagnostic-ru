@@ -88,7 +88,7 @@ import { getDiagnosticResult } from "@/server/diagnostic/result";
 import { getPdfForReport, preparePdfForReport } from "@/server/pdf/service";
 import { sendReportEmail } from "@/server/email/service";
 import { requestAIReportRegeneration } from "@/server/ai/regeneration";
-import { createCompanyProfileAction, saveCompanyProfileAction } from "@/server/company/actions";
+import { createCompanyForAccountAction, createCompanyProfileAction, saveCompanyProfileAction } from "@/server/company/actions";
 import { getAdminCompanies, getAdminCompanyDetail, getAdminUsers, getAdminUserDetail } from "@/server/admin/companies-users";
 
 const USER = "10000000-0000-4000-8000-000000000001";
@@ -346,6 +346,28 @@ describe("service-role report boundaries", () => {
 
 
 describe("V21B authoritative multi-company creation", () => {
+  it("creates the first Company in an explicitly server-bound accessible Account", async () => {
+    state.tables.company_profiles = [];
+    state.tables.account_memberships.push({ account_id: OTHER_ACCOUNT, user_id: USER, role: "owner", status: "active" });
+    await expect(createCompanyForAccountAction(ACCOUNT, null, {}, companyForm({ account_id: ACCOUNT }))).rejects.toThrow("/profile");
+    expect(state.writes.map(write => write.table)).toEqual(["company_profiles"]);
+    expect(state.writes[0].values.account_id).toBe(ACCOUNT);
+  });
+
+  it("cannot change the bound workspace using a different owned hidden account_id", async () => {
+    state.tables.company_profiles = [];
+    state.tables.account_memberships.push({ account_id: OTHER_ACCOUNT, user_id: USER, role: "owner", status: "active" });
+    expect(await createCompanyForAccountAction(ACCOUNT, null, {}, companyForm({ account_id: OTHER_ACCOUNT }))).toHaveProperty("error");
+    expect(state.writes).toEqual([]);
+  });
+
+  it("rechecks membership for a bound workspace and rejects mismatched source context", async () => {
+    expect(await createCompanyForAccountAction(OTHER_ACCOUNT, null, {}, companyForm({ account_id: OTHER_ACCOUNT }))).toHaveProperty("error");
+    state.tables.account_memberships.push({ account_id: OTHER_ACCOUNT, user_id: USER, role: "owner", status: "active" });
+    expect(await createCompanyForAccountAction(OTHER_ACCOUNT, COMPANY, {}, companyForm({ account_id: OTHER_ACCOUNT }))).toHaveProperty("error");
+    expect(state.writes).toEqual([]);
+  });
+
   it("derives the sole account for a first company without inserting an account or membership", async () => {
     state.tables.company_profiles = [];
     const before = JSON.stringify([state.tables.accounts, state.tables.account_memberships]);

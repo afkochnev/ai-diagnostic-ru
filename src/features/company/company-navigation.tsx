@@ -6,7 +6,7 @@ export async function CompanyNavigation({ companyId, userId }: { companyId: stri
   const company = await requireCompanyRead(companyId, userId);
   const companies = await listAccessibleCompanies(userId, company.account_id);
   return <nav aria-label="Навигация компании" className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-5 py-5 text-sm sm:px-8">
-    <Link href="/ru/companies" className="underline">Компании</Link>
+    <Link href={`/ru/accounts/${company.account_id}/companies`} className="underline">Компании</Link>
     {companies.length > 1 ? <details className="relative">
       <summary className="cursor-pointer rounded-xl border border-line px-4 py-3 font-semibold">{company.name}</summary>
       <ul aria-label="Переключить компанию" className="absolute left-0 z-20 mt-2 min-w-64 rounded-xl border border-line bg-white p-2 shadow-card">

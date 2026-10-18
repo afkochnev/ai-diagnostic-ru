@@ -63,7 +63,7 @@ describe("V21B company navigation", () => {
     await expect(CompanyNavigation({ companyId: "b1", userId: "owner-a" })).rejects.toThrow("not_found");
   });
 
-  it("lists companies under their account and offers an account-bound create link", async () => {
+  it("lists only current-Account companies and offers an account-bound create link", async () => {
     const html = renderToStaticMarkup(await CompanyList({ userId: "owner-a" }));
     expect(html).toContain("Компания A1");
     expect(html).toContain("Компания A2");
@@ -85,7 +85,7 @@ describe("V21B company navigation", () => {
     try {
       const html = renderToStaticMarkup(await CompanyList({ userId: "owner-a" }));
       expect(html).toContain("Добавьте вашу компанию");
-      expect(html).toContain('href="/ru/companies/new"');
+      expect(html).toContain('href="/ru/companies/new?account=account-a"');
     } finally { data.companies = original; }
   });
   it("shows the Advanced lock while keeping both pre-existing Free Companies visible", async () => {
