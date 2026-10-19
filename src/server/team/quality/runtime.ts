@@ -5,7 +5,7 @@ import { inspectTeamOutputPrivacy,stringLeaves,type PrivacyCorpus } from "../syn
 import { repairResponseSchema } from "../synthesis-repair";
 import { guardedRepair } from "./guarded-repair";
 import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
-import { systemAssessmentSchema,validateSystemAssessment,renderSystemAssessment } from "./system-assessment";
+import { wireSystemAssessmentSchema,canonicalSystemAssessment,validateSystemAssessment,renderSystemAssessment,type SystemAssessment } from "./system-assessment";
 import { QualityBudgetError } from "./request-budget";
 import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,QualityCriticRejection,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
 
@@ -77,6 +77,11 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     const p=inspectTeamOutputPrivacy(report,corpus);if(p.policyViolation||p.overlaps.length)throw new Error("team_privacy_rejected");
     await databaseValidate(report);
   };
+  const systemGate=async(assessment:SystemAssessment)=>{
+    validateSystemAssessment(assessment,d,known);validatePrimaryText(renderSystemAssessment(assessment,d),d);
+    const check=inspectTeamOutputPrivacy(assessment,corpus);if(check.policyViolation||check.overlaps.length)throw new Error("team_privacy_rejected");
+    await databaseValidate(assessment);
+  };
   const perform=async<T>(stage:Stage,input:unknown,schema:z.ZodType<T>):Promise<T>=>{
     if(Date.now()>=deadline||calls>=maxCalls)throw new Error("quality_budget_exhausted");
     // Only the extraction/synthesis boundary may see shuffled, masked raw groups.
@@ -122,22 +127,23 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
   }
   const cards=await invoke("extract",d.extraction,cardsSchema);validateCards(cards,d);for(const c of cards.cards)known.add(c.id);
   options.emit?.({stage:"extract",status:"contract_validated"});
-  const systemSchema=systemAssessmentSchema({...d,known});
+  const systemSchema=wireSystemAssessmentSchema({...d,known});
   if(variant==="B"){
     const generated=await invoke("combined",{PRIMARY_CORE_EVIDENCE:{...d.primary,cards},TEAM_DYNAMICS_EVIDENCE:d.dynamics},z.strictObject({system_assessment:systemSchema,...groundedCombinedSchema(known).shape}));
-    validateSystemAssessment(generated.system_assessment,d,known);validatePrimaryText(renderSystemAssessment(generated.system_assessment,d),d);
+    const assessment=canonicalSystemAssessment(generated.system_assessment,d);await systemGate(assessment);
     const draft=flattenGroundedDraft(generated);
     validateDraft(draft,known,d);
     options.emit?.({stage:"combined",status:"contract_validated"});
-    const report=qualityReportSchema.parse({...draft.content,manageability_index_text:draft.content.manageability_index_text+"\n\n"+renderSystemAssessment(generated.system_assessment,d),participant_count:d.primary.participant_count,team_analysis:generated.team_analysis});
+    const report=qualityReportSchema.parse({...draft.content,manageability_index_text:draft.content.manageability_index_text+"\n\n"+renderSystemAssessment(assessment,d),participant_count:d.primary.participant_count,team_analysis:generated.team_analysis});
     await finalGate(report);
     const signals=repetitionSignals(stringLeaves(report));
-    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,system_assessment:generated.system_assessment,support:draft.support,report,signals},reviewSchema):null;
+    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,system_assessment:assessment,support:draft.support,report,signals},reviewSchema):null;
     reviewGate(review);
     return {status:"owner_review_required" as const,variant,calls,report,review,signals};
   }
-  const diagnosis=await invoke("diagnose",{primary:d.primary,cards},z.strictObject({system_assessment:systemSchema,...diagnosisSchema.shape}));
-  validateSystemAssessment(diagnosis.system_assessment,d,known);validatePrimaryText(renderSystemAssessment(diagnosis.system_assessment,d),d);validateDiagnoses(diagnosis,known);for(const v of diagnosis.diagnoses)known.add(v.id);
+  const wireDiagnosis=await invoke("diagnose",{primary:d.primary,cards},z.strictObject({system_assessment:systemSchema,...diagnosisSchema.shape}));
+  const diagnosis={...wireDiagnosis,system_assessment:canonicalSystemAssessment(wireDiagnosis.system_assessment,d)};
+  await systemGate(diagnosis.system_assessment);validateDiagnoses(diagnosis,known);for(const v of diagnosis.diagnoses)known.add(v.id);
   const program=await invoke("program",{primary:d.primary,cards,diagnosis},programSchema);validateProgram(program,diagnosis);
   for(const i of program.initiatives){known.add(i.id);for(const a of i.actions)known.add(a.id);}
   const generatedCore=await invoke("core",{primary:d.primary,cards,diagnosis,program},groundedDraftSchema(known));

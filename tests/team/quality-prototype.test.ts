@@ -26,7 +26,7 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
     }
   });
   it.each(caseIds)("validates derived means and isolated data for %s",async id=>{
-    const s=setup(id);const r=await s.run();expect(r.status).toBe("owner_review_required");expect(r.calls).toBe(6);expect(s.databaseValidate).toHaveBeenCalledTimes(7);
+    const s=setup(id);const r=await s.run();expect(r.status).toBe("owner_review_required");expect(r.calls).toBe(6);expect(s.databaseValidate).toHaveBeenCalledTimes(8);
     for(const request of s.requests.filter(r=>r.stage!=="extract")){
       const json=JSON.stringify(request.input);for(const raw of s.f.corpus.answers)expect(json).not.toContain(raw.text);
     }
@@ -107,7 +107,7 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
   it("retains privacy-validated critic diagnostics on rejection without retaining the failed report",async()=>{
     const s=setup();const review={verdict:"fail",defects:[{path:"main_diagnosis",code:"unsupported",critical:true,reason:"Не указан проверяемый механизм.",required_change:"Сформулировать ограниченную гипотезу."}]};s.stubs.review=review;
     const error=await s.run().catch(e=>e);
-    expect(error).toBeInstanceOf(QualityCriticRejection);expect(error.review).toEqual(review);expect(error).not.toHaveProperty("report");expect(s.databaseValidate).toHaveBeenCalledTimes(7);
+    expect(error).toBeInstanceOf(QualityCriticRejection);expect(error.review).toEqual(review);expect(error).not.toHaveProperty("report");expect(s.databaseValidate).toHaveBeenCalledTimes(8);
     const dbFailure=setup();dbFailure.stubs.review=review;dbFailure.databaseValidate.mockImplementation(async v=>{if(v===undefined)throw Error("unreachable");if((v as {verdict?:string}).verdict)throw Error("quality_db_rejected");});
     const rejected=await dbFailure.run().catch(e=>e);expect(rejected.message).toBe("quality_db_rejected");expect(rejected).not.toBeInstanceOf(QualityCriticRejection);expect(rejected).not.toHaveProperty("review");
   });
