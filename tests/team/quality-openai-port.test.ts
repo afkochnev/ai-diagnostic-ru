@@ -42,6 +42,8 @@ it("keeps the cumulative retry reservation below the original approved cost and 
  expect(maxNew).toBeCloseTo(12.48,8);expect(maxNew+0.22204).toBeLessThan(13.14);expect(stages.length+5+1).toBe(18);
  const bc=stages.slice(3),bcMax=(bc.reduce((n,s)=>n+foodtechRequestByteCaps[s],0)+3*foodtechRequestByteCaps.privacy_repair)*5/1e6+(bc.reduce((n,s)=>n+stageTokens[s],0)+3*stageTokens.privacy_repair)*20/1e6;
  expect(bcMax).toBeCloseTo(8.62,8);expect(bcMax+2.63549).toBeLessThan(13.14);expect(bc.length+3+6).toBe(18);
+ const c=stages.slice(6),cMax=(c.reduce((n,s)=>n+foodtechRequestByteCaps[s],0)+2*foodtechRequestByteCaps.privacy_repair)*5/1e6+(c.reduce((n,s)=>n+stageTokens[s],0)+2*stageTokens.privacy_repair)*20/1e6;
+ expect(cMax).toBeCloseTo(5.42,8);expect(cMax+3.778695).toBeLessThan(13.14);expect(c.length+2+9).toBe(17);
 });
 it("keeps a payload-free budget reason through the runtime's stage boundary",async()=>{
  const f=qualityCase("production"),error=new QualityBudgetError("request_size","baseline_synthesis",130000,120000);

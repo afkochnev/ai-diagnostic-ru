@@ -69,6 +69,10 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
     const s=setup();s.call.mockImplementation(async r=>r.stage==="extract"?{...s.stubs.extract as object,cards:[{id:"E1",question_position:1,observation:s.f.corpus.answers[0].text,consequence:null,limitations:[]}]}:r.stage==="privacy_repair"?{repairs:[{path:"cards[0].observation",replacement:s.f.corpus.answers[0].text}]}:s.stubs[r.stage]);
     await expect(s.run()).rejects.toThrow("team_privacy_rejected");expect(s.call).toHaveBeenCalledTimes(2);expect(s.databaseValidate).not.toHaveBeenCalled();
   });
+  it("never pays for repair when an immutable numeric statement itself violates privacy",async()=>{
+    const s=setup();s.call.mockImplementation(async r=>r.stage==="extract"?{...s.stubs.extract as object,cards:[{id:"E1",question_position:1,observation:`Индекс 50: ${s.f.corpus.answers[0].text}`,consequence:null,limitations:[]}]}:s.stubs[r.stage]);
+    const error=await s.run().catch(e=>e);expect(error.message).toBe("team_privacy_rejected");expect(error.safeDetails().reason).toBe("protected_fact_overlap");expect(s.call).toHaveBeenCalledTimes(1);expect(s.databaseValidate).not.toHaveBeenCalled();
+  });
   it("DB rejection stops before the next model call",async()=>{
     const s=setup();s.databaseValidate.mockRejectedValueOnce(new Error("quality_db_rejected"));await expect(s.run()).rejects.toThrow("quality_db_rejected");expect(s.call).toHaveBeenCalledTimes(1);
   });

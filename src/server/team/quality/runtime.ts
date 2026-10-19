@@ -3,7 +3,7 @@ import { z } from "zod";
 import { teamReportV3Schema,teamSynthesisV3Schema,mainTeamReportInputV3,validateCoreQuality,qualitativeCoverage } from "../report-v3-contracts";
 import { inspectTeamOutputPrivacy,stringLeaves,type PrivacyCorpus } from "../synthesis-privacy";
 import { repairResponseSchema } from "../synthesis-repair";
-import { preservesReportFacts } from "../report-privacy";
+import { guardedRepair } from "./guarded-repair";
 import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
 import { systemAssessmentSchema,validateSystemAssessment,renderSystemAssessment } from "./system-assessment";
 import { QualityBudgetError } from "./request-budget";
@@ -95,16 +95,14 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     if(p.policyViolation||p.overlaps.length){
       if(repairs>=2)throw new Error("team_privacy_rejected");
       const paths=new Set(p.violations.map(v=>v.field_path)),leaves=stringLeaves(result).filter(l=>paths.has(l.path));
-      if(!leaves.length||leaves.reduce((n,l)=>n+l.value.length,0)>48000)throw new Error("team_privacy_rejected");
+      if(!leaves.length)throw new Error("team_privacy_rejected");
+      const plan=guardedRepair(leaves,d.primary.maturity,corpus);
       repairs++;
       // Only generated flagged strings cross the repair boundary. Never raw answers,
       // corpus, unflagged fields, participant metadata or the complete document.
-      const fixed=await perform("privacy_repair",{fields:leaves.map(({path,value})=>({path,value}))},repairResponseSchema(leaves.map(l=>l.path)));
-      if(new Set(fixed.repairs.map(r=>r.path)).size!==paths.size)throw new Error("team_privacy_rejected");
+      const fixed=await perform("privacy_repair",{fields:plan.fields},repairResponseSchema(plan.fields.map(f=>f.path)));
       const clone=structuredClone(result);
-      for(const leaf of leaves){
-        const replacement=fixed.repairs.find(r=>r.path===leaf.path)?.replacement;
-        if(!replacement||!preservesReportFacts(leaf.value,replacement,d.primary.maturity))throw new Error("team_numeric_integrity");
+      for(const {leaf,replacement} of plan.rebuild(fixed)){
         let target:unknown=clone;for(const token of leaf.tokens.slice(0,-1))target=(target as Record<string|number,unknown>)[token];
         (target as Record<string|number,unknown>)[leaf.tokens.at(-1)!]=replacement;
       }
