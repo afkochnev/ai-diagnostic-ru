@@ -17,6 +17,7 @@ import { invitationCompany, ownerTeam, teamRpc } from "./service";
 import { teamFoundationEnabled } from "./capabilities";
 import { sendTeamCodeAction } from "./passwordless-actions";
 import { z } from "zod";
+import { ordinaryTeamReportProvider } from "./ordinary-provider";
 import { singleEmailCredential } from "./single-email";
 import { openInvitationAuthProof } from "./invitation-auth-proof";
 import { requireEntitlement } from "@/server/entitlements";
@@ -28,6 +29,7 @@ async function origin() {
 function failure(error: unknown): TeamActionState {
   const code = error instanceof Error ? error.message : "";
   const messages: Record<string, string> = {
+    team_real_provider_unavailable: "Подготовка реального AI-отчёта пока недоступна. Тестовый отчёт вместо него не создаётся.",
     advanced_required: "Эта возможность доступна на тарифе Advanced.",
     team_already_invited: "Этот участник уже приглашён. При необходимости выпустите новую ссылку.",
     team_revision_conflict: "Ответы изменились в другой вкладке. Обновите страницу перед сохранением.",
@@ -163,7 +165,7 @@ export async function teamResultAction(_: TeamActionState, form: FormData): Prom
     await requireCompanyWrite(record.team.company_id, identity.user.id);
     await enforceRateLimit(`team-results:${identity.user.id}`,60,3600);
     const intent = z.enum(["refresh","report","close"]).parse(value(form,"intent"));
-    await teamRpc(intent === "report" ? "request_team_report_v3" : intent === "close" ? "close_team_diagnostic" : "refresh_team_results", { p_team_id: teamId, ...(intent === "report" ? {p_provider:"mock"} : {}) });
+    await teamRpc(intent === "report" ? "request_team_report_v3" : intent === "close" ? "close_team_diagnostic" : "refresh_team_results", { p_team_id: teamId, ...(intent === "report" ? {p_provider:ordinaryTeamReportProvider()} : {}) });
     revalidatePath(`/ru/companies/${record.team.company_id}/teams/${teamId}`);
     return { status: intent === "close" ? "closed" : "requested" };
   } catch (error) { return failure(error); }
