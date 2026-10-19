@@ -2,8 +2,9 @@ import { beforeEach,it,expect,vi } from "vitest";
 import { cardsSchema } from "@/server/team/quality/contracts";
 const state=vi.hoisted(()=>({construct:vi.fn(),create:vi.fn()}));
 vi.mock("openai",()=>({default:class {constructor(options:unknown){state.construct(options);}responses={create:state.create};}}));
-import { createApprovedPort } from "@/server/team/quality/openai-port";
-import { runQualityVariant,type Stage } from "@/server/team/quality/runtime";
+import { createApprovedPort,approvedRequestBody } from "@/server/team/quality/openai-port";
+import { runQualityVariant,stageTokens,type Stage } from "@/server/team/quality/runtime";
+import { foodtechRequestByteCaps,QualityBudgetError } from "@/server/team/quality/request-budget";
 import { qualityCase,caseIds } from "../../scripts/fixtures/team-quality-cases";
 import { authoredStageStubs } from "../../scripts/fixtures/team-quality-stage-stubs";
 const request=()=>({stage:"extract" as const,input:{groups:[]},schema:cardsSchema,maxOutputTokens:4000,deadline:Date.now()+600000});
@@ -22,6 +23,28 @@ it("reserves costs and rejects excess input/deadline before a request is sent",a
 });
 it("records an attempted network call even if its response is lost and never retries",async()=>{
  state.create.mockRejectedValueOnce(new Error("network"));const s=setup();await expect(s.port()(request())).rejects.toThrow("network");expect(s.attempt).toHaveBeenCalledTimes(1);expect(s.receipt).not.toHaveBeenCalled();expect(state.create).toHaveBeenCalledTimes(1);
+});
+it("checks the same serialized body offline and applies explicit stage caps without changing evidence",async()=>{
+ const r={...request(),stage:"baseline_report" as const,input:{text:"x".repeat(125000)}};
+ const offline=approvedRequestBody(r,"gpt-5.6-sol","medium");expect(state.construct).not.toHaveBeenCalled();
+ expect(Buffer.byteLength(JSON.stringify(offline))).toBeGreaterThan(120000);
+ await expect(setup().port()(r)).rejects.toMatchObject({reason:"request_size",stage:"baseline_report",byteLimit:120000});
+ const s=setup({maxUSD:2,requestByteCaps:foodtechRequestByteCaps});await s.port()(r);
+ expect(state.create).toHaveBeenCalledTimes(1);expect(state.create.mock.calls[0][0]).toEqual(offline);
+ await expect(setup({requestByteCaps:foodtechRequestByteCaps}).port()({...r,stage:"extract"})).rejects.toBeInstanceOf(QualityBudgetError);
+ expect(state.create).toHaveBeenCalledTimes(1);
+});
+it("keeps the cumulative retry reservation below the original approved cost and request ceiling",()=>{
+ const stages:Stage[]=["baseline_synthesis","baseline_report","review","extract","combined","review","extract","diagnose","program","core","dynamics","review"];
+ const normalInput=stages.reduce((n,s)=>n+foodtechRequestByteCaps[s],0),normalOutput=stages.reduce((n,s)=>n+stageTokens[s],0);
+ expect(normalInput).toBe(1512000);expect(normalOutput).toBe(81000);
+ const maxNew=(normalInput+5*foodtechRequestByteCaps.privacy_repair)*5/1e6+(normalOutput+5*stageTokens.privacy_repair)*20/1e6;
+ expect(maxNew).toBeCloseTo(12.48,8);expect(maxNew+0.22204).toBeLessThan(13.14);expect(stages.length+5+1).toBe(18);
+});
+it("keeps a payload-free budget reason through the runtime's stage boundary",async()=>{
+ const f=qualityCase("production"),error=new QualityBudgetError("request_size","baseline_synthesis",130000,120000);
+ await expect(runQualityVariant({...f,variant:"A",maxCalls:5,deadline:Date.now()+600000,databaseValidate:async()=>{},call:async()=>{throw error;}})).rejects.toBe(error);
+ expect(error.safeDetails()).toEqual({reason:"request_size",stage:"baseline_synthesis",requestBytes:130000,maximumRequestBytes:120000});
 });
 it("preserves the original A prompt delimiter and rejects a substituted model",async()=>{
  const s=setup();state.create.mockResolvedValueOnce({status:"completed",model:"other",output_text:"{}"});await expect(s.port()({...request(),stage:"baseline_synthesis"})).rejects.toThrow("quality_stage_failed");

@@ -6,6 +6,7 @@ import { repairResponseSchema } from "../synthesis-repair";
 import { preservesReportFacts } from "../report-privacy";
 import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
 import { systemAssessmentSchema,validateSystemAssessment,renderSystemAssessment } from "./system-assessment";
+import { QualityBudgetError } from "./request-budget";
 import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,QualityCriticRejection,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
 
 export type Variant="A"|"B"|"C";
@@ -84,7 +85,7 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     }
     calls++;options.emit?.({stage,status:"requested",inputSHA256:hash(input)});
     let result:T;
-    try{result=schema.parse(await call({stage,input,schema,maxOutputTokens:stageTokens[stage],deadline}));}catch(error){throw new Error(error instanceof Error&&error.message==="quality_budget_exhausted"?error.message:"quality_stage_failed");}
+    try{result=schema.parse(await call({stage,input,schema,maxOutputTokens:stageTokens[stage],deadline}));}catch(error){if(error instanceof QualityBudgetError)throw error;throw new Error(error instanceof Error&&error.message==="quality_budget_exhausted"?error.message:"quality_stage_failed");}
     if(Date.now()>=deadline)throw new Error("quality_budget_exhausted");
     return result;
   };
