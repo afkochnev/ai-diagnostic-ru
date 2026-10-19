@@ -7,6 +7,7 @@ import { guardedRepair } from "./guarded-repair";
 import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
 import { wireSystemAssessmentSchema,canonicalSystemAssessment,validateSystemAssessment,renderSystemAssessment,type SystemAssessment } from "./system-assessment";
 import { QualityBudgetError } from "./request-budget";
+import { primaryEditorialSignals,QualityTextError,type EditorialSignal } from "./text-signals";
 import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,QualityNumericError,QualityCriticRejection,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
 
 export type Variant="A"|"B"|"C";
@@ -44,17 +45,22 @@ export function validateProgram(value:Program,diagnoses:Diagnoses) {
   for(const a of all)visit(a.id);
   if(diagnoses.diagnoses.length&&!value.initiatives.length&&!value.limitations.length)throw new Error("quality_reference_invalid");
 }
-export function validateDraft(value:z.infer<typeof draftSchema>,known:Set<string>,d:Dossier) {
+export function validateDraft(value:z.infer<typeof draftSchema>,known:Set<string>,d:Dossier,onEditorialSignal?:(signal:EditorialSignal)=>void) {
   const leaves=stringLeaves(value.content),paths=new Set(leaves.map(l=>l.path));
   if(new Set(value.support.map(s=>s.path)).size!==value.support.length)throw new QualityReferenceError("duplicate_support_path");
   if(value.support.some(s=>!paths.has(s.path)))throw new QualityReferenceError("unknown_support_path");
   for(const leaf of leaves){const support=value.support.find(s=>s.path===leaf.path);if(!support)throw new QualityReferenceError("missing_support_path");requireRefs(support.refs,known);}
-  validatePrimaryText(value.content,d);
+  validatePrimaryText(value.content,d,onEditorialSignal);
 }
-export function validatePrimaryText(value:unknown,d:Dossier) {
-  const leaves=stringLeaves(value),text=leaves.map(l=>l.value).join("\n");
-  if(/stddev|variance|distribution|разброс|поляризац|расхождени|дисперси|среднее скрывает/iu.test(text))throw new Error("team_quality_rejected");
-  if(/качественные ответы дополняют средний профиль|тестовый отчёт|архитектура исполнения/iu.test(text))throw new Error("team_quality_rejected");
+export function validatePrimaryText(value:unknown,d:Dossier,onEditorialSignal?:(signal:EditorialSignal)=>void) {
+  validatePrimaryNumbers(value,d);
+  for(const signal of primaryEditorialSignals(value)){
+    if(!onEditorialSignal)throw new QualityTextError(signal);
+    onEditorialSignal(signal);
+  }
+}
+function validatePrimaryNumbers(value:unknown,d:Dossier) {
+  const leaves=stringLeaves(value);
   // This catches invented literals, not semantic attribution. The critic must separately
   // check that each value/claim is supported by the cited metric and interpretation.
   const numbers=(s:string)=>[...s.matchAll(/\d+(?:[.,]\d+)?/gu)].map(m=>Number(m[0].replace(",",".")));
@@ -71,6 +77,13 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
   call:StagePort;databaseValidate:(value:unknown)=>Promise<void>;deadline:number;maxCalls:number;researchComparison?:boolean;emit?:(e:SafeEvent)=>void}) {
   const {variant,call,corpus,databaseValidate,deadline,maxCalls}=options,d=buildDossier(options.aggregates,options.qualitative);
   const known=new Set(d.known);let calls=0,repairs=0;
+  const editorialSignals:EditorialSignal[]=[];
+  // Research-only routing to the already planned critic; no extra calls or publication.
+  // Ordinary mode retains the strict lexical stop until a pipeline is accepted separately.
+  const editorialPolicy=(scope:string)=>options.researchComparison?(signal:EditorialSignal)=>{
+    const item={...signal,path:`${scope}.${signal.path}`};
+    if(!editorialSignals.some(s=>s.path===item.path&&s.code===item.code))editorialSignals.push(item);
+  }:undefined;
   const reviewGate=(review:z.infer<typeof reviewSchema>|null)=>{
     if(!review)return;
     if(review.defects.some(d=>d.code==="numeric"||d.code==="privacy")||(!options.researchComparison&&(review.verdict!=="pass"||review.defects.length)))throw new QualityCriticRejection(review);
@@ -83,8 +96,8 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     validateSystemAssessment(assessment,d,known);
     // Validate generated prose separately from reference identifiers and rendered metrics,
     // so a terminal numeric rejection identifies its field without retaining its content.
-    validatePrimaryText({system_state:assessment.system_state,dimensions:assessment.dimensions.map(row=>({assessment:row.assessment,limitations:row.limitations})),links:assessment.links.map(link=>({explanation:link.explanation})),limits:assessment.limits},d);
-    validatePrimaryText(renderSystemAssessment(assessment,d),d);
+    validatePrimaryText({system_state:assessment.system_state,dimensions:assessment.dimensions.map(row=>({assessment:row.assessment,limitations:row.limitations})),links:assessment.links.map(link=>({explanation:link.explanation})),limits:assessment.limits},d,editorialPolicy("system_assessment"));
+    validatePrimaryNumbers(renderSystemAssessment(assessment,d),d);
     const check=inspectTeamOutputPrivacy(assessment,corpus);if(check.policyViolation||check.overlaps.length)throw new Error("team_privacy_rejected");
     await databaseValidate(assessment);
   };
@@ -127,9 +140,9 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     const input=mainTeamReportInputV3(options.aggregates,synthesis),report=await invoke("baseline_report",input,teamReportV3Schema);
     validateCoreQuality(report,"openai",synthesis);
     const signals=repetitionSignals(stringLeaves(report));
-    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,synthesis,report,signals},reviewSchema):null;
+    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,synthesis,report,signals,editorialSignals},reviewSchema):null;
     reviewGate(review);
-    return {status:"owner_review_required" as const,variant,calls,report,review,signals};
+    return {status:"owner_review_required" as const,variant,calls,report,review,signals,editorialSignals};
   }
   const cards=await invoke("extract",d.extraction,cardsSchema);validateCards(cards,d);for(const c of cards.cards)known.add(c.id);
   options.emit?.({stage:"extract",status:"contract_validated"});
@@ -138,14 +151,14 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     const generated=await invoke("combined",{PRIMARY_CORE_EVIDENCE:{...d.primary,cards},TEAM_DYNAMICS_EVIDENCE:d.dynamics},z.strictObject({system_assessment:systemSchema,...groundedCombinedSchema(known).shape}));
     const assessment=canonicalSystemAssessment(generated.system_assessment,d);await systemGate(assessment);
     const draft=flattenGroundedDraft(generated);
-    validateDraft(draft,known,d);
+    validateDraft(draft,known,d,editorialPolicy("content"));
     options.emit?.({stage:"combined",status:"contract_validated"});
     const report=qualityReportSchema.parse({...draft.content,manageability_index_text:draft.content.manageability_index_text+"\n\n"+renderSystemAssessment(assessment,d),participant_count:d.primary.participant_count,team_analysis:generated.team_analysis});
     await finalGate(report);
     const signals=repetitionSignals(stringLeaves(report));
-    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,system_assessment:assessment,support:draft.support,report,signals},reviewSchema):null;
+    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,system_assessment:assessment,support:draft.support,report,signals,editorialSignals},reviewSchema):null;
     reviewGate(review);
-    return {status:"owner_review_required" as const,variant,calls,report,review,signals};
+    return {status:"owner_review_required" as const,variant,calls,report,review,signals,editorialSignals};
   }
   const wireDiagnosis=await invoke("diagnose",{primary:d.primary,cards},z.strictObject({system_assessment:systemSchema,...diagnosisSchema.shape}));
   const diagnosis={...wireDiagnosis,system_assessment:canonicalSystemAssessment(wireDiagnosis.system_assessment,d)};
@@ -153,7 +166,7 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
   const program=await invoke("program",{primary:d.primary,cards,diagnosis},programSchema);validateProgram(program,diagnosis);
   for(const i of program.initiatives){known.add(i.id);for(const a of i.actions)known.add(a.id);}
   const generatedCore=await invoke("core",{primary:d.primary,cards,diagnosis,program},groundedDraftSchema(known));
-  const core=flattenGroundedDraft(generatedCore);validateDraft(core,known,d);
+  const core=flattenGroundedDraft(generatedCore);validateDraft(core,known,d,editorialPolicy("content"));
   if(diagnosis.diagnoses.length)for(const field of ["main_diagnosis","growth_constraint"]){
     if(!core.support.find(s=>s.path===field)?.refs.some(ref=>diagnosis.diagnoses.some(d=>d.id===ref)))throw new QualityReferenceError("missing_diagnosis_ref");
   }
@@ -166,10 +179,10 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
   const report:QualityReport=qualityReportSchema.parse({...core.content,manageability_index_text:core.content.manageability_index_text+"\n\n"+renderSystemAssessment(diagnosis.system_assessment,d),participant_count:d.primary.participant_count,team_analysis:dynamics});
   await finalGate(report);
   const signals=repetitionSignals(stringLeaves(report));
-  const review=await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,diagnosis,program,support:core.support,report,signals},reviewSchema);
+  const review=await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,diagnosis,program,support:core.support,report,signals,editorialSignals},reviewSchema);
   // Research mode is private owner evaluation, never publication or quality acceptance.
   // A substantive critic failure is retained beside the candidate for comparison;
   // schema, privacy, source and numeric failures still throw and stop the experiment.
   reviewGate(review);
-  return {status:"owner_review_required" as const,variant,calls,report,review,signals};
+  return {status:"owner_review_required" as const,variant,calls,report,review,signals,editorialSignals};
 }
