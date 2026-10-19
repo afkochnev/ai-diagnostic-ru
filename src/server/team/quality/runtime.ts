@@ -17,6 +17,7 @@ export const normalCalls={A:2,B:2,C:6};
 export type StageRequest={stage:Stage;input:unknown;schema:z.ZodType;maxOutputTokens:number;deadline:number};
 export type SafeEvent={stage:Stage;status:"requested"|"privacy_validated"|"contract_validated";inputSHA256?:string;outputSHA256?:string;elapsedMs?:number};
 export type StagePort=(request:StageRequest)=>Promise<unknown>;
+export type CheckpointStage="extract"|"diagnose"|"program"|"core"|"dynamics";
 const hash=(v:unknown)=>createHash("sha256").update(JSON.stringify(v)).digest("hex");
 export function validateCards(cards:Cards,d:Dossier) {
   uniqueIds(cards.cards);
@@ -74,7 +75,10 @@ function validatePrimaryNumbers(value:unknown,d:Dossier) {
  * Every generated stage requires an injected DB validator after the unchanged local gate.
  * Semantic support is NOT certified by reference checks alone; owner review stays required. */
 export async function runQualityVariant(options:{variant:Variant;aggregates:unknown;qualitative:unknown;corpus:PrivacyCorpus;
-  call:StagePort;databaseValidate:(value:unknown)=>Promise<void>;deadline:number;maxCalls:number;researchComparison?:boolean;emit?:(e:SafeEvent)=>void}) {
+  call:StagePort;databaseValidate:(value:unknown)=>Promise<void>;deadline:number;maxCalls:number;researchComparison?:boolean;maxPrivacyRepairs?:number;
+  checkedStage?:(stage:CheckpointStage,value:unknown)=>Promise<void>;emit?:(e:SafeEvent)=>void}) {
+  const repairLimit=options.maxPrivacyRepairs??2;
+  if(!Number.isInteger(repairLimit)||repairLimit<0||repairLimit>6||(!options.researchComparison&&repairLimit!==2)||(!options.researchComparison&&options.checkedStage))throw new Error("quality_approval_required");
   const {variant,call,corpus,databaseValidate,deadline,maxCalls}=options,d=buildDossier(options.aggregates,options.qualitative);
   const known=new Set(d.known);let calls=0,repairs=0;
   const editorialSignals:EditorialSignal[]=[];
@@ -117,7 +121,7 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     const started=Date.now();let result:T=await perform(stage,input,schema);
     const p=inspectTeamOutputPrivacy(result,corpus);
     if(p.policyViolation||p.overlaps.length){
-      if(repairs>=2)throw new Error("team_privacy_rejected");
+      if(repairs>=repairLimit)throw new Error("team_privacy_rejected");
       const paths=new Set(p.violations.map(v=>v.field_path)),leaves=stringLeaves(result).filter(l=>paths.has(l.path));
       if(!leaves.length)throw new Error("team_privacy_rejected");
       const plan=guardedRepair(leaves,d.primary.maturity,corpus);
@@ -145,6 +149,7 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     return {status:"owner_review_required" as const,variant,calls,report,review,signals,editorialSignals};
   }
   const cards=await invoke("extract",d.extraction,cardsSchema);validateCards(cards,d);for(const c of cards.cards)known.add(c.id);
+  await options.checkedStage?.("extract",cards);
   options.emit?.({stage:"extract",status:"contract_validated"});
   const systemSchema=wireSystemAssessmentSchema({...d,known});
   if(variant==="B"){
@@ -163,7 +168,9 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
   const wireDiagnosis=await invoke("diagnose",{primary:d.primary,cards},z.strictObject({system_assessment:systemSchema,...diagnosisSchema.shape}));
   const diagnosis={...wireDiagnosis,system_assessment:canonicalSystemAssessment(wireDiagnosis.system_assessment,d)};
   await systemGate(diagnosis.system_assessment);validateDiagnoses(diagnosis,known);for(const v of diagnosis.diagnoses)known.add(v.id);
+  await options.checkedStage?.("diagnose",wireDiagnosis);
   const program=await invoke("program",{primary:d.primary,cards,diagnosis},programSchema);validateProgram(program,diagnosis);
+  await options.checkedStage?.("program",program);
   for(const i of program.initiatives){known.add(i.id);for(const a of i.actions)known.add(a.id);}
   const generatedCore=await invoke("core",{primary:d.primary,cards,diagnosis,program},groundedDraftSchema(known));
   const core=flattenGroundedDraft(generatedCore);validateDraft(core,known,d,editorialPolicy("content"));
@@ -175,7 +182,9 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     if(actions.size&&core.support.filter(s=>s.path.startsWith(prefix+"[")).some(s=>!s.refs.some(ref=>actions.has(ref))))throw new QualityReferenceError("missing_phase_action_ref");
   }
   options.emit?.({stage:"core",status:"contract_validated"});
+  await options.checkedStage?.("core",generatedCore);
   const dynamics=await invoke("dynamics",{dynamics:d.dynamics,cards},dynamicsSchema);
+  await options.checkedStage?.("dynamics",dynamics);
   const report:QualityReport=qualityReportSchema.parse({...core.content,manageability_index_text:core.content.manageability_index_text+"\n\n"+renderSystemAssessment(diagnosis.system_assessment,d),participant_count:d.primary.participant_count,team_analysis:dynamics});
   await finalGate(report);
   const signals=repetitionSignals(stringLeaves(report));
