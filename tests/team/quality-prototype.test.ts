@@ -3,7 +3,7 @@ import { qualityCase,caseIds } from "../../scripts/fixtures/team-quality-cases";
 import { authoredStageStubs } from "../../scripts/fixtures/team-quality-stage-stubs";
 import { buildDossier,repetitionSignals } from "@/server/team/quality/dossier";
 import { runQualityVariant,validateDraft,validateProgram,type StageRequest } from "@/server/team/quality/runtime";
-import { diagnosisSchema,programSchema,draftSchema } from "@/server/team/quality/contracts";
+import { diagnosisSchema,programSchema,flattenGroundedDraft,groundedDraftSchema,type GroundedDraft } from "@/server/team/quality/contracts";
 import { ordinaryTeamReportProvider } from "@/server/team/ordinary-provider";
 import { inspectTeamOutputPrivacy } from "@/server/team/synthesis-privacy";
 
@@ -24,6 +24,24 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
   });
   it("B uses exactly two calls and exposes no raw texts to its author",async()=>{
     const s=setup();expect((await s.run("B",2)).calls).toBe(2);expect(s.requests.map(r=>r.stage)).toEqual(["extract","combined"]);
+  });
+  it("requires provenance beside every paragraph, constrains refs and derives paths without a second model list",async()=>{
+    const s=setup(),d=buildDossier(s.f.aggregates,s.f.qualitative),known=new Set([...d.known,"E1","D1","A1","A2","A3","A4"]);
+    const grounded=groundedDraftSchema(known).parse(s.stubs.core),flat=flattenGroundedDraft(grounded);
+    expect(flat.support).toContainEqual({path:"strengths[0]",refs:grounded.content.strengths[0].refs});
+    expect(flat.support).toHaveLength(12);
+    const invalid=structuredClone(grounded);invalid.content.summary.refs=["E99"];
+    expect(()=>groundedDraftSchema(known).parse(invalid)).toThrow();
+    expect(()=>groundedDraftSchema(known).parse({...grounded,content:{...grounded.content,summary:{text:"Нет оснований."}}})).toThrow();
+    s.stubs.combined={...s.stubs.combined as object,content:{...(s.stubs.combined as GroundedDraft).content,summary:{text:"Неподтверждённый вывод.",refs:["E99"]}}};
+    await expect(s.run("B",2)).rejects.toThrow("quality_stage_failed");expect(s.call).toHaveBeenCalledTimes(2);
+  });
+  it("records privacy and contract checks as distinct events without generated content",async()=>{
+    const s=setup(),events:unknown[]=[];
+    await runQualityVariant({...s.f,variant:"B",call:s.call,databaseValidate:s.databaseValidate,deadline:Date.now()+600000,maxCalls:2,emit:e=>events.push(e)});
+    expect(events).toContainEqual({stage:"combined",status:"contract_validated"});
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({stage:"combined",status:"privacy_validated"})]));
+    expect(JSON.stringify(events)).not.toContain("Проверка готовности");
   });
   it("separates same means from changed dispersion without pretending to measure LLM quality",()=>{
     const a=qualityCase("production"),b=qualityCase("production",true);
@@ -76,7 +94,7 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
     const limited=setup();await expect(limited.run("C",2)).rejects.toThrow("quality_budget_exhausted");expect(limited.call).toHaveBeenCalledTimes(2);
   });
   it("refuses invented numerical literals and missing paragraph provenance",()=>{
-    const s=setup(),d=buildDossier(s.f.aggregates,s.f.qualitative),known=new Set([...d.known,"E1","D1","A1","A2","A3","A4"]),draft=draftSchema.parse(s.stubs.core);
+    const s=setup(),d=buildDossier(s.f.aggregates,s.f.qualitative),known=new Set([...d.known,"E1","D1","A1","A2","A3","A4"]),draft=flattenGroundedDraft(s.stubs.core as GroundedDraft);
     draft.content.summary="Индекс999.";expect(()=>validateDraft(draft,known,d)).toThrow("team_numeric_integrity");
     draft.content.summary="Оценка требует рабочей проверки.";draft.support=[];expect(()=>validateDraft(draft,known,d)).toThrow("quality_reference_invalid");
   });
@@ -110,7 +128,7 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
   it("allows truly absent qualitative input without inventing an evidence card",async()=>{
     const s=setup();s.f.qualitative.groups=[];s.f.corpus.answers=[];s.stubs.extract={cards:[],omitted_groups:[],limitations:["Допущенных текстовых групп нет."]};
     const d=diagnosisSchema.parse(s.stubs.diagnose);d.diagnoses[0].evidence_refs=["block.3.mean"];s.stubs.diagnose=d;
-    const core=draftSchema.parse(s.stubs.core);core.support=core.support.map(x=>({...x,refs:x.refs.filter(r=>r!=="E1")}));s.stubs.core=core;
+    const core=s.stubs.core as GroundedDraft;for(const item of Object.values(core.content))for(const p of Array.isArray(item)?item:[item])p.refs=p.refs.filter(r=>r!=="E1");
     expect((await s.run()).status).toBe("owner_review_required");
   });
 });

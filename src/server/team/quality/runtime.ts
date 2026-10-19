@@ -5,14 +5,14 @@ import { inspectTeamOutputPrivacy,stringLeaves,type PrivacyCorpus } from "../syn
 import { repairResponseSchema } from "../synthesis-repair";
 import { preservesReportFacts } from "../report-privacy";
 import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
-import { cardsSchema,diagnosisSchema,programSchema,draftSchema,combinedDraftSchema,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
+import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
 
 export type Variant="A"|"B"|"C";
 export type Stage="baseline_synthesis"|"baseline_report"|"extract"|"diagnose"|"program"|"core"|"dynamics"|"combined"|"review"|"privacy_repair";
 export const stageTokens:Record<Stage,number>={baseline_synthesis:6000,baseline_report:14000,extract:4000,diagnose:4000,program:6000,core:9000,dynamics:4000,combined:11000,review:4000,privacy_repair:6000};
 export const normalCalls={A:2,B:2,C:6};
 export type StageRequest={stage:Stage;input:unknown;schema:z.ZodType;maxOutputTokens:number;deadline:number};
-export type SafeEvent={stage:Stage;status:"requested"|"validated";inputSHA256?:string;outputSHA256?:string;elapsedMs?:number};
+export type SafeEvent={stage:Stage;status:"requested"|"privacy_validated"|"contract_validated";inputSHA256?:string;outputSHA256?:string;elapsedMs?:number};
 export type StagePort=(request:StageRequest)=>Promise<unknown>;
 const hash=(v:unknown)=>createHash("sha256").update(JSON.stringify(v)).digest("hex");
 export function validateCards(cards:Cards,d:Dossier) {
@@ -44,8 +44,9 @@ export function validateProgram(value:Program,diagnoses:Diagnoses) {
 }
 export function validateDraft(value:z.infer<typeof draftSchema>,known:Set<string>,d:Dossier) {
   const leaves=stringLeaves(value.content),paths=new Set(leaves.map(l=>l.path));
-  if(new Set(value.support.map(s=>s.path)).size!==value.support.length||value.support.some(s=>!paths.has(s.path)))throw new Error("quality_reference_invalid");
-  for(const leaf of leaves){const support=value.support.find(s=>s.path===leaf.path);if(!support)throw new Error("quality_reference_invalid");requireRefs(support.refs,known);}
+  if(new Set(value.support.map(s=>s.path)).size!==value.support.length)throw new QualityReferenceError("duplicate_support_path");
+  if(value.support.some(s=>!paths.has(s.path)))throw new QualityReferenceError("unknown_support_path");
+  for(const leaf of leaves){const support=value.support.find(s=>s.path===leaf.path);if(!support)throw new QualityReferenceError("missing_support_path");requireRefs(support.refs,known);}
   const text=leaves.map(l=>l.value).join("\n");
   if(/stddev|variance|distribution|разброс|поляризац|расхождени|дисперси|среднее скрывает/iu.test(text))throw new Error("team_quality_rejected");
   if(/качественные ответы дополняют средний профиль|тестовый отчёт|архитектура исполнения/iu.test(text))throw new Error("team_quality_rejected");
@@ -100,7 +101,7 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
       }
       result=schema.parse(clone);const final=inspectTeamOutputPrivacy(result,corpus);if(final.policyViolation||final.overlaps.length)throw new Error("team_privacy_rejected");
     }
-    await databaseValidate(result);options.emit?.({stage,status:"validated",outputSHA256:hash(result),elapsedMs:Date.now()-started});return result;
+    await databaseValidate(result);options.emit?.({stage,status:"privacy_validated",outputSHA256:hash(result),elapsedMs:Date.now()-started});return result;
   };
   if(variant==="A"){
     const synthesis=await invoke("baseline_synthesis",options.qualitative,teamSynthesisV3Schema);
@@ -110,24 +111,29 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     return {status:"owner_review_required" as const,variant,calls,report,review:null,signals:repetitionSignals(stringLeaves(report))};
   }
   const cards=await invoke("extract",d.extraction,cardsSchema);validateCards(cards,d);for(const c of cards.cards)known.add(c.id);
+  options.emit?.({stage:"extract",status:"contract_validated"});
   if(variant==="B"){
-    const draft=await invoke("combined",{PRIMARY_CORE_EVIDENCE:{...d.primary,cards},TEAM_DYNAMICS_EVIDENCE:d.dynamics},combinedDraftSchema);
+    const generated=await invoke("combined",{PRIMARY_CORE_EVIDENCE:{...d.primary,cards},TEAM_DYNAMICS_EVIDENCE:d.dynamics},groundedCombinedSchema(known));
+    const draft=flattenGroundedDraft(generated);
     validateDraft(draft,known,d);
-    const report=qualityReportSchema.parse({...draft.content,participant_count:d.primary.participant_count,team_analysis:draft.team_analysis});
+    options.emit?.({stage:"combined",status:"contract_validated"});
+    const report=qualityReportSchema.parse({...draft.content,participant_count:d.primary.participant_count,team_analysis:generated.team_analysis});
     await finalGate(report);
     return {status:"owner_review_required" as const,variant,calls,report,review:null,signals:repetitionSignals(stringLeaves(report))};
   }
   const diagnosis=await invoke("diagnose",{primary:d.primary,cards},diagnosisSchema);validateDiagnoses(diagnosis,known);for(const v of diagnosis.diagnoses)known.add(v.id);
   const program=await invoke("program",{primary:d.primary,cards,diagnosis},programSchema);validateProgram(program,diagnosis);
   for(const i of program.initiatives){known.add(i.id);for(const a of i.actions)known.add(a.id);}
-  const core=await invoke("core",{primary:d.primary,cards,diagnosis,program},draftSchema);validateDraft(core,known,d);
+  const generatedCore=await invoke("core",{primary:d.primary,cards,diagnosis,program},groundedDraftSchema(known));
+  const core=flattenGroundedDraft(generatedCore);validateDraft(core,known,d);
   if(diagnosis.diagnoses.length)for(const field of ["main_diagnosis","growth_constraint"]){
-    if(!core.support.find(s=>s.path===field)?.refs.some(ref=>diagnosis.diagnoses.some(d=>d.id===ref)))throw new Error("quality_reference_invalid");
+    if(!core.support.find(s=>s.path===field)?.refs.some(ref=>diagnosis.diagnoses.some(d=>d.id===ref)))throw new QualityReferenceError("missing_diagnosis_ref");
   }
   for(const [prefix,phase] of [["first_actions","immediate"],["plan_30_days","30"],["plan_60_days","60"],["plan_90_days","90"]]){
     const actions=new Set(program.initiatives.flatMap(i=>i.actions).filter(a=>a.phase===phase).map(a=>a.id));
-    if(actions.size&&core.support.filter(s=>s.path.startsWith(prefix+"[")).some(s=>!s.refs.some(ref=>actions.has(ref))))throw new Error("quality_reference_invalid");
+    if(actions.size&&core.support.filter(s=>s.path.startsWith(prefix+"[")).some(s=>!s.refs.some(ref=>actions.has(ref))))throw new QualityReferenceError("missing_phase_action_ref");
   }
+  options.emit?.({stage:"core",status:"contract_validated"});
   const dynamics=await invoke("dynamics",{dynamics:d.dynamics,cards},dynamicsSchema);
   const report:QualityReport=qualityReportSchema.parse({...core.content,participant_count:d.primary.participant_count,team_analysis:dynamics});
   await finalGate(report);

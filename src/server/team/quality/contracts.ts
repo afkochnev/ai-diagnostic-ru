@@ -32,6 +32,32 @@ export const draftSchema = z.strictObject({content:coreSchema,support:z.array(z.
   path:z.string().regex(/^[a-z_][a-z0-9_]*(?:\[\d+\])?$/),refs:z.array(ref).min(1).max(30),
 })).max(150)});
 export const combinedDraftSchema = draftSchema.extend({team_analysis:dynamicsSchema});
+
+// The model never has to repeat paragraph paths in a second, parallel array.
+// Every generated paragraph carries its own mandatory, bounded provenance.
+export function groundedDraftSchema(known:ReadonlySet<string>) {
+  if(!known.size)throw new Error("quality_reference_invalid");
+  const paragraph=z.strictObject({text,refs:z.array(z.enum([...known].sort() as [string,...string[]])).min(1).max(30)});
+  const list=z.array(paragraph).max(12);
+  return z.strictObject({content:z.strictObject({
+    summary:paragraph,main_diagnosis:paragraph,manageability_index_text:paragraph,strengths:list,key_problem_zones:list,
+    growth_constraint:paragraph,implementation_risks:list,first_actions:list,plan_30_days:list,plan_60_days:list,plan_90_days:list,next_step:paragraph,
+  })});
+}
+export function groundedCombinedSchema(known:ReadonlySet<string>) {
+  return groundedDraftSchema(known).extend({team_analysis:dynamicsSchema});
+}
+export type GroundedDraft=z.infer<ReturnType<typeof groundedDraftSchema>>;
+export function flattenGroundedDraft(value:GroundedDraft):z.infer<typeof draftSchema> {
+  const content:Record<string,string|string[]>={},support:z.infer<typeof draftSchema>["support"]=[];
+  for(const [field,item] of Object.entries(value.content)){
+    if(Array.isArray(item)){
+      content[field]=item.map(p=>p.text);
+      item.forEach((p,index)=>support.push({path:`${field}[${index}]`,refs:p.refs}));
+    }else{content[field]=item.text;support.push({path:field,refs:item.refs});}
+  }
+  return draftSchema.parse({content,support});
+}
 export const defectCodes = ["unsupported","causality","numeric","repetition","unclear","generic","unlinked_action","lost_evidence","core_dynamics","privacy"] as const;
 export const reviewSchema = z.strictObject({verdict:z.enum(["pass","fail"]),defects:z.array(z.strictObject({
   path:text,code:z.enum(defectCodes),critical:z.boolean(),reason:text,required_change:text,
@@ -39,8 +65,11 @@ export const reviewSchema = z.strictObject({verdict:z.enum(["pass","fail"]),defe
 export type Review = z.infer<typeof reviewSchema>;
 
 export function uniqueIds(values:{id:string}[]) {
-  if(new Set(values.map(v=>v.id)).size!==values.length) throw new Error("quality_reference_invalid");
+  if(new Set(values.map(v=>v.id)).size!==values.length) throw new QualityReferenceError("duplicate_id");
+}
+export class QualityReferenceError extends Error {
+  constructor(readonly reason:"duplicate_id"|"unknown_evidence_ref"|"duplicate_support_path"|"unknown_support_path"|"missing_support_path"|"missing_diagnosis_ref"|"missing_phase_action_ref") {super("quality_reference_invalid");}
 }
 export function requireRefs(refs:string[],known:Set<string>) {
-  if(refs.some(r=>!known.has(r))) throw new Error("quality_reference_invalid");
+  if(refs.some(r=>!known.has(r))) throw new QualityReferenceError("unknown_evidence_ref");
 }

@@ -22,5 +22,6 @@ export function authoredStageStubs(f:ReturnType<typeof qualityCase>):Record<Stag
   const oldSynthesis=mockTeamSynthesisV3(f.qualitative),oldReport=mockTeamReportV3(mainTeamReportInputV3(f.aggregates,oldSynthesis));
   void buildDossier(f.aggregates,f.qualitative);
   const combinedSupport=support.map(s=>({...s,refs:s.path==="manageability_index_text"?["overall.mean","overall.maturity"]:["E1","block.3.mean"]}));
-  return {baseline_synthesis:oldSynthesis,baseline_report:oldReport,extract:cards,diagnose:diagnosis,program,core:{content,support},combined:{content,support:combinedSupport,team_analysis:dynamics},dynamics,review:{verdict:"pass",defects:[]},privacy_repair:{repairs:[]}};
+  const grounded=(refs:typeof support)=>({content:Object.fromEntries(Object.entries(content).map(([field,value])=>[field,Array.isArray(value)?value.map((text,index)=>({text,refs:refs.find(s=>s.path===`${field}[${index}]`)!.refs})):({text:value,refs:refs.find(s=>s.path===field)!.refs})]))});
+  return {baseline_synthesis:oldSynthesis,baseline_report:oldReport,extract:cards,diagnose:diagnosis,program,core:grounded(support),combined:{...grounded(combinedSupport),team_analysis:dynamics},dynamics,review:{verdict:"pass",defects:[]},privacy_repair:{repairs:[]}};
 }

@@ -13,7 +13,8 @@ export function createApprovedPort(config:{apiKey:string;approved:boolean;model:
     const tag=request.stage.startsWith("baseline_")?"UNTRUSTED_TEAM_EVIDENCE":"UNTRUSTED_EVIDENCE";
     const body={model:config.model,reasoning:{effort:config.effort},store:false as const,max_output_tokens:request.maxOutputTokens,
       input:[{role:"system" as const,content:stagePrompt(request.stage)},{role:"user" as const,content:`<${tag}>\n${JSON.stringify(request.input)}\n</${tag}>`}],
-      text:{format:{type:"json_schema" as const,name:`team_quality_${request.stage}`,strict:true as const,schema:z.toJSONSchema(request.schema)}}};
+      // Shared definitions keep the provenance enum below the API's total enum limit.
+      text:{format:{type:"json_schema" as const,name:`team_quality_${request.stage}`,strict:true as const,schema:z.toJSONSchema(request.schema,{reused:"ref"})}}};
     const bytes=Buffer.byteLength(JSON.stringify(body));
     // Conservative liability reservation: <=1 input token/UTF8 byte, $5/M input
     // (includes 1.25x cache-write premium), $20/M output; no cached discount assumed.
