@@ -63,6 +63,11 @@ export const reviewSchema = z.strictObject({verdict:z.enum(["pass","fail"]),defe
   path:text,code:z.enum(defectCodes),critical:z.boolean(),reason:text,required_change:text,
 })).max(40)});
 export type Review = z.infer<typeof reviewSchema>;
+/** Carries only a critic result that already passed local+DB privacy, never a rejected report. */
+export class QualityCriticRejection extends Error {
+  readonly review:Review;
+  constructor(review:Review){super("team_quality_rejected");this.review=structuredClone(review);}
+}
 
 export function uniqueIds(values:{id:string}[]) {
   if(new Set(values.map(v=>v.id)).size!==values.length) throw new QualityReferenceError("duplicate_id");

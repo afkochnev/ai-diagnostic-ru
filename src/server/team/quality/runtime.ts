@@ -5,7 +5,7 @@ import { inspectTeamOutputPrivacy,stringLeaves,type PrivacyCorpus } from "../syn
 import { repairResponseSchema } from "../synthesis-repair";
 import { preservesReportFacts } from "../report-privacy";
 import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
-import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
+import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,QualityCriticRejection,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
 
 export type Variant="A"|"B"|"C";
 export type Stage="baseline_synthesis"|"baseline_report"|"extract"|"diagnose"|"program"|"core"|"dynamics"|"combined"|"review"|"privacy_repair";
@@ -139,6 +139,6 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
   await finalGate(report);
   const signals=repetitionSignals(stringLeaves(report));
   const review=await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,diagnosis,program,support:core.support,report,signals},reviewSchema);
-  if(review.verdict!=="pass"||review.defects.length)throw new Error("team_quality_rejected");
+  if(review.verdict!=="pass"||review.defects.length)throw new QualityCriticRejection(review);
   return {status:"owner_review_required" as const,variant,calls,report,review,signals};
 }

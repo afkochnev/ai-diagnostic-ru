@@ -3,14 +3,14 @@ import { qualityCase,caseIds } from "../../scripts/fixtures/team-quality-cases";
 import { authoredStageStubs } from "../../scripts/fixtures/team-quality-stage-stubs";
 import { buildDossier,repetitionSignals } from "@/server/team/quality/dossier";
 import { runQualityVariant,validateDraft,validateProgram,type StageRequest } from "@/server/team/quality/runtime";
-import { diagnosisSchema,programSchema,flattenGroundedDraft,groundedDraftSchema,type GroundedDraft } from "@/server/team/quality/contracts";
+import { diagnosisSchema,programSchema,flattenGroundedDraft,groundedDraftSchema,QualityCriticRejection,type GroundedDraft } from "@/server/team/quality/contracts";
 import { ordinaryTeamReportProvider } from "@/server/team/ordinary-provider";
 import { inspectTeamOutputPrivacy } from "@/server/team/synthesis-privacy";
 
 function setup(id:typeof caseIds[number]="production") {
   const f=qualityCase(id),stubs=authoredStageStubs(f),requests:StageRequest[]=[];
   const call=vi.fn(async(r:StageRequest)=>{requests.push(r);return structuredClone(stubs[r.stage]);});
-  const databaseValidate=vi.fn(async()=>{});
+  const databaseValidate=vi.fn<(value:unknown)=>Promise<void>>(async()=>{});
   return {f,stubs,requests,call,databaseValidate,run:(variant:"A"|"B"|"C"="C",maxCalls=6)=>runQualityVariant({...f,variant,call,databaseValidate,deadline:Date.now()+600000,maxCalls})};
 }
 describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
@@ -88,6 +88,13 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
   it("a critic cannot accept substantive defects even with verdict pass",async()=>{
     const s=setup();s.stubs.review={verdict:"pass",defects:[{path:"main_diagnosis",code:"unsupported",critical:true,reason:"Ссылка не поддерживает вывод.",required_change:"Убрать неподтверждённую причину."}]};
     await expect(s.run()).rejects.toThrow("team_quality_rejected");expect(s.call).toHaveBeenCalledTimes(6);
+  });
+  it("retains privacy-validated critic diagnostics on rejection without retaining the failed report",async()=>{
+    const s=setup();const review={verdict:"fail",defects:[{path:"main_diagnosis",code:"unsupported",critical:true,reason:"Не указан проверяемый механизм.",required_change:"Сформулировать ограниченную гипотезу."}]};s.stubs.review=review;
+    const error=await s.run().catch(e=>e);
+    expect(error).toBeInstanceOf(QualityCriticRejection);expect(error.review).toEqual(review);expect(error).not.toHaveProperty("report");expect(s.databaseValidate).toHaveBeenCalledTimes(7);
+    const dbFailure=setup();dbFailure.stubs.review=review;dbFailure.databaseValidate.mockImplementation(async v=>{if(v===undefined)throw Error("unreachable");if((v as {verdict?:string}).verdict)throw Error("quality_db_rejected");});
+    const rejected=await dbFailure.run().catch(e=>e);expect(rejected.message).toBe("quality_db_rejected");expect(rejected).not.toBeInstanceOf(QualityCriticRejection);expect(rejected).not.toHaveProperty("review");
   });
   it("does not retry a failed provider and enforces the call limit",async()=>{
     const s=setup();s.call.mockRejectedValueOnce(new Error("provider body must not escape"));await expect(s.run()).rejects.toThrow("quality_stage_failed");expect(s.call).toHaveBeenCalledTimes(1);
