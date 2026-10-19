@@ -5,11 +5,12 @@ import { inspectTeamOutputPrivacy,stringLeaves,type PrivacyCorpus } from "../syn
 import { repairResponseSchema } from "../synthesis-repair";
 import { preservesReportFacts } from "../report-privacy";
 import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
+import { systemAssessmentSchema,validateSystemAssessment,renderSystemAssessment } from "./system-assessment";
 import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,QualityCriticRejection,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
 
 export type Variant="A"|"B"|"C";
 export type Stage="baseline_synthesis"|"baseline_report"|"extract"|"diagnose"|"program"|"core"|"dynamics"|"combined"|"review"|"privacy_repair";
-export const stageTokens:Record<Stage,number>={baseline_synthesis:6000,baseline_report:14000,extract:4000,diagnose:4000,program:6000,core:9000,dynamics:4000,combined:11000,review:4000,privacy_repair:6000};
+export const stageTokens:Record<Stage,number>={baseline_synthesis:6000,baseline_report:14000,extract:4000,diagnose:6000,program:6000,core:11000,dynamics:4000,combined:14000,review:4000,privacy_repair:6000};
 export const normalCalls={A:2,B:2,C:6};
 export type StageRequest={stage:Stage;input:unknown;schema:z.ZodType;maxOutputTokens:number;deadline:number};
 export type SafeEvent={stage:Stage;status:"requested"|"privacy_validated"|"contract_validated";inputSHA256?:string;outputSHA256?:string;elapsedMs?:number};
@@ -47,7 +48,10 @@ export function validateDraft(value:z.infer<typeof draftSchema>,known:Set<string
   if(new Set(value.support.map(s=>s.path)).size!==value.support.length)throw new QualityReferenceError("duplicate_support_path");
   if(value.support.some(s=>!paths.has(s.path)))throw new QualityReferenceError("unknown_support_path");
   for(const leaf of leaves){const support=value.support.find(s=>s.path===leaf.path);if(!support)throw new QualityReferenceError("missing_support_path");requireRefs(support.refs,known);}
-  const text=leaves.map(l=>l.value).join("\n");
+  validatePrimaryText(value.content,d);
+}
+export function validatePrimaryText(value:unknown,d:Dossier) {
+  const text=stringLeaves(value).map(l=>l.value).join("\n");
   if(/stddev|variance|distribution|разброс|поляризац|расхождени|дисперси|среднее скрывает/iu.test(text))throw new Error("team_quality_rejected");
   if(/качественные ответы дополняют средний профиль|тестовый отчёт|архитектура исполнения/iu.test(text))throw new Error("team_quality_rejected");
   // This catches invented literals, not semantic attribution. The critic must separately
@@ -112,16 +116,19 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
   }
   const cards=await invoke("extract",d.extraction,cardsSchema);validateCards(cards,d);for(const c of cards.cards)known.add(c.id);
   options.emit?.({stage:"extract",status:"contract_validated"});
+  const systemSchema=systemAssessmentSchema({...d,known});
   if(variant==="B"){
-    const generated=await invoke("combined",{PRIMARY_CORE_EVIDENCE:{...d.primary,cards},TEAM_DYNAMICS_EVIDENCE:d.dynamics},groundedCombinedSchema(known));
+    const generated=await invoke("combined",{PRIMARY_CORE_EVIDENCE:{...d.primary,cards},TEAM_DYNAMICS_EVIDENCE:d.dynamics},z.strictObject({system_assessment:systemSchema,...groundedCombinedSchema(known).shape}));
+    validateSystemAssessment(generated.system_assessment,d,known);validatePrimaryText(renderSystemAssessment(generated.system_assessment,d),d);
     const draft=flattenGroundedDraft(generated);
     validateDraft(draft,known,d);
     options.emit?.({stage:"combined",status:"contract_validated"});
-    const report=qualityReportSchema.parse({...draft.content,participant_count:d.primary.participant_count,team_analysis:generated.team_analysis});
+    const report=qualityReportSchema.parse({...draft.content,manageability_index_text:draft.content.manageability_index_text+"\n\n"+renderSystemAssessment(generated.system_assessment,d),participant_count:d.primary.participant_count,team_analysis:generated.team_analysis});
     await finalGate(report);
     return {status:"owner_review_required" as const,variant,calls,report,review:null,signals:repetitionSignals(stringLeaves(report))};
   }
-  const diagnosis=await invoke("diagnose",{primary:d.primary,cards},diagnosisSchema);validateDiagnoses(diagnosis,known);for(const v of diagnosis.diagnoses)known.add(v.id);
+  const diagnosis=await invoke("diagnose",{primary:d.primary,cards},z.strictObject({system_assessment:systemSchema,...diagnosisSchema.shape}));
+  validateSystemAssessment(diagnosis.system_assessment,d,known);validatePrimaryText(renderSystemAssessment(diagnosis.system_assessment,d),d);validateDiagnoses(diagnosis,known);for(const v of diagnosis.diagnoses)known.add(v.id);
   const program=await invoke("program",{primary:d.primary,cards,diagnosis},programSchema);validateProgram(program,diagnosis);
   for(const i of program.initiatives){known.add(i.id);for(const a of i.actions)known.add(a.id);}
   const generatedCore=await invoke("core",{primary:d.primary,cards,diagnosis,program},groundedDraftSchema(known));
@@ -135,7 +142,7 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
   }
   options.emit?.({stage:"core",status:"contract_validated"});
   const dynamics=await invoke("dynamics",{dynamics:d.dynamics,cards},dynamicsSchema);
-  const report:QualityReport=qualityReportSchema.parse({...core.content,participant_count:d.primary.participant_count,team_analysis:dynamics});
+  const report:QualityReport=qualityReportSchema.parse({...core.content,manageability_index_text:core.content.manageability_index_text+"\n\n"+renderSystemAssessment(diagnosis.system_assessment,d),participant_count:d.primary.participant_count,team_analysis:dynamics});
   await finalGate(report);
   const signals=repetitionSignals(stringLeaves(report));
   const review=await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,diagnosis,program,support:core.support,report,signals},reviewSchema);

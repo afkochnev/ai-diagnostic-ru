@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const QUALITY_VERSION = "TEAM-QUALITY-PROTOTYPE-4";
+export const QUALITY_VERSION = "TEAM-QUALITY-PROTOTYPE-4.1-SYSTEM";
 const text = z.string().min(1).max(12000);
 const points = z.array(text).max(12);
 const ref = z.string().regex(/^(?:overall\.(?:mean|maturity)|block\.\d+\.mean|question\.\d+\.\d+\.mean|context\.[a-z_]+|E\d+|D\d+|I\d+|A\d+)$/);
@@ -58,7 +58,7 @@ export function flattenGroundedDraft(value:GroundedDraft):z.infer<typeof draftSc
   }
   return draftSchema.parse({content,support});
 }
-export const defectCodes = ["unsupported","causality","numeric","repetition","unclear","generic","unlinked_action","lost_evidence","core_dynamics","privacy"] as const;
+export const defectCodes = ["unsupported","causality","numeric","repetition","unclear","generic","unlinked_action","lost_evidence","core_dynamics","system_scope","privacy"] as const;
 export const reviewSchema = z.strictObject({verdict:z.enum(["pass","fail"]),defects:z.array(z.strictObject({
   path:text,code:z.enum(defectCodes),critical:z.boolean(),reason:text,required_change:text,
 })).max(40)});
@@ -73,7 +73,7 @@ export function uniqueIds(values:{id:string}[]) {
   if(new Set(values.map(v=>v.id)).size!==values.length) throw new QualityReferenceError("duplicate_id");
 }
 export class QualityReferenceError extends Error {
-  constructor(readonly reason:"duplicate_id"|"unknown_evidence_ref"|"duplicate_support_path"|"unknown_support_path"|"missing_support_path"|"missing_diagnosis_ref"|"missing_phase_action_ref") {super("quality_reference_invalid");}
+  constructor(readonly reason:"duplicate_id"|"unknown_evidence_ref"|"duplicate_support_path"|"unknown_support_path"|"missing_support_path"|"missing_diagnosis_ref"|"missing_phase_action_ref"|"system_coverage_invalid"|"system_link_invalid") {super("quality_reference_invalid");}
 }
 export function requireRefs(refs:string[],known:Set<string>) {
   if(refs.some(r=>!known.has(r))) throw new QualityReferenceError("unknown_evidence_ref");

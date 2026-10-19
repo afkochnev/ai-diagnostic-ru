@@ -82,7 +82,7 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
     await expect(s.run("C",8)).rejects.toThrow("team_privacy_rejected");expect(s.call.mock.calls.filter(([r])=>r.stage==="privacy_repair")).toHaveLength(2);expect(s.call).toHaveBeenCalledTimes(5);
   });
   it("unknown evidence references stop before planning",async()=>{
-    const s=setup();const d=diagnosisSchema.parse(s.stubs.diagnose);d.diagnoses[0].evidence_refs=["E99"];s.stubs.diagnose=d;
+    const s=setup();const d=diagnosisSchema.strip().parse(s.stubs.diagnose);d.diagnoses[0].evidence_refs=["E99"];s.stubs.diagnose={...s.stubs.diagnose as object,...d};
     await expect(s.run()).rejects.toThrow("quality_reference_invalid");expect(s.call).toHaveBeenCalledTimes(2);
   });
   it("a critic cannot accept substantive defects even with verdict pass",async()=>{
@@ -106,7 +106,7 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
     draft.content.summary="Оценка требует рабочей проверки.";draft.support=[];expect(()=>validateDraft(draft,known,d)).toThrow("quality_reference_invalid");
   });
   it("rejects cycles and future dependencies, allows same-phase forward DAG",()=>{
-    const s=setup(),p=programSchema.parse(s.stubs.program),d=diagnosisSchema.parse(s.stubs.diagnose);
+    const s=setup(),p=programSchema.parse(s.stubs.program),d=diagnosisSchema.strip().parse(s.stubs.diagnose);
     p.initiatives[0].actions[0].depends_on=["A4"];expect(()=>validateProgram(p,d)).toThrow("quality_dependency_invalid");
     p.initiatives[0].actions[0].phase="30";p.initiatives[0].actions[0].depends_on=["A2"];expect(()=>validateProgram(p,d)).toThrow("quality_dependency_invalid");
     p.initiatives[0].actions[0].depends_on=[];expect(()=>validateProgram(p,d)).not.toThrow();
@@ -134,7 +134,7 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
   });
   it("allows truly absent qualitative input without inventing an evidence card",async()=>{
     const s=setup();s.f.qualitative.groups=[];s.f.corpus.answers=[];s.stubs.extract={cards:[],omitted_groups:[],limitations:["Допущенных текстовых групп нет."]};
-    const d=diagnosisSchema.parse(s.stubs.diagnose);d.diagnoses[0].evidence_refs=["block.3.mean"];s.stubs.diagnose=d;
+    const d=diagnosisSchema.strip().parse(s.stubs.diagnose);d.diagnoses[0].evidence_refs=["block.3.mean"];s.stubs.diagnose={...s.stubs.diagnose as object,...d};
     const core=s.stubs.core as GroundedDraft;for(const item of Object.values(core.content))for(const p of Array.isArray(item)?item:[item])p.refs=p.refs.filter(r=>r!=="E1");
     expect((await s.run()).status).toBe("owner_review_required");
   });

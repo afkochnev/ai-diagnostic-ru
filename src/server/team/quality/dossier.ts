@@ -1,5 +1,6 @@
 import { mainTeamReportInputV2, parseQualitativeInputV2 } from "../report-v2-contracts";
 import { normalizePrivacyText } from "../synthesis-privacy";
+import { systemFunctions } from "./system-assessment";
 
 export const emptySynthesis = {themes:[],strengths:[],problem_patterns:[],growth_constraints:[],risks:[],opportunities:[],alignment_signals:[],divergence_signals:[],contradictions:[],management_implications:[],discussion_topics:[]};
 export function buildDossier(aggregates:unknown,qualitative:unknown) {
@@ -17,6 +18,7 @@ export function buildDossier(aggregates:unknown,qualitative:unknown) {
     overall_mean:a.overall.mean,maturity:a.overall.maturity,
     blocks:a.blocks.map(({position,title,mean})=>({position,title,mean})),
     questions:a.questions.map(({question,block_position,question_position,mean,normalized_direction})=>({question,block_position,question_position,mean,normalized_direction})),facts,
+    system_frame:{kind:"analytical_framework_not_observed_company_facts",scope:"Assess the whole management system before choosing a local intervention",dimensions:[...a.blocks].sort((x,y)=>x.position-y.position).map((b,i)=>({block_ref:`block.${b.position}.mean`,title:b.title,analytical_function:systemFunctions[i]}))},
     limitations:q.groups.length?[]:["Нет допущенных групп открытых ответов. Причины числового профиля требуют проверки."],
   };
   const extraction={company_context:a.company_context,groups:q.groups.map(({question,question_position,response_count,texts})=>({question,question_position,response_count,texts}))};
