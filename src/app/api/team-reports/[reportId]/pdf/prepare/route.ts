@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { getIdentity } from "@/server/auth/session";
 import { prepareTeamPdf } from "@/server/team/pdf-service";
 import { enforceRateLimit, RateLimitExceeded } from "@/server/rate-limit";
+import { authConfig } from "@/server/supabase/config";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function POST(request:Request,{params}:{params:Promise<{reportId:string}>}) {
-  if(request.headers.get("origin") && request.headers.get("origin")!==new URL(request.url).origin) return NextResponse.json({error:"access_denied"},{status:403});
+  // Render terminates TLS before Next.js, so request.url can have an internal
+  // origin. Compare against the configured public origin, never proxy headers.
+  if(request.headers.get("origin") && request.headers.get("origin")!==new URL(authConfig().APP_URL).origin) return NextResponse.json({error:"access_denied"},{status:403});
   const identity=await getIdentity();
   if(!identity?.user.email_confirmed_at)return NextResponse.json({error:"access_denied"},{status:401});
   const {reportId}=await params;
