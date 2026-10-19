@@ -18,13 +18,13 @@ function Section({ number, title, value }: { number: number; title: string; valu
     {Array.isArray(value) ? value.length ? <ul className="mt-3 list-disc space-y-3 pl-5">{value.map((point, i) => <li key={i} className="whitespace-pre-wrap leading-relaxed">{point}</li>)}</ul> : <p className="mt-3 text-muted">Недостаточно допустимых свидетельств для отдельного вывода.</p> : <div className="mt-3 space-y-3 leading-relaxed">{value.split(/\n\s*\n/).map((paragraph, i) => <p key={i}>{paragraph}</p>)}</div>}
   </section>;
 }
-export function RichTeamReport({ content }: { content: unknown }) {
+export function RichTeamReport({ content, pipeline="TEAM-RU-2" }: { content: unknown; pipeline?: string }) {
   const parsed = teamReportV2Schema.safeParse(content);
   if (!parsed.success) return <p role="alert" className="mt-4">Не удалось отобразить формат отчёта.</p>;
   const report = parsed.data;
   return <article className="mt-5 space-y-5">
     {teamCoreSections.map(([title, key], i) => <Section key={key} number={i+1} title={title} value={report[key]} />)}
     <h3 className="pt-4 text-xl font-semibold">Командная динамика</h3>
-    {teamDynamicsSections.map(([title, key], i) => <Section key={key} number={i+13} title={title} value={report.team_analysis[key]} />)}
+    {teamDynamicsSections.map(([title, key], i) => <Section key={key} number={i+13} title={pipeline==="TEAM-RU-3" && i===2?"Дополнительные качественные сигналы команды":title} value={report.team_analysis[key]} />)}
   </article>;
 }

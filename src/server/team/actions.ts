@@ -163,7 +163,7 @@ export async function teamResultAction(_: TeamActionState, form: FormData): Prom
     await requireCompanyWrite(record.team.company_id, identity.user.id);
     await enforceRateLimit(`team-results:${identity.user.id}`,60,3600);
     const intent = z.enum(["refresh","report","close"]).parse(value(form,"intent"));
-    await teamRpc(intent === "report" ? "request_team_report" : intent === "close" ? "close_team_diagnostic" : "refresh_team_results", { p_team_id: teamId });
+    await teamRpc(intent === "report" ? "request_team_report_v3" : intent === "close" ? "close_team_diagnostic" : "refresh_team_results", { p_team_id: teamId, ...(intent === "report" ? {p_provider:"mock"} : {}) });
     revalidatePath(`/ru/companies/${record.team.company_id}/teams/${teamId}`);
     return { status: intent === "close" ? "closed" : "requested" };
   } catch (error) { return failure(error); }
