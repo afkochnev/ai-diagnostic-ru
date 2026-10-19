@@ -18,5 +18,5 @@ const instructions:Partial<Record<Stage,string>>={
 };
 export function stagePrompt(stage:Stage) {
   if(stage==="baseline_synthesis"||stage==="baseline_report")return readFileSync(join(process.cwd(),stage==="baseline_synthesis"?"TEAM_SYNTHESIS_PROMPT_RU_3.md":"TEAM_REPORT_PROMPT_RU_3.md"),"utf8");
-  return `${boundary}\n\n${style}\n\n${instructions[stage]}`;
+  return `${boundary}\n\n${style}\n\nЧисловая запись средних — точное значение из входа или округление до одного знака после запятой. Число участников, блоков и вопросов — только их фактическое количество во входе. Не превращай эти количества в проценты или другие показатели. Проверяй смысл числа по конкретному основанию, а не только наличие такого числа во входе.\n\n${instructions[stage]}`;
 }

@@ -75,6 +75,11 @@ export function uniqueIds(values:{id:string}[]) {
 export class QualityReferenceError extends Error {
   constructor(readonly reason:"duplicate_id"|"unknown_evidence_ref"|"duplicate_support_path"|"unknown_support_path"|"missing_support_path"|"missing_diagnosis_ref"|"missing_phase_action_ref"|"system_coverage_invalid"|"system_link_invalid") {super("quality_reference_invalid");}
 }
+/** Safe failure location only: never retain the rejected number or surrounding prose. */
+export class QualityNumericError extends Error {
+  constructor(readonly fieldPath:string){super("team_numeric_integrity");}
+  safeDetails(){return {reason:"literal_not_in_frozen_facts_or_proposal_horizons",field_path:this.fieldPath};}
+}
 export function requireRefs(refs:string[],known:Set<string>) {
   if(refs.some(r=>!known.has(r))) throw new QualityReferenceError("unknown_evidence_ref");
 }

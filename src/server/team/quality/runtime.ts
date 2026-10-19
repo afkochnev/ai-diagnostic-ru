@@ -7,7 +7,7 @@ import { guardedRepair } from "./guarded-repair";
 import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
 import { wireSystemAssessmentSchema,canonicalSystemAssessment,validateSystemAssessment,renderSystemAssessment,type SystemAssessment } from "./system-assessment";
 import { QualityBudgetError } from "./request-budget";
-import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,QualityCriticRejection,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
+import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,QualityNumericError,QualityCriticRejection,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
 
 export type Variant="A"|"B"|"C";
 export type Stage="baseline_synthesis"|"baseline_report"|"extract"|"diagnose"|"program"|"core"|"dynamics"|"combined"|"review"|"privacy_repair";
@@ -52,14 +52,16 @@ export function validateDraft(value:z.infer<typeof draftSchema>,known:Set<string
   validatePrimaryText(value.content,d);
 }
 export function validatePrimaryText(value:unknown,d:Dossier) {
-  const text=stringLeaves(value).map(l=>l.value).join("\n");
+  const leaves=stringLeaves(value),text=leaves.map(l=>l.value).join("\n");
   if(/stddev|variance|distribution|разброс|поляризац|расхождени|дисперси|среднее скрывает/iu.test(text))throw new Error("team_quality_rejected");
   if(/качественные ответы дополняют средний профиль|тестовый отчёт|архитектура исполнения/iu.test(text))throw new Error("team_quality_rejected");
   // This catches invented literals, not semantic attribution. The critic must separately
   // check that each value/claim is supported by the cited metric and interpretation.
   const numbers=(s:string)=>[...s.matchAll(/\d+(?:[.,]\d+)?/gu)].map(m=>Number(m[0].replace(",",".")));
-  const allowed=new Set([0,4,5,30,60,90,100,...d.primary.facts.flatMap(f=>numbers(String(f.value))).flatMap(n=>[n,Math.round(n*10)/10])]);
-  if(numbers(text).some(n=>!allowed.has(n)))throw new Error("team_numeric_integrity");
+  // These are frozen sample dimensions, not inferred metrics or arbitrary exceptions.
+  const sampleCounts=[d.primary.participant_count,d.primary.blocks.length,d.primary.questions.length];
+  const allowed=new Set([0,4,5,30,60,90,100,...sampleCounts,...d.primary.facts.flatMap(f=>numbers(String(f.value))).flatMap(n=>[n,Math.round(n*10)/10])]);
+  for(const leaf of leaves)if(numbers(leaf.value).some(n=>!allowed.has(n)))throw new QualityNumericError(leaf.path);
 }
 
 /** Local prototype only: no DB queue or publication, no credentials, no implicit network.
@@ -78,7 +80,11 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     await databaseValidate(report);
   };
   const systemGate=async(assessment:SystemAssessment)=>{
-    validateSystemAssessment(assessment,d,known);validatePrimaryText(renderSystemAssessment(assessment,d),d);
+    validateSystemAssessment(assessment,d,known);
+    // Validate generated prose separately from reference identifiers and rendered metrics,
+    // so a terminal numeric rejection identifies its field without retaining its content.
+    validatePrimaryText({system_state:assessment.system_state,dimensions:assessment.dimensions.map(row=>({assessment:row.assessment,limitations:row.limitations})),links:assessment.links.map(link=>({explanation:link.explanation})),limits:assessment.limits},d);
+    validatePrimaryText(renderSystemAssessment(assessment,d),d);
     const check=inspectTeamOutputPrivacy(assessment,corpus);if(check.policyViolation||check.overlaps.length)throw new Error("team_privacy_rejected");
     await databaseValidate(assessment);
   };
