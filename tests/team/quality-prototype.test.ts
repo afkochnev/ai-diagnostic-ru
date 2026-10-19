@@ -96,6 +96,19 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
     const dbFailure=setup();dbFailure.stubs.review=review;dbFailure.databaseValidate.mockImplementation(async v=>{if(v===undefined)throw Error("unreachable");if((v as {verdict?:string}).verdict)throw Error("quality_db_rejected");});
     const rejected=await dbFailure.run().catch(e=>e);expect(rejected.message).toBe("quality_db_rejected");expect(rejected).not.toBeInstanceOf(QualityCriticRejection);expect(rejected).not.toHaveProperty("review");
   });
+  it("research comparison reviews A/B equally and retains substantive failures only as unaccepted candidates",async()=>{
+    for(const [variant,count] of [["A",3],["B",3],["C",6]] as const){
+      const s=setup();s.stubs.review={verdict:"fail",defects:[{path:"summary",code:"system_scope",critical:true,reason:"Не объяснено состояние всей системы.",required_change:"Связать части управления с целями."}]};
+      const r=await runQualityVariant({...s.f,variant,researchComparison:true,maxCalls:count,deadline:Date.now()+600000,call:s.call,databaseValidate:s.databaseValidate});
+      expect(r.status).toBe("owner_review_required");expect(r.review?.verdict).toBe("fail");expect(r.calls).toBe(count);expect(s.requests.at(-1)?.stage).toBe("review");
+      expect(JSON.stringify(s.requests.at(-1)?.input)).not.toContain(s.f.corpus.answers[0].text);
+    }
+  });
+  it("research mode never retains a candidate after critic numeric or privacy defects",async()=>{
+    for(const code of ["numeric","privacy"]){const s=setup();s.stubs.review={verdict:"fail",defects:[{path:"summary",code,critical:true,reason:"Дефект требует остановки.",required_change:"Проверить отклонённый результат."}]};
+      await expect(runQualityVariant({...s.f,variant:"C",researchComparison:true,maxCalls:6,deadline:Date.now()+600000,call:s.call,databaseValidate:s.databaseValidate})).rejects.toBeInstanceOf(QualityCriticRejection);
+    }
+  });
   it("does not retry a failed provider and enforces the call limit",async()=>{
     const s=setup();s.call.mockRejectedValueOnce(new Error("provider body must not escape"));await expect(s.run()).rejects.toThrow("quality_stage_failed");expect(s.call).toHaveBeenCalledTimes(1);
     const limited=setup();await expect(limited.run("C",2)).rejects.toThrow("quality_budget_exhausted");expect(limited.call).toHaveBeenCalledTimes(2);

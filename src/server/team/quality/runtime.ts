@@ -65,9 +65,13 @@ export function validatePrimaryText(value:unknown,d:Dossier) {
  * Every generated stage requires an injected DB validator after the unchanged local gate.
  * Semantic support is NOT certified by reference checks alone; owner review stays required. */
 export async function runQualityVariant(options:{variant:Variant;aggregates:unknown;qualitative:unknown;corpus:PrivacyCorpus;
-  call:StagePort;databaseValidate:(value:unknown)=>Promise<void>;deadline:number;maxCalls:number;emit?:(e:SafeEvent)=>void}) {
+  call:StagePort;databaseValidate:(value:unknown)=>Promise<void>;deadline:number;maxCalls:number;researchComparison?:boolean;emit?:(e:SafeEvent)=>void}) {
   const {variant,call,corpus,databaseValidate,deadline,maxCalls}=options,d=buildDossier(options.aggregates,options.qualitative);
   const known=new Set(d.known);let calls=0,repairs=0;
+  const reviewGate=(review:z.infer<typeof reviewSchema>|null)=>{
+    if(!review)return;
+    if(review.defects.some(d=>d.code==="numeric"||d.code==="privacy")||(!options.researchComparison&&(review.verdict!=="pass"||review.defects.length)))throw new QualityCriticRejection(review);
+  };
   const finalGate=async(report:QualityReport)=>{
     const p=inspectTeamOutputPrivacy(report,corpus);if(p.policyViolation||p.overlaps.length)throw new Error("team_privacy_rejected");
     await databaseValidate(report);
@@ -112,7 +116,10 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     qualitativeCoverage(options.qualitative,synthesis);
     const input=mainTeamReportInputV3(options.aggregates,synthesis),report=await invoke("baseline_report",input,teamReportV3Schema);
     validateCoreQuality(report,"openai",synthesis);
-    return {status:"owner_review_required" as const,variant,calls,report,review:null,signals:repetitionSignals(stringLeaves(report))};
+    const signals=repetitionSignals(stringLeaves(report));
+    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,synthesis,report,signals},reviewSchema):null;
+    reviewGate(review);
+    return {status:"owner_review_required" as const,variant,calls,report,review,signals};
   }
   const cards=await invoke("extract",d.extraction,cardsSchema);validateCards(cards,d);for(const c of cards.cards)known.add(c.id);
   options.emit?.({stage:"extract",status:"contract_validated"});
@@ -125,7 +132,10 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     options.emit?.({stage:"combined",status:"contract_validated"});
     const report=qualityReportSchema.parse({...draft.content,manageability_index_text:draft.content.manageability_index_text+"\n\n"+renderSystemAssessment(generated.system_assessment,d),participant_count:d.primary.participant_count,team_analysis:generated.team_analysis});
     await finalGate(report);
-    return {status:"owner_review_required" as const,variant,calls,report,review:null,signals:repetitionSignals(stringLeaves(report))};
+    const signals=repetitionSignals(stringLeaves(report));
+    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,system_assessment:generated.system_assessment,support:draft.support,report,signals},reviewSchema):null;
+    reviewGate(review);
+    return {status:"owner_review_required" as const,variant,calls,report,review,signals};
   }
   const diagnosis=await invoke("diagnose",{primary:d.primary,cards},z.strictObject({system_assessment:systemSchema,...diagnosisSchema.shape}));
   validateSystemAssessment(diagnosis.system_assessment,d,known);validatePrimaryText(renderSystemAssessment(diagnosis.system_assessment,d),d);validateDiagnoses(diagnosis,known);for(const v of diagnosis.diagnoses)known.add(v.id);
@@ -146,6 +156,9 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
   await finalGate(report);
   const signals=repetitionSignals(stringLeaves(report));
   const review=await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,diagnosis,program,support:core.support,report,signals},reviewSchema);
-  if(review.verdict!=="pass"||review.defects.length)throw new QualityCriticRejection(review);
+  // Research mode is private owner evaluation, never publication or quality acceptance.
+  // A substantive critic failure is retained beside the candidate for comparison;
+  // schema, privacy, source and numeric failures still throw and stop the experiment.
+  reviewGate(review);
   return {status:"owner_review_required" as const,variant,calls,report,review,signals};
 }
