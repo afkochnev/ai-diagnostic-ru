@@ -40,6 +40,8 @@ it("keeps the cumulative retry reservation below the original approved cost and 
  expect(normalInput).toBe(1512000);expect(normalOutput).toBe(81000);
  const maxNew=(normalInput+5*foodtechRequestByteCaps.privacy_repair)*5/1e6+(normalOutput+5*stageTokens.privacy_repair)*20/1e6;
  expect(maxNew).toBeCloseTo(12.48,8);expect(maxNew+0.22204).toBeLessThan(13.14);expect(stages.length+5+1).toBe(18);
+ const bc=stages.slice(3),bcMax=(bc.reduce((n,s)=>n+foodtechRequestByteCaps[s],0)+3*foodtechRequestByteCaps.privacy_repair)*5/1e6+(bc.reduce((n,s)=>n+stageTokens[s],0)+3*stageTokens.privacy_repair)*20/1e6;
+ expect(bcMax).toBeCloseTo(8.62,8);expect(bcMax+2.63549).toBeLessThan(13.14);expect(bc.length+3+6).toBe(18);
 });
 it("keeps a payload-free budget reason through the runtime's stage boundary",async()=>{
  const f=qualityCase("production"),error=new QualityBudgetError("request_size","baseline_synthesis",130000,120000);

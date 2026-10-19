@@ -22,7 +22,13 @@ export function buildDossier(aggregates:unknown,qualitative:unknown) {
     limitations:q.groups.length?[]:["Нет допущенных групп открытых ответов. Причины числового профиля требуют проверки."],
   };
   const extraction={company_context:a.company_context,groups:q.groups.map(({question,question_position,response_count,texts})=>({question,question_position,response_count,texts}))};
-  const dynamics={overall:a.overall,blocks:a.blocks,questions:a.questions};
+  // At three respondents, an extremum or a narrow score histogram can expose a
+  // person's score. B/C dynamics need only group means and population deviation.
+  // Preserve the full internal source for unchanged DB checks; minimize AI input.
+  const withoutExtremes=<T extends {min:number;max:number;distribution?:number[]}>(value:T)=>{
+    const {min,max,distribution,...group}=value;void min;void max;void distribution;return group;
+  };
+  const dynamics={overall:withoutExtremes(a.overall),blocks:a.blocks.map(withoutExtremes),questions:a.questions.map(withoutExtremes)};
   return {primary,extraction,dynamics,known:new Set(facts.map(f=>f.id))};
 }
 export type Dossier = ReturnType<typeof buildDossier>;

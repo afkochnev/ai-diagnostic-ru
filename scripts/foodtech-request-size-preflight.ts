@@ -27,7 +27,7 @@ async function main(){
   const stress=teamSynthesisV3Schema.parse({...emptySynthesis,themes:Array.from({length:8},(_,i)=>({title:"Проверка объёма",summary:"я".repeat(1800),question_position:f.qualitative.groups[i%4].question_position,response_count:3}))});
   measure({stage:"baseline_report",input:mainTeamReportInputV3(f.aggregates,stress),schema:teamReportV3Schema,maxOutputTokens:stageTokens.baseline_report,deadline:Date.now()+600000},"A_SYNTHESIS_SIZE_STRESS_AUTHORED");
   await source.metadata();
-  const checkedFiles=["scripts/foodtech-request-size-preflight.ts","src/server/team/quality/openai-port.ts","src/server/team/quality/request-budget.ts","src/server/team/quality/runtime.ts"];
+  const checkedFiles=["scripts/foodtech-request-size-preflight.ts","src/server/team/quality/openai-port.ts","src/server/team/quality/request-budget.ts","src/server/team/quality/runtime.ts","src/server/team/quality/dossier.ts","src/server/team/quality/prompts.ts"];
   const code_sha256=Object.fromEntries(checkedFiles.map(p=>[p,createHash("sha256").update(readFileSync(p)).digest("hex")]));
   const result={status:"ACTUAL_SOURCE_SERIALIZATION_PASS_AUTHORED_OUTPUTS_ONLY",external_AI_calls:0,mutations:0,credential_or_key_printed:false,all_normal_stages:12,source_guard:"PASS",source_fingerprint:expected.fingerprint,code_sha256,rows,limitations:"Sizing uses authored intermediate outputs, not future AI responses. Actual response size is checked before every external request; oversized future output still stops without truncating evidence."};
   writeFileSync("../artifacts/v22c4-team-report-quality/foodtech-all-stage-size-preflight.json",JSON.stringify(result,null,2)+"\n",{mode:0o600});

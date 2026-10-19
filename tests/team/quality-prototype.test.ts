@@ -14,6 +14,17 @@ function setup(id:typeof caseIds[number]="production") {
   return {f,stubs,requests,call,databaseValidate,run:(variant:"A"|"B"|"C"="C",maxCalls=6)=>runQualityVariant({...f,variant,call,databaseValidate,deadline:Date.now()+600000,maxCalls})};
 }
 describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
+  it("B/C never send extrema or score histograms, while preserving group means, deviation and the internal source",async()=>{
+    for(const variant of ["B","C"] as const){
+      const s=setup(),before=structuredClone(s.f.aggregates),d=buildDossier(s.f.aggregates,s.f.qualitative);
+      await runQualityVariant({...s.f,variant,researchComparison:true,maxCalls:8,deadline:Date.now()+600000,call:s.call,databaseValidate:s.databaseValidate});
+      for(const request of s.requests)expect(JSON.stringify(request.input)).not.toMatch(/"(?:min|max|distribution)"\s*:/);
+      expect(s.f.aggregates).toEqual(before);
+      expect(d.dynamics.overall.mean).toBe(before.overall.mean);expect(d.dynamics.overall.stddev_pop).toBe(before.overall.stddev_pop);
+      d.dynamics.questions.forEach((q,i)=>{expect(q.mean).toBe(before.questions[i].mean);expect(q.stddev_pop).toBe(before.questions[i].stddev_pop);expect(q.question).toBe(before.questions[i].question);});
+      expect(d.primary.overall_mean).toBe(before.overall.mean);
+    }
+  });
   it.each(caseIds)("validates derived means and isolated data for %s",async id=>{
     const s=setup(id);const r=await s.run();expect(r.status).toBe("owner_review_required");expect(r.calls).toBe(6);expect(s.databaseValidate).toHaveBeenCalledTimes(7);
     for(const request of s.requests.filter(r=>r.stage!=="extract")){
@@ -96,13 +107,11 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
     const dbFailure=setup();dbFailure.stubs.review=review;dbFailure.databaseValidate.mockImplementation(async v=>{if(v===undefined)throw Error("unreachable");if((v as {verdict?:string}).verdict)throw Error("quality_db_rejected");});
     const rejected=await dbFailure.run().catch(e=>e);expect(rejected.message).toBe("quality_db_rejected");expect(rejected).not.toBeInstanceOf(QualityCriticRejection);expect(rejected).not.toHaveProperty("review");
   });
-  it("research comparison reviews A/B equally and retains substantive failures only as unaccepted candidates",async()=>{
-    for(const [variant,count] of [["A",3],["B",3],["C",6]] as const){
+  it.each([["A",3],["B",3],["C",6]] as const)("research comparison reviews %s and retains substantive failures only as unaccepted candidates",async(variant,count)=>{
       const s=setup();s.stubs.review={verdict:"fail",defects:[{path:"summary",code:"system_scope",critical:true,reason:"Не объяснено состояние всей системы.",required_change:"Связать части управления с целями."}]};
       const r=await runQualityVariant({...s.f,variant,researchComparison:true,maxCalls:count,deadline:Date.now()+600000,call:s.call,databaseValidate:s.databaseValidate});
       expect(r.status).toBe("owner_review_required");expect(r.review?.verdict).toBe("fail");expect(r.calls).toBe(count);expect(s.requests.at(-1)?.stage).toBe("review");
       expect(JSON.stringify(s.requests.at(-1)?.input)).not.toContain(s.f.corpus.answers[0].text);
-    }
   });
   it("research mode never retains a candidate after critic numeric or privacy defects",async()=>{
     for(const code of ["numeric","privacy"]){const s=setup();s.stubs.review={verdict:"fail",defects:[{path:"summary",code,critical:true,reason:"Дефект требует остановки.",required_change:"Проверить отклонённый результат."}]};
