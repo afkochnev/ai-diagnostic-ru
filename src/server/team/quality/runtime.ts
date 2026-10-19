@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { teamReportV3Schema,teamSynthesisV3Schema,mainTeamReportInputV3,validateCoreQuality,qualitativeCoverage } from "../report-v3-contracts";
-import { inspectTeamOutputPrivacy,stringLeaves,type PrivacyCorpus } from "../synthesis-privacy";
+import { stringLeaves,type PrivacyCorpus } from "../synthesis-privacy";
 import { repairResponseSchema } from "../synthesis-repair";
+import { inspectResearchPrivacy,type ResearchPrivacyPolicy } from "./privacy-policy";
 import { guardedRepair } from "./guarded-repair";
 import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
 import { wireSystemAssessmentSchema,canonicalSystemAssessment,validateSystemAssessment,renderSystemAssessment,type SystemAssessment } from "./system-assessment";
@@ -14,7 +15,7 @@ export type Variant="A"|"B"|"C";
 export type Stage="baseline_synthesis"|"baseline_report"|"extract"|"diagnose"|"program"|"core"|"dynamics"|"combined"|"review"|"privacy_repair";
 export const stageTokens:Record<Stage,number>={baseline_synthesis:6000,baseline_report:14000,extract:4000,diagnose:6000,program:6000,core:11000,dynamics:4000,combined:14000,review:4000,privacy_repair:6000};
 export const normalCalls={A:2,B:2,C:6};
-export type StageRequest={stage:Stage;input:unknown;schema:z.ZodType;maxOutputTokens:number;deadline:number};
+export type StageRequest={stage:Stage;input:unknown;schema:z.ZodType;maxOutputTokens:number;deadline:number;privacyPolicy?:ResearchPrivacyPolicy};
 export type SafeEvent={stage:Stage;status:"requested"|"privacy_validated"|"contract_validated";inputSHA256?:string;outputSHA256?:string;elapsedMs?:number};
 export type StagePort=(request:StageRequest)=>Promise<unknown>;
 export type CheckpointStage="extract"|"diagnose"|"program"|"core"|"dynamics";
@@ -72,11 +73,15 @@ function validatePrimaryNumbers(value:unknown,d:Dossier) {
 }
 
 /** Local prototype only: no DB queue or publication, no credentials, no implicit network.
- * Every generated stage requires an injected DB validator after the unchanged local gate.
+ * Every generated stage requires the injected validation boundary after its local policy gate.
+ * The explicit unattributed research policy never changes the ordinary DB validator.
  * Semantic support is NOT certified by reference checks alone; owner review stays required. */
 export async function runQualityVariant(options:{variant:Variant;aggregates:unknown;qualitative:unknown;corpus:PrivacyCorpus;
-  call:StagePort;databaseValidate:(value:unknown)=>Promise<void>;deadline:number;maxCalls:number;researchComparison?:boolean;maxPrivacyRepairs?:number;
+  call:StagePort;databaseValidate:(value:unknown)=>Promise<void>;deadline:number;maxCalls:number;researchComparison?:boolean;maxPrivacyRepairs?:number;privacyPolicy?:ResearchPrivacyPolicy;
   checkedStage?:(stage:CheckpointStage,value:unknown)=>Promise<void>;emit?:(e:SafeEvent)=>void}) {
+  const policy=options.privacyPolicy??"strict";
+  if(!["strict","unattributed"].includes(policy)||(policy!=="strict"&&(!options.researchComparison||options.variant!=="C")))throw new Error("quality_approval_required");
+  const inspect=(value:unknown,source:PrivacyCorpus)=>inspectResearchPrivacy(value,source,policy);
   const repairLimit=options.maxPrivacyRepairs??2;
   if(!Number.isInteger(repairLimit)||repairLimit<0||repairLimit>6||(!options.researchComparison&&repairLimit!==2)||(!options.researchComparison&&options.checkedStage))throw new Error("quality_approval_required");
   const {variant,call,corpus,databaseValidate,deadline,maxCalls}=options,d=buildDossier(options.aggregates,options.qualitative);
@@ -93,7 +98,7 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     if(review.defects.some(d=>d.code==="numeric"||d.code==="privacy")||(!options.researchComparison&&(review.verdict!=="pass"||review.defects.length)))throw new QualityCriticRejection(review);
   };
   const finalGate=async(report:QualityReport)=>{
-    const p=inspectTeamOutputPrivacy(report,corpus);if(p.policyViolation||p.overlaps.length)throw new Error("team_privacy_rejected");
+    const p=inspect(report,corpus);if(p.policyViolation||p.overlaps.length)throw new Error("team_privacy_rejected");
     await databaseValidate(report);
   };
   const systemGate=async(assessment:SystemAssessment)=>{
@@ -102,29 +107,29 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
     // so a terminal numeric rejection identifies its field without retaining its content.
     validatePrimaryText({system_state:assessment.system_state,dimensions:assessment.dimensions.map(row=>({assessment:row.assessment,limitations:row.limitations})),links:assessment.links.map(link=>({explanation:link.explanation})),limits:assessment.limits},d,editorialPolicy("system_assessment"));
     validatePrimaryNumbers(renderSystemAssessment(assessment,d),d);
-    const check=inspectTeamOutputPrivacy(assessment,corpus);if(check.policyViolation||check.overlaps.length)throw new Error("team_privacy_rejected");
+    const check=inspect(assessment,corpus);if(check.policyViolation||check.overlaps.length)throw new Error("team_privacy_rejected");
     await databaseValidate(assessment);
   };
   const perform=async<T>(stage:Stage,input:unknown,schema:z.ZodType<T>):Promise<T>=>{
     if(Date.now()>=deadline||calls>=maxCalls)throw new Error("quality_budget_exhausted");
     // Only the extraction/synthesis boundary may see shuffled, masked raw groups.
     if(stage!=="extract"&&stage!=="baseline_synthesis"&&stage!=="privacy_repair"){
-      const p=inspectTeamOutputPrivacy(input,corpus);if(p.policyViolation||p.overlaps.length)throw new Error("team_privacy_rejected");
+      const p=inspect(input,corpus);if(p.policyViolation||p.overlaps.length)throw new Error("team_privacy_rejected");
     }
     calls++;options.emit?.({stage,status:"requested",inputSHA256:hash(input)});
     let result:T;
-    try{result=schema.parse(await call({stage,input,schema,maxOutputTokens:stageTokens[stage],deadline}));}catch(error){if(error instanceof QualityBudgetError)throw error;throw new Error(error instanceof Error&&error.message==="quality_budget_exhausted"?error.message:"quality_stage_failed");}
+    try{result=schema.parse(await call({stage,input,schema,maxOutputTokens:stageTokens[stage],deadline,...policy!=="strict"?{privacyPolicy:policy}:{}}));}catch(error){if(error instanceof QualityBudgetError)throw error;throw new Error(error instanceof Error&&error.message==="quality_budget_exhausted"?error.message:"quality_stage_failed");}
     if(Date.now()>=deadline)throw new Error("quality_budget_exhausted");
     return result;
   };
   const invoke=async<T>(stage:Stage,input:unknown,schema:z.ZodType<T>):Promise<T>=>{
     const started=Date.now();let result:T=await perform(stage,input,schema);
-    const p=inspectTeamOutputPrivacy(result,corpus);
+    const p=inspect(result,corpus);
     if(p.policyViolation||p.overlaps.length){
       if(repairs>=repairLimit)throw new Error("team_privacy_rejected");
       const paths=new Set(p.violations.map(v=>v.field_path)),leaves=stringLeaves(result).filter(l=>paths.has(l.path));
       if(!leaves.length)throw new Error("team_privacy_rejected");
-      const plan=guardedRepair(leaves,d.primary.maturity,corpus);
+      const plan=guardedRepair(leaves,d.primary.maturity,corpus,inspect);
       repairs++;
       // Only generated flagged strings cross the repair boundary. Never raw answers,
       // corpus, unflagged fields, participant metadata or the complete document.
@@ -134,7 +139,7 @@ export async function runQualityVariant(options:{variant:Variant;aggregates:unkn
         let target:unknown=clone;for(const token of leaf.tokens.slice(0,-1))target=(target as Record<string|number,unknown>)[token];
         (target as Record<string|number,unknown>)[leaf.tokens.at(-1)!]=replacement;
       }
-      result=schema.parse(clone);const final=inspectTeamOutputPrivacy(result,corpus);if(final.policyViolation||final.overlaps.length)throw new Error("team_privacy_rejected");
+      result=schema.parse(clone);const final=inspect(result,corpus);if(final.policyViolation||final.overlaps.length)throw new Error("team_privacy_rejected");
     }
     await databaseValidate(result);options.emit?.({stage,status:"privacy_validated",outputSHA256:hash(result),elapsedMs:Date.now()-started});return result;
   };

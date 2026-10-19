@@ -8,7 +8,7 @@ import { QualityBudgetError,type RequestByteCaps } from "./request-budget";
 export function approvedRequestBody(request:StageRequest,model:"gpt-5.6-sol",effort:"medium") {
   const tag=request.stage.startsWith("baseline_")?"UNTRUSTED_TEAM_EVIDENCE":"UNTRUSTED_EVIDENCE";
   return {model,reasoning:{effort},store:false as const,max_output_tokens:request.maxOutputTokens,
-    input:[{role:"system" as const,content:stagePrompt(request.stage)},{role:"user" as const,content:`<${tag}>\n${JSON.stringify(request.input)}\n</${tag}>`}],
+    input:[{role:"system" as const,content:stagePrompt(request.stage,request.privacyPolicy)},{role:"user" as const,content:`<${tag}>\n${JSON.stringify(request.input)}\n</${tag}>`}],
     text:{format:{type:"json_schema" as const,name:`team_quality_${request.stage}`,strict:true as const,schema:z.toJSONSchema(request.schema,{reused:"ref"})}}};
 }
 

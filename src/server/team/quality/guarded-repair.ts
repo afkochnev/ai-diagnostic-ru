@@ -10,7 +10,7 @@ export class QualityRepairError extends Error {
 }
 /** Generated fragments only. Corpus and protected statements stay local, in memory.
  * Copy the same protected statements used by the unchanged legacy fact guard. */
-export function guardedRepair(leaves:StringLeaf[],maturity:string|null,corpus:PrivacyCorpus){
+export function guardedRepair(leaves:StringLeaf[],maturity:string|null,corpus:PrivacyCorpus,inspect:typeof inspectTeamOutputPrivacy=inspectTeamOutputPrivacy){
   const fields:RepairField[]=[],plans:{leaf:StringLeaf;parts:{text:string;repairPath?:string}[]}[]=[];
   for(const leaf of leaves){
     const protectedText=(s:string)=>/\d/u.test(s)||Boolean(maturity&&s.toLowerCase().includes(maturity.toLowerCase()));
@@ -23,7 +23,7 @@ export function guardedRepair(leaves:StringLeaf[],maturity:string|null,corpus:Pr
     for(let i=0;i<parts.length;i++){
       const part=parts[i];if(!part.text.trim())continue;
       if(protectedText(part.text)){
-        const check=inspectTeamOutputPrivacy({text:part.text},corpus);
+        const check=inspect({text:part.text},corpus);
         if(check.policyViolation||check.overlaps.length)throw new QualityRepairError("protected_fact_overlap",leaf.path);
       }else{part.repairPath=`${leaf.path}__span_${i}`;fields.push({path:part.repairPath,value:part.text});}
     }

@@ -1,6 +1,7 @@
 import { readFileSync,lstatSync } from "node:fs";
 import { homedir } from "node:os";
-import { privacyCorpusSchema } from "../src/server/team/synthesis-privacy";
+import { inspectResearchPrivacy } from "../src/server/team/quality/privacy-policy";
+import { privacyCorpusSchema,type PrivacyCorpus } from "../src/server/team/synthesis-privacy";
 import { teamReportInputV2Schema,parseQualitativeInputV2 } from "../src/server/team/report-v2-contracts";
 import { buildDossier } from "../src/server/team/quality/dossier";
 
@@ -37,6 +38,7 @@ export function compareSource(actual:Record<string,unknown>,expected:Record<stri
   if(actual.id!==FOODTECH.team||actual.company_id!==FOODTECH.company||actual.owner_email!==FOODTECH.owner||actual.completed_count!==3||actual.question_count!==80||actual.validator_md5!=="e4d4af7584217930c88a370d45f80b7e")throw new Error("foodtech_source_changed");
 }
 export function foodtechSource(query:Query,expected:Record<string,unknown>) {
+  let loadedCorpus:PrivacyCorpus|null=null;
   const metadataSql=readFileSync("scripts/sql/foodtech-quality-readiness.sql","utf8");
   const metadata=async()=>{const rows=await query(metadataSql);if(rows.length!==1)throw new Error("foodtech_source_changed");compareSource(rows[0],expected);return rows[0];};
   const evidenceSql=`with t as (select '${FOODTECH.team}'::uuid id), e as materialized(select private.team_numeric_evidence_v2(id) v from t),
@@ -54,7 +56,12 @@ export function foodtechSource(query:Query,expected:Record<string,unknown>) {
       if(rows.length!==1||!rows[0].value||typeof rows[0].value!=="object")throw new Error("foodtech_source_unavailable");
       const v=rows[0].value as Record<string,unknown>,aggregates=teamReportInputV2Schema.parse(v.aggregates),qualitative=parseQualitativeInputV2(v.qualitative),corpus=privacyCorpusSchema.parse(v.corpus);
       buildDossier(aggregates,qualitative);if(qualitative.groups.length!==4||qualitative.groups.some(g=>g.response_count!==3))throw new Error("foodtech_source_changed");
-      await metadata();return {aggregates,qualitative,corpus};
+      loadedCorpus=corpus;await metadata();return {aggregates,qualitative,corpus};
+    },
+    async validateUnattributed(value:unknown){
+      await metadata();if(!loadedCorpus)throw new Error("foodtech_source_unavailable");
+      if(inspectResearchPrivacy(value,loadedCorpus,"unattributed").policyViolation)throw new Error("team_privacy_rejected");
+      await metadata();
     },
     async validate(value:unknown){
       await metadata();
