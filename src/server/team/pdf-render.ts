@@ -1,18 +1,57 @@
-import { buildPdfHtml, normalizePdfText, renderPdfHtml } from "@/server/pdf/render";
-import { teamReportV2Schema } from "./report-v2-contracts";
-import { teamDynamicsSections } from "@/features/team/rich-report";
-export type TeamPdfInput={companyName:string;teamTitle:string;completedAt:string;participantCount:number;index:string;maturity:string;blocks:{title:string;score:string}[];content:unknown;mock:boolean};
+import {readFileSync} from "node:fs";
+import path from "node:path";
+import {PDFDocument,PDFDict,PDFName,PDFString} from "pdf-lib";
+import {normalizePdfText,renderPdfHtml} from "@/server/pdf/render";
+import {teamReportV2Schema,type TeamReportV2} from "./report-v2-contracts";
+import {qualityReportSchema} from "./quality/contracts";
+import {teamCoreSections,teamDynamicsSections} from "@/features/team/rich-report";
+import {classifyDispersion,dispersionDescriptions,dispersionDisclaimer,smallGroupDispersionNote,DISPERSION_INTERPRETATION_VERSION,displayAnalyticalNumber as number,orderedDispersionQuestions,type DispersionProfile} from "@/shared/analytics/dispersion";
+import {TEAM_BRAND_ASSET,TEAM_BRAND_WEBSITE} from "@/shared/analytics/team-report-presentation";
+export {TEAM_PDF_TEMPLATE_VERSION,TEAM_BRAND_ASSET} from "@/shared/analytics/team-report-presentation";
+export type TeamPdfInput={companyName:string;teamTitle:string;completedAt:string;participantCount:number;index:string;maturity:string;blocks:{title:string;score:string}[];content:unknown;mock:boolean;profile?:DispersionProfile};
+const logo=()=>`data:image/png;base64,${readFileSync(path.join(process.cwd(),TEAM_BRAND_ASSET)).toString("base64")}`;
 const escape=(v:unknown)=>normalizePdfText(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
-export function buildTeamPdfHtml(input:TeamPdfInput) {
-  const content=teamReportV2Schema.parse(input.content);
-  const {team_analysis,participant_count,...report}=content;void participant_count;
-  const base=buildPdfHtml({companyName:input.companyName,completedAt:input.completedAt,index:input.index,maturity:input.maturity,blocks:input.blocks,report});
-  const dynamics=teamDynamicsSections.map(([title,key],i)=>`<section class="report-section"><h2>${i+13}. ${escape(i===2?"Дополнительные качественные сигналы команды":title)}</h2>${team_analysis[key].length?`<ul>${team_analysis[key].map(p=>`<li>${escape(p)}</li>`).join("")}</ul>`:"<p>Допустимых дополнительных свидетельств нет.</p>"}</section>`).join("");
-  return base.replace("Управленческий<br>AI-аудит компании","Командный управленческий<br>AI-аудит")
-    .replace(`<h2>${escape(input.companyName)}</h2>`,`<h2>${escape(input.companyName)}</h2><p>${escape(input.teamTitle)}</p><p>Завершивших участников: ${input.participantCount}</p>${input.mock?'<div class="summary"><b>Тестовый отчёт</b><p>Создан тестовым провайдером и не предназначен для оценки качества AI-анализа.</p></div>':""}`)
-    .replace("Дата завершения диагностики:","Дата отчёта:")
-    .replace("Результаты диагностики</h2>","Результаты командной диагностики</h2>")
-    .replace("Что означает текущий индекс управляемости","Что означает командный индекс управляемости")
-    .replace("</body>",`<div class="group-page"><h2>Командная динамика</h2>${dynamics}</div></body>`);
+const narrativeHeadings=new Set(["Стратегия","Организационная структура","Процессы и операционная эффективность","Цели и показатели","Управленческий ритм","Зрелость команды","Инновации и развитие","Корпоративная культура","Как связаны выявленные проблемы"]);
+const paragraph=(v:string)=>v.split(/\n\s*\n/u).map(p=>narrativeHeadings.has(p.trim())?`<h3>${escape(p)}</h3>`:`<p>${escape(p).replaceAll("\n","<br>")}</p>`).join("");
+const body=(v:string|string[])=>Array.isArray(v)?`<ol>${v.map(p=>`<li>${paragraph(p)}</li>`).join("")}</ol>`:paragraph(v);
+const level=(sd:number,scale:4|100)=>{const l=classifyDispersion(sd,scale);return `<span class="dispersion" data-dispersion-level="${l.key}">${number(sd)}<br><small>${l.label}</small></span>`;};
+function legend(){return `<section class="legend"><h2>Как читать разброс оценок</h2><p>${dispersionDisclaimer}</p><dl>${Object.values(dispersionDescriptions).map(l=>`<dt>${l.label}</dt><dd>${l.description}</dd>`).join("")}</dl><p>${smallGroupDispersionNote}</p><p class="note">Версия интерпретации ${DISPERSION_INTERPRETATION_VERSION}. Разброс делится на диапазон шкалы и умножается на 100: для индекса и блоков диапазон 100, для вопросов — 4. Низкий уровень — до 10% включительно; умеренный — свыше 10% до 20%; высокий — свыше 20% до 30%; очень высокий — свыше 30%. Границы являются продуктовой интерпретацией, а не универсальным статистическим законом. Уровень определяется до округления: одинаково отображаемые числа могут относиться к разным уровням.</p></section>`;}
+function summary(input:TeamPdfInput){
+ const rows=input.profile?[{title:"Общий индекс",...input.profile.overall},...input.profile.blocks]:input.blocks.map(b=>({title:b.title,mean:Number(b.score.replace(",",".")),stddev:null}));
+ return `<section class="results"><h2>Результаты командной диагностики</h2><p>Индекс ${escape(input.index)} из 100 · ${escape(input.maturity)} · Завершивших участников: ${input.participantCount}</p><table><thead><tr><th>Показатель</th><th>Среднее</th><th>Разброс</th><th>Уровень разброса</th></tr></thead><tbody>${rows.map(r=>`<tr><th scope="row">${escape(r.title)}</th><td>${number(r.mean)}</td><td>${r.stddev===null?"Нет данных":number(r.stddev)}</td><td>${r.stddev===null?"Нет данных":classifyDispersion(r.stddev,100).label}</td></tr>`).join("")}</tbody></table>${legend()}</section>`;
 }
-export const renderTeamPdf=(input:TeamPdfInput)=>renderPdfHtml(buildTeamPdfHtml(input));
+function dynamicsAnnotation(profile:DispersionProfile|undefined,descending:boolean){
+ if(!profile?.questions.length)return "";
+ return `<aside class="evidence"><h3>Программные показатели к разделу</h3><p class="note">Среднее не определяет степень согласованности. Здесь показаны ${descending?"наибольшие":"наименьшие"} показатели разброса; при равенстве используется порядок вопросов.</p><ul>${orderedDispersionQuestions(profile.questions,descending).slice(0,5).map(q=>`<li>${escape(q.question)}<br><span class="note">Среднее ${number(q.mean)} из 4 · Разброс ${number(q.stddev)} — ${classifyDispersion(q.stddev,4).label.toLocaleLowerCase("ru-RU")}</span></li>`).join("")}</ul></aside>`;
+}
+function appendix(profile:DispersionProfile|undefined){
+ if(!profile?.questions.length)return "";
+ return `<section class="appendix"><h2>Приложение с результатами оценки</h2><p>Вопросы — по расчётной шкале 0–4; индекс и блоки — по шкале 0–100. В форме ответов используются обозначения 1–5: из выбранного обозначения вычитается 1. Обратная формулировка учитывается при расчёте до формирования этих результатов. Средние и стандартные отклонения взяты из сохранённого программного расчёта, без повторной генерации AI.</p><p>Низкий разброс не означает сильную практику. Все уровни интерпретируются с учётом размера группы. Подробное пояснение приведено в начале отчёта.</p>${profile.blocks.map(b=>`<section class="appendix-block"><h3>${escape(b.title)}</h3><p>Среднее по блоку: ${number(b.mean)} из 100. Разброс: ${number(b.stddev)} — ${classifyDispersion(b.stddev,100).label.toLocaleLowerCase("ru-RU")}. Завершивших участников: ${profile.participantCount}.</p><table class="questions"><colgroup><col style="width:7%"><col style="width:64%"><col style="width:10%"><col style="width:13%"><col style="width:6%"></colgroup><thead><tr><th>№</th><th>Вопрос анкеты</th><th>Среднее<br>0–4</th><th>Разброс</th><th>N</th></tr></thead><tbody>${profile.questions.filter(q=>q.blockPosition===b.position).map(q=>`<tr><td>${q.number??`${q.blockPosition}.${q.position}`}</td><td>${escape(q.question)}</td><td>${number(q.mean)}</td><td>${level(q.stddev,4)}</td><td>${q.participantCount}</td></tr>`).join("")}</tbody></table><p class="note">N — число ответов. Уровни разброса: см. пояснение в начале отчёта.</p></section>`).join("")}</section>`;
+}
+function compose(input:TeamPdfInput,report:TeamReportV2){
+ const date=new Date(input.completedAt).toLocaleDateString("ru-RU");
+ const sections=teamCoreSections.map(([title,key],i)=>`<section class="report-section"><h2>${i+1}. ${escape(title)}</h2>${body(report[key])}</section>`).join("");
+ const dynamics=teamDynamicsSections.map(([title,key],i)=>`<section class="report-section"><h2>${i+13}. ${escape(i===2?"Дополнительные качественные сигналы команды":title)}</h2>${body(report.team_analysis[key])}${i<2?dynamicsAnnotation(input.profile,i===1):""}</section>`).join("");
+ return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Управленческий AI-аудит — ${escape(input.companyName)}</title><meta name="author" content="iTeam"><meta name="description" content="Командная диагностика системы управления"><style>
+ @page{size:A4;margin:20mm 17mm 20mm}*{box-sizing:border-box}body{font:10.5pt/1.5 Arial,"DejaVu Sans",sans-serif;color:#243746;margin:0}h1,h2,h3{color:#2f5774;line-height:1.25;break-after:avoid}h1{font-size:29pt;margin:18pt 0}h2{font-size:17pt;margin:20pt 0 10pt}h3{font-size:12pt;margin:14pt 0 7pt}p{margin:0 0 9pt}li{margin:0 0 9pt}ol,ul{padding-left:20pt}li p{margin:0}.cover{height:249mm;display:flex;flex-direction:column;justify-content:space-between;break-after:page}.logo{width:48mm;height:auto;object-fit:contain}.cover .company{font-size:27pt;margin-top:24pt}.cover .kind{font-size:19pt}.eyebrow{margin-top:24pt;font-size:12pt}.cover-summary{font-size:14pt}.site{color:#2f5774;text-decoration:underline}.results{break-after:page}.note{font-size:8.5pt;color:#526877}.legend h2{font-size:13pt}.legend dl{font-size:9pt;line-height:1.4}.legend dt{font-weight:bold}.legend dd{margin:0 0 6pt}.report-section{margin-bottom:17pt}.report-section p{orphans:2;widows:2}.group-page,.appendix{break-before:page}.evidence{border-top:1px solid #dce3e8;margin-top:10pt;padding-top:5pt}.evidence li{font-size:9pt;break-inside:avoid}.appendix-block{break-before:page}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9pt;margin:10pt 0}th,td{border:1px solid #d9d9d9;padding:7pt;text-align:left;vertical-align:middle;overflow-wrap:break-word}thead th{background:#e9eff3;color:#24445c;font-weight:bold}thead{display:table-header-group}tr{break-inside:avoid}tbody th{font-weight:normal}.results th:first-child{width:42%}.results td{font-variant-numeric:tabular-nums}.questions{font-size:8.4pt;line-height:1.35}.questions th,.questions td{padding:5pt}.questions td:not(:nth-child(2)){text-align:center}.dispersion small{display:block;font-size:7.8pt;line-height:1.25}.mock{font-weight:bold}a{color:#2f5774}@media screen{body{max-width:960px;margin:30px auto;padding:0 20px}.cover{height:auto;min-height:70vh}.appendix-block{margin-top:40px}}
+ </style></head><body><header class="cover"><div><a class="site" href="https://iteam.ru"><img class="logo" alt="iTeam" src="${logo()}"></a><p class="eyebrow">iTeam · Управленческий AI-аудит компании</p><h1>Управленческий<br>AI-аудит компании</h1><h2 class="company">${escape(input.companyName)}</h2><p class="kind">Командная диагностика</p><p>${escape(input.teamTitle)}</p><p>Дата отчёта: ${date}</p></div><div class="cover-summary"><p>Индекс ${escape(input.index)} из 100</p><p>${escape(input.maturity)}</p><p>Завершивших участников: ${input.participantCount}</p>${input.mock?'<p class="mock">Тестовый отчёт: создан тестовым провайдером и не предназначен для оценки качества AI-анализа.</p>':""}</div><a class="site" href="https://iteam.ru">iteam.ru</a></header>${summary(input)}<main>${sections}<div class="group-page"><h2>Командная динамика</h2>${dynamics}</div>${appendix(input.profile)}</main><footer class="note">iTeam · <a href="https://iteam.ru">iteam.ru</a> · Конфиденциальный отчёт</footer></body></html>`;
+}
+export function buildTeamPdfHtml(input:TeamPdfInput){return compose(input,teamReportV2Schema.parse(input.content));}
+/** Local reviewed artifact only: does not relax the stored AI report contract. */
+export function buildReviewedTeamPdfHtml(input:TeamPdfInput){return compose(input,qualityReportSchema.parse(input.content));}
+async function brandedPdf(input:TeamPdfInput,html:string){
+ const header='<div style="font:8px Arial;color:#526877;width:100%;padding:0 17mm">iTeam · Управленческий AI-аудит</div>';
+ const footer='<div style="font:8px Arial;color:#526877;width:100%;padding:0 17mm;display:flex;justify-content:space-between"><span>iTeam · <a href="https://iteam.ru" style="color:#2f5774">iteam.ru</a> · Конфиденциальный отчёт</span><span>Страница <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>';
+ const pdf=await PDFDocument.load(await renderPdfHtml(html,{headerTemplate:header,footerTemplate:footer}));
+ // Chromium canonicalizes root URLs with a trailing slash. Keep the actual
+ // annotation target identical to the site's canonical presentation constant.
+ for(const page of pdf.getPages())for(const ref of page.node.Annots()?.asArray()??[]){
+  const annotation=pdf.context.lookup(ref);if(!(annotation instanceof PDFDict))continue;
+  const action=pdf.context.lookup(annotation.get(PDFName.of("A")));if(!(action instanceof PDFDict))continue;
+  const uri=action.get(PDFName.of("URI"));if(uri instanceof PDFString&&uri.decodeText()===TEAM_BRAND_WEBSITE+"/")action.set(PDFName.of("URI"),PDFString.of(TEAM_BRAND_WEBSITE));
+ }
+ pdf.setTitle(`Управленческий AI-аудит — ${input.companyName}`);pdf.setAuthor("iTeam");pdf.setSubject("Командная диагностика системы управления");
+ return Buffer.from(await pdf.save());
+}
+export const renderTeamPdf=(input:TeamPdfInput)=>brandedPdf(input,buildTeamPdfHtml(input));
+export const renderReviewedTeamPdf=(input:TeamPdfInput)=>brandedPdf(input,buildReviewedTeamPdfHtml(input));

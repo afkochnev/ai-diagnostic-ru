@@ -5,7 +5,7 @@ import { teamCoreSections, teamDynamicsSections } from "@/features/team/rich-rep
 describe("Team PDF content",()=>{
   it("contains cover, aggregate means and every numbered core/dynamics section, with visible mock disclosure",()=>{
     const e=meanEvidence(),html=buildTeamPdfHtml({companyName:"FoodTech",teamTitle:"Проверка системы управления",completedAt:"2026-10-19T07:00:00Z",participantCount:4,index:"50",maturity:"Зона развития",blocks:e.blocks.map(b=>({title:b.title,score:String(b.mean)})),content:reportFixture(),mock:true});
-    for(const word of ["Командный управленческий","FoodTech","Проверка системы управления","Завершивших участников: 4","50","Зона развития","Результаты командной диагностики","Тестовый отчёт","не предназначен для оценки качества AI-анализа"])expect(html).toContain(word);
+    for(const word of ["Командная диагностика","FoodTech","Проверка системы управления","Завершивших участников: 4","50","Зона развития","Результаты командной диагностики","Тестовый отчёт","не предназначен для оценки качества AI-анализа"])expect(html).toContain(word);
     teamCoreSections.forEach(([title],i)=>expect(html).toContain(`${i+1}. ${title}`));
     teamDynamicsSections.forEach(([title],i)=>expect(html).toContain(`${i+13}. ${i===2?"Дополнительные качественные сигналы команды":title}`));
     expect(html).toContain('class="group-page"');
