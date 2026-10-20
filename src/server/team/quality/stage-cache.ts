@@ -7,6 +7,7 @@ import type { CheckpointStage,StageRequest } from "./runtime";
 export const checkpointOrder:CheckpointStage[]=["extract","diagnose","program","core","dynamics"];
 export type CheckpointEntry={path:string;sha256:string};
 export type CheckpointManifest=Partial<Record<CheckpointStage,CheckpointEntry>>;
+export type ReplayOrigin={codeSHA256:string;stagePrompt:(stage:StageRequest["stage"],policy:StageRequest["privacyPolicy"])=>string};
 export type CacheScope={sourceFingerprint:string;codeSHA256:string;model:"gpt-5.6-sol";effort:"medium"};
 export const digest=(value:string|Buffer)=>createHash("sha256").update(value).digest("hex");
 const jsonHash=(value:unknown)=>digest(JSON.stringify(value));
@@ -28,7 +29,7 @@ export function verifyManifest(manifest:CheckpointManifest,allowedRoot:string){
  }
  return prefix;
 }
-function requestHash(request:StageRequest){
+function requestHash(request:StageRequest,origin?:ReplayOrigin){
  // SQL independently reshuffles each question on every read. Canonicalize only
  // the local hash, never the actual AI input or respondent order across questions.
  const copy=structuredClone(request.input) as {groups?:{question_position:number;texts:string[]}[]};
@@ -36,26 +37,30 @@ function requestHash(request:StageRequest){
    for(const g of copy.groups)g.texts.sort();
    copy.groups.sort((a,b)=>a.question_position-b.question_position);
  }
- return jsonHash(approvedRequestBody({...request,input:copy},"gpt-5.6-sol","medium"));
+ const body=approvedRequestBody({...request,input:copy},"gpt-5.6-sol","medium");
+ if(origin)body.input[0].content=origin.stagePrompt(request.stage,request.privacyPolicy);
+ return jsonHash(body);
 }
 /** Private local research cache only. The caller saves through checkedStage,
  * after runtime guards, and revalidates every replay through the same runtime. */
-export function createStageCache(directory:string,allowedRoot:string,scope:CacheScope,resume:CheckpointManifest={}){
+export function createStageCache(directory:string,allowedRoot:string,scope:CacheScope,resume:CheckpointManifest={},origin?:ReplayOrigin){
  verifyManifest(resume,allowedRoot);privateStat(dirname(directory),true);mkdirSync(directory,{mode:0o700});
- const manifest:CheckpointManifest={};
+ const manifest:CheckpointManifest={},provenance=new Map<string,CheckpointEntry>();
  return {
    read(request:StageRequest):unknown|undefined{
      const entry=resume[request.stage as CheckpointStage];if(!entry)return undefined;
      verifyManifest(resume,allowedRoot);
      const v=JSON.parse(readFileSync(entry.path,"utf8"));
-     if(v.version!==1||v.stage!==request.stage||v.scope?.sourceFingerprint!==scope.sourceFingerprint||v.scope?.codeSHA256!==scope.codeSHA256||v.scope?.model!==scope.model||v.scope?.effort!==scope.effort||v.requestSHA256!==requestHash(request)||v.outputSHA256!==jsonHash(v.value))fail();
-     return request.schema.parse(v.value);
+     const inherited=v.scope?.codeSHA256!==scope.codeSHA256;
+     if(inherited&&(!origin||v.scope?.codeSHA256!==origin.codeSHA256))fail();
+     if(v.version!==1||v.stage!==request.stage||v.scope?.sourceFingerprint!==scope.sourceFingerprint||v.scope?.model!==scope.model||v.scope?.effort!==scope.effort||v.requestSHA256!==requestHash(request,inherited?origin:undefined)||v.outputSHA256!==jsonHash(v.value))fail();
+     provenance.set(request.stage,entry);return request.schema.parse(v.value);
    },
    save(request:StageRequest,value:unknown){
      const stage=request.stage as CheckpointStage;
      if(checkpointOrder[Object.keys(manifest).length]!==stage||manifest[stage])fail();
      const parsed=request.schema.parse(value),path=join(directory,stage+".json");
-     const text=JSON.stringify({version:1,stage,scope,requestSHA256:requestHash(request),outputSHA256:jsonHash(parsed),value:parsed},null,2)+"\n";
+     const text=JSON.stringify({version:1,stage,scope,requestSHA256:requestHash(request),outputSHA256:jsonHash(parsed),value:parsed,...provenance.has(stage)?{origin:provenance.get(stage)}:{}},null,2)+"\n";
      if(Buffer.byteLength(text)>2_000_000)fail();
      writeFileSync(path,text,{mode:0o600,flag:"wx"});manifest[stage]={path,sha256:digest(text)};
    },

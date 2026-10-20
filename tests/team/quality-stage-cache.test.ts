@@ -1,3 +1,4 @@
+import { stagePrompt } from "@/server/team/quality/prompts";
 import { it,expect,vi } from "vitest";
 import { mkdtempSync,mkdirSync,readFileSync,writeFileSync,chmodSync,lstatSync,rmSync,realpathSync } from "node:fs";
 import { join } from "node:path";
@@ -70,5 +71,20 @@ it("counts all real branches, ignores simulations, and blocks incomplete or inco
   const records=researchLedger(t.root,scope.sourceFingerprint);expect(records).toHaveLength(2);expect(experimentAccounting(records.map(r=>JSON.parse(r.bytes.toString()))).calls).toBe(2);
   const first=join(t.root,ids[0],"run-journal.jsonl");appendResearchJournal(first,{kind:"attempt",stage:"diagnose",ordinal:2,reservedUSD:0.4});
   expect(()=>researchLedger(t.root,scope.sourceFingerprint)).toThrow("quality_incomplete_run_requires_audit");
+ }finally{t.close();}
+});
+it("requires an explicit origin to reuse results across editorial code changes and still verifies input/schema",()=>{
+ const t=area();try{
+  const a=createStageCache(join(t.a,"old"),t.root,scope);a.save(request,{safe:"Проверенный результат."});const m=a.manifest(),updated={...scope,codeSHA256:"c".repeat(64)};
+  // Original prompt reconstructed from the pinned origin, not a generic bypass.
+  const origin={codeSHA256:scope.codeSHA256,stagePrompt};
+  const b=createStageCache(join(t.b,"inherited"),t.root,updated,m,origin);
+  expect(b.read(request)).toEqual({safe:"Проверенный результат."});
+  expect(()=>b.read({...request,input:{groups:[]}})).toThrow("quality_checkpoint_rejected");
+  expect(()=>b.read({...request,schema:z.strictObject({changed:z.string()})})).toThrow("quality_checkpoint_rejected");
+  const wrong=createStageCache(join(t.b,"wrong"),t.root,updated,m,{...origin,stagePrompt:()=>"Unrelated prompt"});
+  expect(()=>wrong.read(request)).toThrow("quality_checkpoint_rejected");
+  b.save(request,b.read(request));const saved=JSON.parse(readFileSync(b.manifest().extract!.path,"utf8"));
+  expect(saved.origin).toEqual(m.extract);expect(saved.scope.codeSHA256).toBe(updated.codeSHA256);
  }finally{t.close();}
 });
