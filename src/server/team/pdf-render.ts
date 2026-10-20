@@ -40,7 +40,7 @@ export function buildTeamPdfHtml(input:TeamPdfInput){return compose(input,teamRe
 /** Local reviewed artifact only: does not relax the stored AI report contract. */
 export function buildReviewedTeamPdfHtml(input:TeamPdfInput){return compose(input,qualityReportSchema.parse(input.content));}
 async function brandedPdf(input:TeamPdfInput,html:string){
- const header='<div style="font:8px Arial;color:#526877;width:100%;padding:0 17mm">iTeam · Управленческий AI-аудит</div>';
+ const header=`<div style="font:8px Arial;color:#526877;width:100%;padding:0 17mm;display:flex;align-items:center;justify-content:space-between"><span>iTeam · Управленческий AI-аудит</span><img src="${logo()}" alt="iTeam" style="height:18px;width:auto;object-fit:contain"></div>`;
  const footer='<div style="font:8px Arial;color:#526877;width:100%;padding:0 17mm;display:flex;justify-content:space-between"><span>iTeam · <a href="https://iteam.ru" style="color:#2f5774">iteam.ru</a> · Конфиденциальный отчёт</span><span>Страница <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>';
  const pdf=await PDFDocument.load(await renderPdfHtml(html,{headerTemplate:header,footerTemplate:footer}));
  // Chromium canonicalizes root URLs with a trailing slash. Keep the actual
