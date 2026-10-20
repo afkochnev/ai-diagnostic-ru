@@ -1,0 +1,29 @@
+/** Authored stubs for mechanical/transport tests ONLY. Never real-AI quality evidence. */
+import { buildDossier } from "../../src/server/team/quality/dossier";
+import { stringLeaves } from "../../src/server/team/synthesis-privacy";
+import { mockTeamSynthesisV3,mockTeamReportV3 } from "../../src/server/team/report-v3-provider";
+import { mainTeamReportInputV3 } from "../../src/server/team/report-v3-contracts";
+import type { Stage } from "../../src/server/team/quality/runtime";
+import type { qualityCase } from "./team-quality-cases";
+export function authoredStageStubs(f:ReturnType<typeof qualityCase>):Record<Stage,unknown> {
+  const topic=f.id==="production"?"Проверка готовности заказа":f.id==="commercial"?"Проверка полезности предложения":"Сбор сопоставимых рабочих случаев";
+  const cards={cards:f.qualitative.groups.map((g,i)=>({id:`E${i+1}`,question_position:g.question_position,observation:`${topic}: область наблюдения ${["дневное задание","целевой результат","полезная практика","предмет проверки"][i]}.`,consequence:null,limitations:["Охват ситуации в организации не установлен."]})),omitted_groups:[],limitations:[]};
+  const dossier=buildDossier(f.aggregates,f.qualitative);
+  const system_assessment={system_state:"Механическая имитация оценки всей системы; качество текста не проверяется.",dimensions:Object.fromEntries(dossier.primary.blocks.map(b=>[`block.${b.position}.mean`,{assessment:"Оценка показывает уровень практик; механизм требует отдельного подтверждения.",limitations:["Операционные факты ещё не сопоставлены."],additional_evidence_refs:[]}])),links:[],limits:"Числа сами по себе не устанавливают причинные связи между частями управления."};
+  const diagnosis={system_assessment,diagnoses:[{id:"D1",claim:topic,kind:"hypothesis",evidence_refs:["E1","block.3.mean"],goal_ref:"context.main_goals",mechanism:"Предлагается проверить связь решения с последующим выполнением.",business_effect:"Возможен эффект для выполнения обязательства клиенту.",alternatives:["Причина может находиться в доступности ресурса."],limitations:["Причинная связь ещё не подтверждена."],test:"Сопоставить ход работы и конечный результат."}],limitations:[]};
+  const program={initiatives:[{id:"I1",diagnosis_refs:["D1"],barrier:topic,expected_effect:"Проверяемое изменение результата работы.",actions:[
+    {id:"A1",phase:"immediate",action:"Выбрать область наблюдения.",proposed_role:"Руководитель назначает ответственного за проверку.",deliverable:"Границы наблюдения и перечень исходных фактов.",verification:"Границы письменно определены.",depends_on:[]},
+    {id:"A2",phase:"30",action:"Собрать исходные случаи.",proposed_role:"Назначенный ответственный.",deliverable:"Набор сопоставимых фактов.",verification:"Каждый факт связан с результатом.",depends_on:["A1"]},
+    {id:"A3",phase:"60",action:"Проверить предложенное изменение.",proposed_role:"Назначенный ответственный.",deliverable:"Наблюдения после изменения.",verification:"Результат сопоставлен с исходной базой.",depends_on:["A2"]},
+    {id:"A4",phase:"90",action:"Принять решение о дальнейшем применении.",proposed_role:"Руководитель.",deliverable:"Решение с условиями применимости.",verification:"Указано, что подтвердилось и что осталось неизвестным.",depends_on:["A3"]},
+  ]}],limitations:[]};
+  const content={summary:`${topic}. Следующий шаг выбирается по описанной рабочей ситуации.`,main_diagnosis:"Проверяемая гипотеза: ход исполнения может не обеспечивать обещанный клиенту результат.",manageability_index_text:`Индекс ${Math.round(f.aggregates.overall.mean*10)/10}. Уровень: ${f.aggregates.overall.maturity}.`,
+    strengths:["Имеющиеся рабочие навыки позволяют начать ограниченную проверку."],key_problem_zones:["Не хватает сопоставимых фактов о месте возникновения сбоя."],growth_constraint:"Предположительное ограничение нужно подтвердить наблюдением за выполнением заказа.",implementation_risks:["Решение без исходной базы затруднит проверку эффекта."],first_actions:["Руководителю определить предмет наблюдения и назначить ответственного."],plan_30_days:["Собрать исходные случаи и проверить их сопоставимость."],plan_60_days:["Проверить изменение в работе и сопоставить результаты."],plan_90_days:["Оценить подтверждённый эффект и условия дальнейшего применения."],next_step:"Организовать сбор фактов по выбранному предмету проверки."};
+  const support=stringLeaves(content).map(l=>({path:l.path,refs:l.path==="manageability_index_text"?["overall.mean","overall.maturity"]:l.path.startsWith("first_actions[")?["A1"]:l.path.startsWith("plan_30_days[")?["A2"]:l.path.startsWith("plan_60_days[")?["A3"]:l.path.startsWith("plan_90_days[")?["A4"]:["D1","E1","block.3.mean"]}));
+  const dynamics={alignment:["Близость оценок обсуждается вместе с их уровнем."],divergence:["Различия условий требуют отдельной проверки."],qualitative_signals:[],discussion_questions:["Какие условия позволяют воспроизвести результат?"]};
+  const oldSynthesis=mockTeamSynthesisV3(f.qualitative),oldReport=mockTeamReportV3(mainTeamReportInputV3(f.aggregates,oldSynthesis));
+  void buildDossier(f.aggregates,f.qualitative);
+  const combinedSupport=support.map(s=>({...s,refs:s.path==="manageability_index_text"?["overall.mean","overall.maturity"]:["E1","block.3.mean"]}));
+  const grounded=(refs:typeof support)=>({content:Object.fromEntries(Object.entries(content).map(([field,value])=>[field,Array.isArray(value)?value.map((text,index)=>({text,refs:refs.find(s=>s.path===`${field}[${index}]`)!.refs})):({text:value,refs:refs.find(s=>s.path===field)!.refs})]))});
+  return {baseline_synthesis:oldSynthesis,baseline_report:oldReport,extract:cards,diagnose:diagnosis,program,core:grounded(support),combined:{system_assessment,...grounded(combinedSupport),team_analysis:dynamics},dynamics,review:{verdict:"pass",defects:[]},privacy_repair:{repairs:[]}};
+}

@@ -12,3 +12,12 @@ output
 *.tsbuildinfo
 Prompt.docx
 README*.md
+# Only the two production entry points belong in the runtime script directory.
+# Operator helpers, private credential-entry tools and test runners stay in Git.
+scripts/**
+!scripts/worker.ts
+!scripts/consultation-worker.ts
+tests
+supabase
+docs
+.github

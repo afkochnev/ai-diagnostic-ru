@@ -1,0 +1,27 @@
+{{ if eq .RedirectTo "https://ai-diagnostic-staging-web.onrender.com/ru/team/confirm" }}
+<h2>Подтвердите email для командной диагностики</h2>
+<p>Вы запросили вход по личному приглашению. Пароль не нужен.</p>
+<p><a style="display:inline-block;padding:14px 22px;background:#315c73;color:white;text-decoration:none;border-radius:8px" href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=email">Подтвердить email и начать диагностику</a></p>
+<p>Откройте кнопку в том же браузере, где дали согласие на странице приглашения.</p>
+<p>Не пересылайте это письмо: кнопка предназначена только для вас. Если вы не запрашивали вход, проигнорируйте письмо.</p>
+{{ else }}
+<section>
+  <h2>Вход в командную диагностику без пароля</h2>
+  <p>Если вы запросили код на странице приглашения, введите его в том же окне:</p>
+  <p style="font-size:28px;font-weight:bold;letter-spacing:4px">{{ .Token }}</p>
+  <p>Пароль и отдельная регистрация не нужны. Никому не сообщайте этот код.</p>
+</section>
+<hr />
+<h2>Подтвердите email</h2>
+
+<p>
+  Перейдите по ссылке ниже, чтобы подтвердить адрес электронной почты
+  и завершить регистрацию.
+</p>
+
+<p>
+  <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">
+    Подтвердить email
+  </a>
+</p>
+{{ end }}

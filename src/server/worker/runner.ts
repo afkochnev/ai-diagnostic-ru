@@ -3,6 +3,8 @@ import { runScoringJob, type ClaimedScoringJob } from "@/server/scoring/worker";
 import { runAIJob, type ClaimedAIJob } from "@/server/ai/worker";
 import { runPendingConsultationNotifications } from "@/server/consultation/worker";
 
+import { runTeamJobs } from "@/server/team/worker";
+
 type RpcError = { message?: string; code?: string };
 type Rpc = (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: RpcError | null }>;
 
@@ -37,6 +39,8 @@ export async function runWorkerOnce() {
   await Promise.all(ai.map((job) => runAIJob(job as unknown as ClaimedAIJob)));
 
   await runPendingConsultationNotifications(1);
+  // A Team outage cannot stop the established individual/consultation loop.
+  try { await runTeamJobs(); } catch { console.error("[team-worker] unavailable"); }
   return { scoring: scoring.length, ai: ai.length };
 }
 

@@ -34,7 +34,7 @@ export async function signedInDestination() {
   const identity = await getIdentity();
   if (!identity) return "/ru/login";
   if (!identity.user.email_confirmed_at) return "/ru/verify-email";
-  if (identity.role === "administrator") return identity.aal === "aal2" ? "/ru/admin" : "/ru/mfa";
+  if (identity.role === "administrator") return "/ru/admin";
   const [companies, accounts] = await Promise.all([listAccessibleCompanies(identity.user.id), listAccessibleAccounts(identity.user.id)]);
   return workspaceDestination(companies.length, accounts.length);
 }

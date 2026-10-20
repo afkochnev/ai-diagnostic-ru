@@ -64,6 +64,7 @@ export async function loginAction(_: AuthState, form: FormData): Promise<AuthSta
   if (error) return { error: error.status === 429 ? text.rateLimit : error.code === "email_not_confirmed" ? text.verifyRequired : text.badLogin };
   await clearRecovery();
   revalidatePath("/", "layout");
+  if (value(form, "next") === "team-invitation") redirect("/ru/team/join");
   redirect("/ru");
 }
 

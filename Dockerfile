@@ -34,6 +34,12 @@ COPY --from=build /app/AI_REPORT_PROMPT_RU_1_0.md ./AI_REPORT_PROMPT_RU_1_0.md
 COPY --from=build /app/AI_REPORT_PROMPT_RU_1_1.md ./AI_REPORT_PROMPT_RU_1_1.md
 COPY --from=build /app/AI_REPORT_PROMPT_RU_1_2.md ./AI_REPORT_PROMPT_RU_1_2.md
 COPY --from=build /app/AI_REPORT_PROMPT_RU_1_3.md ./AI_REPORT_PROMPT_RU_1_3.md
+COPY --from=build /app/TEAM_SYNTHESIS_PROMPT_RU_2.md ./TEAM_SYNTHESIS_PROMPT_RU_2.md
+COPY --from=build /app/TEAM_SYNTHESIS_REPAIR_PROMPT_RU_2.md ./TEAM_SYNTHESIS_REPAIR_PROMPT_RU_2.md
+COPY --from=build /app/TEAM_REPORT_PROMPT_RU_2.md ./TEAM_REPORT_PROMPT_RU_2.md
+COPY --from=build /app/TEAM_REPORT_REPAIR_PROMPT_RU_2.md ./TEAM_REPORT_REPAIR_PROMPT_RU_2.md
+COPY --from=build /app/TEAM_REPORT_PROMPT_RU_3.md ./TEAM_REPORT_PROMPT_RU_3.md
+COPY --from=build /app/TEAM_SYNTHESIS_PROMPT_RU_3.md ./TEAM_SYNTHESIS_PROMPT_RU_3.md
 COPY --from=build /app/AI_REPORT_SCHEMA_RU_1_0.json ./AI_REPORT_SCHEMA_RU_1_0.json
 RUN npx playwright install --with-deps chromium \
   && chmod -R a+rX /ms-playwright \

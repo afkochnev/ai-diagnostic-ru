@@ -67,7 +67,7 @@ export async function getActiveDiagnostic(userId: string, companyId: string) {
 export async function getLatestDiagnostics(userId: string, companyId: string) {
   await requireCompanyRead(companyId, userId);
   const client = await createAuthClient();
-  const { data, error } = await client.from("diagnostics").select("id,status,revision,last_saved_at,submitted_at,completed_at").eq("company_id", companyId).order("started_at", { ascending: false }).limit(10);
+  const { data, error } = await client.from("diagnostics").select("id,status,revision,started_at,last_saved_at,submitted_at,completed_at").eq("company_id", companyId).order("started_at", { ascending: false }).limit(10);
   if (error) throw new DiagnosticError("invalid", "Diagnostics could not be loaded");
   const rows = data ?? [];
   const completedIds = rows.filter((row) => row.status === "completed").map((row) => row.id);

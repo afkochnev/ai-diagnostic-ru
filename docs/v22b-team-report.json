@@ -1,0 +1,56 @@
+{
+  "stage": "V2.2B Team Aggregation and Team AI Report",
+  "migration": {
+    "file": "20261015170255_team_aggregation_report.sql",
+    "sha256": "aeb275eb161d3b9d3ae0d7882aecef2644ff0979fa8a6edb85ee67c923659b89",
+    "blob": "0c10ebd4709fbb9968d094e07b324b9a38ee7cc0",
+    "requiredDryRun": "exactly this one migration; no include-all/repair/ledger writes"
+  },
+  "architecture": {
+    "stage": "V2.2B",
+    "provenanceGate": "PASS; see migration-provenance.json",
+    "scoring": {
+      "existingEngine": "src/server/scoring/engine.ts: calculateBlockScore / calculateOverall / classifyMaturity",
+      "deployedPolicy": "pending_stage_5/1/1 with empty configuration; weighted effective 0..4 numeric questions normalized to 100; weighted positive-weight blocks; cutoffs 30/50/70/85",
+      "implementation": "PostgreSQL numeric per-participant CTE followed by avg/stddev_pop/min/max. No participant score table or worker score payload.",
+      "reproducibility": "immutable private scoring snapshot; fail closed on unsupported policy/config or inconsistent maturity/questionnaire; current questionnaires never rewritten"
+    },
+    "privacy": {
+      "threshold": ">=3 valid completed non-revoked responses, enforced by SQL APIs and table RLS",
+      "source": "SHA256 of canonical jsonb team/version/snapshot hash/sorted participant id, revision, completed_at; only digest public",
+      "qualitative": "private answers -> DB masking -> per-question independently shuffled lists with >=3 texts -> confidential synthesis -> strict schema plus DB leakage validator -> main report",
+      "mainInput": [
+        "participant_count",
+        "company_context",
+        "overall",
+        "blocks",
+        "questions",
+        "qualitative_summary"
+      ],
+      "publicationGuard": "checks every participant name/email, UUID/email/phone/URL patterns, every 32-character raw text substring; rejected content is never persisted or logged"
+    },
+    "jobs": "private.team_jobs with unique(kind,team,fingerprint), SKIP LOCKED claims, leases, max attempts, source recheck and transactional publication. One bounded team job after each legacy worker iteration.",
+    "concurrency": "team row first for all submissions/invitation mutations/close/report/worker writes, then participant/response/job; completion survives queue failure, owner refresh recovers",
+    "reports": "immutable completed versions, company context snapshot per version; source mismatch is stale; below threshold all report reads hidden",
+    "safeAI": "separate TEAM_AI_PROVIDER default mock, explicit openai opt-in only; no real AI acceptance authorized",
+    "rollout": "one additive migration, pinned CLI 2.117.0 --skip-vault, exact dry-run only new file, preserve all old migration bytes, worker Live before mock report acceptance",
+    "excluded": [
+      "production",
+      "billing",
+      "MFA",
+      "team PDF/email",
+      "real consultation email",
+      "real AI"
+    ]
+  },
+  "testCommands": [
+    "npm run lint",
+    "npm run typecheck",
+    "npm run test:unit",
+    "npm run build",
+    "python3 scripts/test-v22b-local.py --container ai-diagnostic-v22b-local",
+    "python3 scripts/test-legacy-sql-local.py --container ai-diagnostic-v22b-pgtap"
+  ],
+  "disableRollback": "supabase/rollbacks/v22b-team-report-disable.sql",
+  "productionEnabled": false
+}

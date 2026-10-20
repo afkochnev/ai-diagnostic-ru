@@ -1,0 +1,83 @@
+{
+  "stage": "V2.2A Team Diagnostic Foundation",
+  "release_status": "LOCAL_IMPLEMENTATION_READY_NOT_DEPLOYED",
+  "predecessor": {
+    "V2.1B": "user accepted as complete; historical execution incident records retained unchanged"
+  },
+  "scope": [
+    "company-scoped team diagnostics",
+    "published methodology snapshot pinned at creation",
+    "explicit participants with independent confidential response copies",
+    "email-bound 256-bit invitation secrets; seven-day expiry; rotation; revocation",
+    "owner sees invite/start/complete metadata only; never individual answers",
+    "owner not automatically enrolled",
+    "optimistic revision checks and immutable completion"
+  ],
+  "excluded": [
+    "aggregate scoring",
+    "team AI report",
+    "billing",
+    "production enablement",
+    "changes to individual diagnostic flow"
+  ],
+  "data": {
+    "public.team_diagnostics": "owner-safe metadata, owner RLS via active account/company access",
+    "public.team_participants": "owner-safe recipient/name/status metadata only; no answers, secret hashes or bound user IDs",
+    "private.team_questionnaires": "frozen question/option/label copies",
+    "private.team_invitations": "SHA256 hashes, expiry and redemption metadata; no raw token storage",
+    "private.team_responses": "participant-bound answers and revision; no direct authenticated grants, including owner/admin; scoped RPC only"
+  },
+  "auth": [
+    "cookie-session getUser verification on server",
+    "database authorization independently checks confirmed email and live auth user",
+    "participant email must match invitation recipient; token alone insufficient",
+    "participant access grants no account/company membership",
+    "owner/global admin do not bypass response actor checks",
+    "inactive account, revoked participant, foreign participant and anonymous access denied"
+  ],
+  "invitation_transport": {
+    "token_location": "URL fragment, never query string; cleared when preparing invitation",
+    "sign_in_handoff": "purpose-separated AES-256-GCM encrypted HttpOnly, secure, SameSite=Lax cookie with 30-minute TTL",
+    "email": "shared validated transactional Resend adapter; mock makes no external call; failure shown explicitly with copyable protected link",
+    "duplicate_invite": "unique team/email prevents additional provider send",
+    "rotation": "new token/hash invalidates old link, preserving existing participant binding and answers"
+  },
+  "routes": [
+    "/ru/companies/:companyId/teams",
+    "/ru/companies/:companyId/teams/:teamId",
+    "/ru/team/join",
+    "/ru/team/responses/:participantId"
+  ],
+  "deployment": {
+    "new_migration": "20261015135524_team_diagnostic_foundation.sql",
+    "phase_b_file": "20261013000200_account_authorization_cutover.sql is an exact copy of the already applied staging migration; included to reproduce baseline locally, not a new rollout step",
+    "remote_migrations_applied": false,
+    "runtime_guard": "exact staging APP_URL plus staging Supabase URL; production disabled",
+    "runtime_env_changes_required_for_foundation": [],
+    "consultation_real_email_gate": "open; worker lacks RESEND_API_KEY and EMAIL_FROM; no test lead or email created",
+    "migration_identity_note": "Same reviewed SQL bytes as draft 20261015122324; filename aligned to actual timestamp assigned by Supabase migration API."
+  },
+  "verification": {
+    "unit_passed": 355,
+    "unit_skipped": 8,
+    "skipped_reason": "pre-existing optional cleanup PostgreSQL probes require their own configured fixture",
+    "sql_team_assertions": 45,
+    "sql_additional": [
+      "actual concurrent save: one commit, one revision conflict",
+      "one consultation creates one job/delivery; repeated key and duplicate request do not enqueue extras",
+      "all existing local row values and RLS policies unchanged after additive migration"
+    ],
+    "auth_test_limit": "local PostgreSQL auth/JWT stubs; not GoTrue/browser staging end-to-end acceptance",
+    "UI": "actual client components exercised on loopback with synthetic data and stubbed actions; invite mock notice, draft text/selection preservation, completion screen",
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "production_build": "PASS with documented non-secret Docker build placeholders"
+  },
+  "production_readiness": {
+    "real_consultation_mailbox_delivery": "NOT_PROVEN",
+    "provider_message_id": null,
+    "real_external_calls": 0,
+    "required_before_production": true,
+    "does_not_block_local_v22a_development": true
+  }
+}

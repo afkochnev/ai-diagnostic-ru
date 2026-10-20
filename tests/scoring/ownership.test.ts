@@ -9,7 +9,7 @@ describe("scoring account boundary", () => {
     expect(route).toContain('requireDiagnosticRead(diagnosticId, identity.user.id)');
     expect(route).not.toContain('eq("created_by_user_id", identity.user.id)');
     expect(route).not.toContain('eq("owner_user_id", identity.user.id)');
-    expect(route).toContain('return NextResponse.json({ error: "not_found" }, { status: 404 })');
+    expect(route).toContain('return NextResponse.json({ error: "not_found" }, { status: 404, headers: statusHeaders })');
   });
 
   it("keeps scoring lifecycle narrow and never trusts client ownership fields", () => {

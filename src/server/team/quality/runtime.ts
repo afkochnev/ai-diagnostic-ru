@@ -1,0 +1,215 @@
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { teamReportV3Schema,teamSynthesisV3Schema,mainTeamReportInputV3,validateCoreQuality,qualitativeCoverage } from "../report-v3-contracts";
+import { stringLeaves,type PrivacyCorpus } from "../synthesis-privacy";
+import { repairResponseSchema } from "../synthesis-repair";
+import { inspectResearchPrivacy,type ResearchPrivacyPolicy } from "./privacy-policy";
+import { proposalNumberOffsets } from "./numeric-proposals";
+import { guardedRepair } from "./guarded-repair";
+import { buildDossier,repetitionSignals,type Dossier } from "./dossier";
+import { wireSystemAssessmentSchema,canonicalSystemAssessment,validateSystemAssessment,renderSystemAssessment,type SystemAssessment } from "./system-assessment";
+import { QualityBudgetError } from "./request-budget";
+import { primaryEditorialSignals,QualityTextError,type EditorialSignal } from "./text-signals";
+import { cardsSchema,diagnosisSchema,programSchema,draftSchema,groundedDraftSchema,groundedCombinedSchema,flattenGroundedDraft,dynamicsSchema,reviewSchema,qualityReportSchema,uniqueIds,requireRefs,QualityReferenceError,QualityNumericError,QualityCriticRejection,type Cards,type Diagnoses,type Program,type QualityReport } from "./contracts";
+
+export type Variant="A"|"B"|"C";
+export type Stage="baseline_synthesis"|"baseline_report"|"extract"|"diagnose"|"program"|"core"|"dynamics"|"combined"|"review"|"privacy_repair";
+export const stageTokens:Record<Stage,number>={baseline_synthesis:6000,baseline_report:14000,extract:4000,diagnose:6000,program:6000,core:11000,dynamics:4000,combined:14000,review:4000,privacy_repair:6000};
+export const normalCalls={A:2,B:2,C:6};
+export type StageRequest={stage:Stage;input:unknown;schema:z.ZodType;maxOutputTokens:number;deadline:number;privacyPolicy?:ResearchPrivacyPolicy;editorialSystemText?:boolean};
+export type SafeEvent={stage:Stage;status:"requested"|"privacy_validated"|"contract_validated";inputSHA256?:string;outputSHA256?:string;elapsedMs?:number};
+export type StagePort=(request:StageRequest)=>Promise<unknown>;
+export type CheckpointStage="extract"|"diagnose"|"program"|"core"|"dynamics";
+const hash=(v:unknown)=>createHash("sha256").update(JSON.stringify(v)).digest("hex");
+export function validateCards(cards:Cards,d:Dossier) {
+  uniqueIds(cards.cards);
+  if(d.extraction.groups.length&&!cards.cards.length)throw new Error("team_qualitative_insufficient");
+  if(cards.cards.some(c=>!d.extraction.groups.some(g=>g.question_position===c.question_position)))throw new Error("quality_reference_invalid");
+  // Missing coverage must be explained, not silently lost or replaced with a service phrase.
+  const positions=new Set(d.extraction.groups.map(g=>g.question_position));
+  if(new Set(cards.omitted_groups.map(g=>g.question_position)).size!==cards.omitted_groups.length||cards.omitted_groups.some(g=>!positions.has(g.question_position)||cards.cards.some(c=>c.question_position===g.question_position)))throw new Error("quality_reference_invalid");
+  for(const group of d.extraction.groups)if(!cards.cards.some(c=>c.question_position===group.question_position)&&!cards.omitted_groups.some(g=>g.question_position===group.question_position))throw new Error("team_qualitative_insufficient");
+}
+export function validateDiagnoses(value:Diagnoses,known:Set<string>) {
+  uniqueIds(value.diagnoses);
+  for(const d of value.diagnoses){requireRefs(d.evidence_refs,known);if(d.goal_ref)requireRefs([d.goal_ref],known);}
+  if(!value.diagnoses.length&&!value.limitations.length)throw new Error("quality_reference_invalid");
+}
+export function validateProgram(value:Program,diagnoses:Diagnoses) {
+  uniqueIds(value.initiatives);const known=new Set(diagnoses.diagnoses.map(d=>d.id)),seen=new Set<string>();
+  const order={immediate:0,"30":1,"60":2,"90":3};
+  const all=value.initiatives.flatMap(i=>i.actions),phase=new Map(all.map(a=>[a.id,order[a.phase]] as const));
+  for(const i of value.initiatives){requireRefs(i.diagnosis_refs,known);for(const a of i.actions){
+    if(seen.has(a.id))throw new Error("quality_reference_invalid");seen.add(a.id);
+    if(a.depends_on.some(id=>id===a.id||!phase.has(id)||phase.get(id)!>order[a.phase]))throw new Error("quality_dependency_invalid");
+  }}
+  const visiting=new Set<string>(),done=new Set<string>();
+  const visit=(id:string)=>{if(visiting.has(id))throw new Error("quality_dependency_invalid");if(done.has(id))return;visiting.add(id);for(const dep of all.find(a=>a.id===id)!.depends_on)visit(dep);visiting.delete(id);done.add(id);};
+  for(const a of all)visit(a.id);
+  if(diagnoses.diagnoses.length&&!value.initiatives.length&&!value.limitations.length)throw new Error("quality_reference_invalid");
+}
+export function validateDraft(value:z.infer<typeof draftSchema>,known:Set<string>,d:Dossier,onEditorialSignal?:(signal:EditorialSignal)=>void,program?:Program) {
+  const leaves=stringLeaves(value.content),paths=new Set(leaves.map(l=>l.path));
+  if(new Set(value.support.map(s=>s.path)).size!==value.support.length)throw new QualityReferenceError("duplicate_support_path");
+  if(value.support.some(s=>!paths.has(s.path)))throw new QualityReferenceError("unknown_support_path");
+  for(const leaf of leaves){const support=value.support.find(s=>s.path===leaf.path);if(!support)throw new QualityReferenceError("missing_support_path");requireRefs(support.refs,known);}
+  for(const leaf of leaves){
+    const refs=value.support.find(s=>s.path===leaf.path)!.refs;
+    validatePrimaryNumbers({[leaf.path]:leaf.value},d,(path,text)=>proposalNumberOffsets(text,leaf.path,refs,program),leaf.path);
+  }
+  for(const signal of primaryEditorialSignals(value.content)){
+    if(!onEditorialSignal)throw new QualityTextError(signal);
+    onEditorialSignal(signal);
+  }
+}
+export function validatePrimaryText(value:unknown,d:Dossier,onEditorialSignal?:(signal:EditorialSignal)=>void) {
+  validatePrimaryNumbers(value,d);
+  for(const signal of primaryEditorialSignals(value)){
+    if(!onEditorialSignal)throw new QualityTextError(signal);
+    onEditorialSignal(signal);
+  }
+}
+function validatePrimaryNumbers(value:unknown,d:Dossier,proposalOffsets?:(path:string,text:string)=>Set<number>,errorPath?:string) {
+  const leaves=stringLeaves(value);
+  // This catches invented literals, not semantic attribution. The critic must separately
+  // check that each value/claim is supported by the cited metric and interpretation.
+  const numbers=(s:string)=>[...s.matchAll(/\d+(?:[.,]\d+)?/gu)].map(m=>Number(m[0].replace(",",".")));
+  // These are frozen sample dimensions, not inferred metrics or arbitrary exceptions.
+  const sampleCounts=[d.primary.participant_count,d.primary.blocks.length,d.primary.questions.length];
+  const allowed=new Set([0,4,5,30,60,90,100,...sampleCounts,...d.primary.facts.flatMap(f=>numbers(String(f.value))).flatMap(n=>[n,Math.round(n*10)/10])]);
+  for(const leaf of leaves){
+    const proposed=proposalOffsets?.(leaf.path,leaf.value)??new Set<number>();
+    if([...leaf.value.matchAll(/\d+(?:[.,]\d+)?/gu)].some(m=>!allowed.has(Number(m[0].replace(",",".")))&&!proposed.has(m.index)))throw new QualityNumericError(errorPath??leaf.path);
+  }
+}
+
+/** Local prototype only: no DB queue or publication, no credentials, no implicit network.
+ * Every generated stage requires the injected validation boundary after its local policy gate.
+ * The explicit unattributed research policy never changes the ordinary DB validator.
+ * Semantic support is NOT certified by reference checks alone; owner review stays required. */
+export async function runQualityVariant(options:{variant:Variant;aggregates:unknown;qualitative:unknown;corpus:PrivacyCorpus;
+  call:StagePort;databaseValidate:(value:unknown)=>Promise<void>;deadline:number;maxCalls:number;researchComparison?:boolean;maxPrivacyRepairs?:number;privacyPolicy?:ResearchPrivacyPolicy;editorialSystemText?:boolean;
+  checkedStage?:(stage:CheckpointStage,value:unknown)=>Promise<void>;emit?:(e:SafeEvent)=>void}) {
+  if(options.editorialSystemText&&(!options.researchComparison||options.variant!=="C"))throw new Error("quality_approval_required");
+  const policy=options.privacyPolicy??"strict";
+  if(!["strict","unattributed"].includes(policy)||(policy!=="strict"&&(!options.researchComparison||options.variant!=="C")))throw new Error("quality_approval_required");
+  const inspect=(value:unknown,source:PrivacyCorpus)=>inspectResearchPrivacy(value,source,policy);
+  const repairLimit=options.maxPrivacyRepairs??2;
+  if(!Number.isInteger(repairLimit)||repairLimit<0||repairLimit>6||(!options.researchComparison&&repairLimit!==2)||(!options.researchComparison&&options.checkedStage))throw new Error("quality_approval_required");
+  const {variant,call,corpus,databaseValidate,deadline,maxCalls}=options,d=buildDossier(options.aggregates,options.qualitative);
+  const known=new Set(d.known);let calls=0,repairs=0;
+  const editorialSignals:EditorialSignal[]=[];
+  // Research-only routing to the already planned critic; no extra calls or publication.
+  // Ordinary mode retains the strict lexical stop until a pipeline is accepted separately.
+  const editorialPolicy=(scope:string)=>options.researchComparison?(signal:EditorialSignal)=>{
+    const item={...signal,path:`${scope}.${signal.path}`};
+    if(!editorialSignals.some(s=>s.path===item.path&&s.code===item.code))editorialSignals.push(item);
+  }:undefined;
+  const reviewGate=(review:z.infer<typeof reviewSchema>|null)=>{
+    if(!review)return;
+    if(review.defects.some(d=>d.code==="numeric"||d.code==="privacy")||(!options.researchComparison&&(review.verdict!=="pass"||review.defects.length)))throw new QualityCriticRejection(review);
+  };
+  const finalGate=async(report:QualityReport)=>{
+    const p=inspect(report,corpus);if(p.policyViolation||p.overlaps.length)throw new Error("team_privacy_rejected");
+    await databaseValidate(report);
+  };
+  const systemGate=async(assessment:SystemAssessment)=>{
+    validateSystemAssessment(assessment,d,known);
+    // Validate generated prose separately from reference identifiers and rendered metrics,
+    // so a terminal numeric rejection identifies its field without retaining its content.
+    validatePrimaryText({system_state:assessment.system_state,dimensions:assessment.dimensions.map(row=>({assessment:row.assessment,limitations:row.limitations})),links:assessment.links.map(link=>({explanation:link.explanation})),limits:assessment.limits},d,editorialPolicy("system_assessment"));
+    validatePrimaryNumbers(renderSystemAssessment(assessment,d),d);
+    const check=inspect(assessment,corpus);if(check.policyViolation||check.overlaps.length)throw new Error("team_privacy_rejected");
+    await databaseValidate(assessment);
+  };
+  const perform=async<T>(stage:Stage,input:unknown,schema:z.ZodType<T>):Promise<T>=>{
+    if(Date.now()>=deadline||calls>=maxCalls)throw new Error("quality_budget_exhausted");
+    // Only the extraction/synthesis boundary may see shuffled, masked raw groups.
+    if(stage!=="extract"&&stage!=="baseline_synthesis"&&stage!=="privacy_repair"){
+      const p=inspect(input,corpus);if(p.policyViolation||p.overlaps.length)throw new Error("team_privacy_rejected");
+    }
+    calls++;options.emit?.({stage,status:"requested",inputSHA256:hash(input)});
+    let result:T;
+    try{result=schema.parse(await call({stage,input,schema,maxOutputTokens:stageTokens[stage],deadline,...policy!=="strict"?{privacyPolicy:policy}:{},...options.editorialSystemText?{editorialSystemText:true}:{}}));}catch(error){if(error instanceof QualityBudgetError)throw error;throw new Error(error instanceof Error&&error.message==="quality_budget_exhausted"?error.message:"quality_stage_failed");}
+    if(Date.now()>=deadline)throw new Error("quality_budget_exhausted");
+    return result;
+  };
+  const invoke=async<T>(stage:Stage,input:unknown,schema:z.ZodType<T>):Promise<T>=>{
+    const started=Date.now();let result:T=await perform(stage,input,schema);
+    const p=inspect(result,corpus);
+    if(p.policyViolation||p.overlaps.length){
+      if(repairs>=repairLimit)throw new Error("team_privacy_rejected");
+      const paths=new Set(p.violations.map(v=>v.field_path)),leaves=stringLeaves(result).filter(l=>paths.has(l.path));
+      if(!leaves.length)throw new Error("team_privacy_rejected");
+      const plan=guardedRepair(leaves,d.primary.maturity,corpus,inspect);
+      repairs++;
+      // Only generated flagged strings cross the repair boundary. Never raw answers,
+      // corpus, unflagged fields, participant metadata or the complete document.
+      const fixed=await perform("privacy_repair",{fields:plan.fields},repairResponseSchema(plan.fields.map(f=>f.path)));
+      const clone=structuredClone(result);
+      for(const {leaf,replacement} of plan.rebuild(fixed)){
+        let target:unknown=clone;for(const token of leaf.tokens.slice(0,-1))target=(target as Record<string|number,unknown>)[token];
+        (target as Record<string|number,unknown>)[leaf.tokens.at(-1)!]=replacement;
+      }
+      result=schema.parse(clone);const final=inspect(result,corpus);if(final.policyViolation||final.overlaps.length)throw new Error("team_privacy_rejected");
+    }
+    await databaseValidate(result);options.emit?.({stage,status:"privacy_validated",outputSHA256:hash(result),elapsedMs:Date.now()-started});return result;
+  };
+  if(variant==="A"){
+    const synthesis=await invoke("baseline_synthesis",options.qualitative,teamSynthesisV3Schema);
+    qualitativeCoverage(options.qualitative,synthesis);
+    const input=mainTeamReportInputV3(options.aggregates,synthesis),report=await invoke("baseline_report",input,teamReportV3Schema);
+    validateCoreQuality(report,"openai",synthesis);
+    const signals=repetitionSignals(stringLeaves(report));
+    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,synthesis,report,signals,editorialSignals},reviewSchema):null;
+    reviewGate(review);
+    return {status:"owner_review_required" as const,variant,calls,report,review,signals,editorialSignals};
+  }
+  const cards=await invoke("extract",d.extraction,cardsSchema);validateCards(cards,d);for(const c of cards.cards)known.add(c.id);
+  await options.checkedStage?.("extract",cards);
+  options.emit?.({stage:"extract",status:"contract_validated"});
+  const systemSchema=wireSystemAssessmentSchema({...d,known});
+  if(variant==="B"){
+    const generated=await invoke("combined",{PRIMARY_CORE_EVIDENCE:{...d.primary,cards},TEAM_DYNAMICS_EVIDENCE:d.dynamics},z.strictObject({system_assessment:systemSchema,...groundedCombinedSchema(known).shape}));
+    const assessment=canonicalSystemAssessment(generated.system_assessment,d);await systemGate(assessment);
+    const draft=flattenGroundedDraft(generated);
+    validateDraft(draft,known,d,editorialPolicy("content"));
+    options.emit?.({stage:"combined",status:"contract_validated"});
+    const report=qualityReportSchema.parse({...draft.content,manageability_index_text:draft.content.manageability_index_text+"\n\n"+renderSystemAssessment(assessment,d),participant_count:d.primary.participant_count,team_analysis:generated.team_analysis});
+    await finalGate(report);
+    const signals=repetitionSignals(stringLeaves(report));
+    const review=options.researchComparison?await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,system_assessment:assessment,support:draft.support,report,signals,editorialSignals},reviewSchema):null;
+    reviewGate(review);
+    return {status:"owner_review_required" as const,variant,calls,report,review,signals,editorialSignals};
+  }
+  const wireDiagnosis=await invoke("diagnose",{primary:d.primary,cards},z.strictObject({system_assessment:systemSchema,...diagnosisSchema.shape}));
+  const diagnosis={...wireDiagnosis,system_assessment:canonicalSystemAssessment(wireDiagnosis.system_assessment,d)};
+  await systemGate(diagnosis.system_assessment);validateDiagnoses(diagnosis,known);for(const v of diagnosis.diagnoses)known.add(v.id);
+  await options.checkedStage?.("diagnose",wireDiagnosis);
+  const program=await invoke("program",{primary:d.primary,cards,diagnosis},programSchema);validateProgram(program,diagnosis);
+  await options.checkedStage?.("program",program);
+  for(const i of program.initiatives){known.add(i.id);for(const a of i.actions)known.add(a.id);}
+  const generatedCore=await invoke("core",{primary:d.primary,cards,diagnosis,program},groundedDraftSchema(known));
+  const core=flattenGroundedDraft(generatedCore);validateDraft(core,known,d,editorialPolicy("content"),program);
+  if(options.editorialSystemText){const refs=core.support.find(s=>s.path==="manageability_index_text")?.refs??[];if(d.primary.blocks.some(b=>!refs.includes(`block.${b.position}.mean`)))throw new QualityReferenceError("system_coverage_invalid");}
+  if(diagnosis.diagnoses.length)for(const field of ["main_diagnosis","growth_constraint"]){
+    if(!core.support.find(s=>s.path===field)?.refs.some(ref=>diagnosis.diagnoses.some(d=>d.id===ref)))throw new QualityReferenceError("missing_diagnosis_ref");
+  }
+  for(const [prefix,phase] of [["first_actions","immediate"],["plan_30_days","30"],["plan_60_days","60"],["plan_90_days","90"]]){
+    const actions=new Set(program.initiatives.flatMap(i=>i.actions).filter(a=>a.phase===phase).map(a=>a.id));
+    if(actions.size&&core.support.filter(s=>s.path.startsWith(prefix+"[")).some(s=>!s.refs.some(ref=>actions.has(ref))))throw new QualityReferenceError("missing_phase_action_ref");
+  }
+  options.emit?.({stage:"core",status:"contract_validated"});
+  await options.checkedStage?.("core",generatedCore);
+  const dynamics=await invoke("dynamics",{dynamics:d.dynamics,cards},dynamicsSchema);
+  await options.checkedStage?.("dynamics",dynamics);
+  const report:QualityReport=qualityReportSchema.parse({...core.content,manageability_index_text:options.editorialSystemText?core.content.manageability_index_text:core.content.manageability_index_text+"\n\n"+renderSystemAssessment(diagnosis.system_assessment,d),participant_count:d.primary.participant_count,team_analysis:dynamics});
+  await finalGate(report);
+  const signals=repetitionSignals(stringLeaves(report));
+  const review=await invoke("review",{primary:d.primary,dynamics:d.dynamics,cards,diagnosis,program,support:core.support,report,signals,editorialSignals},reviewSchema);
+  // Research mode is private owner evaluation, never publication or quality acceptance.
+  // A substantive critic failure is retained beside the candidate for comparison;
+  // schema, privacy, source and numeric failures still throw and stop the experiment.
+  reviewGate(review);
+  return {status:"owner_review_required" as const,variant,calls,report,review,signals,editorialSignals};
+}

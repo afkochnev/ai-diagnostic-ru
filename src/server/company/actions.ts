@@ -7,8 +7,9 @@ import { requireIdentity } from "@/server/auth/session";
 import { companyProfileSchema, type CompanyProfileState } from "@/validation/company";
 import { getMessages } from "@/i18n/messages";
 import { AccountAccessError, requireAccountWrite, requireCompanyWrite } from "@/server/account/authorization";
-import { getOnlyAccessibleAccount } from "@/server/account/queries";
 import { getOwnCompany } from "./queries";
+import { companyCreationContext } from "./creation";
+import { AdvancedRequiredError, advancedRequiredMessage } from "@/server/entitlements";
 
 const copy = getMessages("ru").company;
 const value = (form: FormData, name: string) => String(form.get(name) ?? "");
@@ -35,6 +36,18 @@ function destination(form: FormData, companyId: string) {
 }
 
 export async function saveCompanyProfileAction(_: CompanyProfileState, form: FormData): Promise<CompanyProfileState> {
+  return saveProfile(form);
+}
+
+export async function createCompanyProfileAction(sourceCompanyId: string | null, _: CompanyProfileState, form: FormData): Promise<CompanyProfileState> {
+  return saveProfile(form, sourceCompanyId);
+}
+
+export async function createCompanyForAccountAction(accountId: string, sourceCompanyId: string | null, _: CompanyProfileState, form: FormData): Promise<CompanyProfileState> {
+  return saveProfile(form, sourceCompanyId, accountId);
+}
+
+async function saveProfile(form: FormData, creationSource?: string | null, creationAccountId?: string): Promise<CompanyProfileState> {
   const identity = await requireIdentity();
   const parsed = parsedInput(form);
   const values = submittedValues(form);
@@ -44,16 +57,19 @@ export async function saveCompanyProfileAction(_: CompanyProfileState, form: For
   try {
     const companyId = value(form, "company_id");
     const requestedAccountId = value(form, "account_id");
-    existing = companyId ? await requireCompanyWrite(companyId, identity.user.id) : requestedAccountId ? null : await getOwnCompany(identity.user.id);
+    if (creationSource !== undefined && companyId) throw new AccountAccessError("not_found");
+    existing = creationSource !== undefined ? null : companyId ? await requireCompanyWrite(companyId, identity.user.id) : await getOwnCompany(identity.user.id);
     if (existing) {
       accountId = existing.account_id;
       if (requestedAccountId && requestedAccountId !== accountId) throw new AccountAccessError("not_found");
       await requireAccountWrite(accountId, identity.user.id);
     } else {
-      const account = requestedAccountId ? await requireAccountWrite(requestedAccountId, identity.user.id) : await getOnlyAccessibleAccount(identity.user.id);
+      const { account } = await companyCreationContext(identity.user.id, creationSource ?? undefined, creationAccountId);
+      if (requestedAccountId && requestedAccountId !== account.id) throw new AccountAccessError("not_found");
       accountId = account.id;
     }
   } catch (error) {
+    if (error instanceof AdvancedRequiredError) return { error: advancedRequiredMessage, values };
     if (error instanceof AccountAccessError && error.code === "selection_required") redirect("/ru/companies");
     if (error instanceof AccountAccessError) return { error: copy.saveError, values };
     throw error;
@@ -71,11 +87,11 @@ export async function saveCompanyProfileAction(_: CompanyProfileState, form: For
   const result = existing
     ? await client.from("company_profiles").update(payload).eq("id", existing.id).eq("account_id", accountId).eq("revision", expectedRevision).select("id").maybeSingle()
     : await client.from("company_profiles").insert({ ...payload, account_id: accountId, owner_user_id: identity.user.id }).select("id").single();
-  if (result.error || !result.data) return { error: result.error?.code === "23505" ? copy.duplicateError : copy.saveError, values };
+  if (result.error || !result.data) return { error: result.error?.message === "advanced_required" ? advancedRequiredMessage : result.error?.code === "23505" ? copy.duplicateError : copy.saveError, values };
   revalidatePath("/ru/dashboard");
   revalidatePath("/ru/company-profile");
   revalidatePath("/ru/companies");
   revalidatePath(`/ru/companies/${result.data.id}`);
   revalidatePath(`/ru/companies/${result.data.id}/profile`);
-  redirect(destination(form, result.data.id));
+  redirect(creationSource !== undefined ? `/ru/companies/${result.data.id}/profile` : destination(form, result.data.id));
 }

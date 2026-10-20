@@ -54,7 +54,7 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
   await page.getByRole("button", { name: "Сохранить и перейти в кабинет", exact: true }).click();
   await expect(page).toHaveURL("/ru/dashboard");
   await expect(page.getByRole("heading", { name: "ООО «Тест A»", exact: true })).toBeVisible();
-  await expect(page.getByText("Вы ещё не проходили диагностику.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Диагностик пока нет.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Новая диагностика", exact: true })).toBeEnabled();
 
   await page.getByRole("link", { name: "Редактировать профиль", exact: true }).click();

@@ -1,0 +1,2 @@
+"use client";
+export default function AdminError({reset}:{reset:()=>void}){return <main className="mx-auto max-w-3xl p-8"><h1 className="text-2xl font-semibold">Не удалось открыть раздел</h1><p className="mt-4">Проверьте условия поиска и доступ к административной панели. Технические подробности скрыты.</p><button className="mt-4 rounded-lg border px-4 py-2" onClick={reset}>Повторить загрузку</button></main>;}

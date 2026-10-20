@@ -1,0 +1,46 @@
+name: V2.4 CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, release/v24-production-readiness]
+permissions:
+  contents: read
+concurrency:
+  group: v24-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  application:
+    name: application
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      SUPABASE_URL: https://build.invalid
+      SUPABASE_PUBLISHABLE_KEY: build-placeholder
+      APP_URL: https://build.invalid
+      AUTH_FLOW_SECRET: build-placeholder-auth-flow-secret-000000000000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.8.1'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit -- --maxWorkers=2
+      - run: npm run build
+  sql:
+    name: isolated-sql
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26.8.1'
+          cache: npm
+      - run: npm ci
+      - name: Run isolated PostgreSQL security and regression suites
+        run: python3 scripts/test-v24-ci.py
