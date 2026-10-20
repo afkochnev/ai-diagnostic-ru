@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const service = readFileSync("src/server/admin/companies-users.ts", "utf8");
-const shell = readFileSync("src/features/admin/admin-shell.tsx", "utf8");
+const shell = readFileSync("src/features/admin/console-ui.tsx", "utf8");
 
 describe("Stage 8D companies and users", () => {
   it("uses the shared admin boundary and batched read projections", () => {
@@ -25,8 +25,8 @@ describe("Stage 8D companies and users", () => {
   });
 
   it("exposes read-only navigation for companies and users", () => {
-    expect(shell).toContain('href="/ru/admin/companies"');
-    expect(readFileSync("src/app/[locale]/(admin)/admin/companies/[companyId]/page.tsx", "utf8")).toContain("Открыть");
-    expect(readFileSync("src/app/[locale]/(admin)/admin/users/[userId]/page.tsx", "utf8")).toContain("Открыть");
+    expect(shell).toContain('"Компании","companies"');
+    expect(readFileSync("src/app/[locale]/(admin)/admin/companies/[companyId]/page.tsx", "utf8")).toContain('section="companies"');
+    expect(readFileSync("src/app/[locale]/(admin)/admin/users/[userId]/page.tsx", "utf8")).toContain('section="users"');
   });
 });

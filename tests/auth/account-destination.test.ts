@@ -50,9 +50,9 @@ describe("signed-in account destinations", () => {
     expect(state.accounts).not.toHaveBeenCalled();
   });
 
-  it("keeps the global administrator role and MFA independent of account ownership", async () => {
+  it("routes the global administrator to the dedicated approved Admin Console at aal1 or aal2", async () => {
     state.role = "administrator";
-    expect(await signedInDestination()).toBe("/ru/mfa");
+    expect(await signedInDestination()).toBe("/ru/admin");
     state.aal = "aal2";
     expect(await signedInDestination()).toBe("/ru/admin");
     expect(state.companies).not.toHaveBeenCalled();

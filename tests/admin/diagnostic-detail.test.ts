@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 const service = readFileSync("src/server/admin/diagnostic-detail.ts", "utf8");
 const page = readFileSync("src/app/[locale]/(admin)/admin/diagnostics/[diagnosticId]/page.tsx", "utf8");
-const list = readFileSync("src/app/[locale]/(admin)/admin/diagnostics/page.tsx", "utf8");
+const list = readFileSync("src/features/admin/console-ui.tsx", "utf8");
 const artifactRoute = readFileSync("src/app/api/admin/report-artifacts/[artifactId]/route.ts", "utf8");
 
 describe("Stage 8C diagnostic detail", () => {
@@ -37,7 +37,7 @@ describe("Stage 8C diagnostic detail", () => {
   });
 
   it("links each list row to detail and protects artifact downloads", () => {
-    expect(list).toContain("/ru/admin/diagnostics/${row.id}");
+    expect(list).toContain("/ru/admin/diagnostics/${r.type");
     expect(artifactRoute).toContain("await requireAdmin()");
     expect(artifactRoute).toContain('"application/pdf"');
   });

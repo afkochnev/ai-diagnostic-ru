@@ -1493,6 +1493,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      read_admin_console: {
+        Args: { p_section: string; p_id?: string | null; p_filters?: Json }
+        Returns: Json
+      }
+      admin_assign_account_plan: {
+        Args: { p_account_id: string; p_target_plan: string; p_reason: string; p_expected_plan: string }
+        Returns: Json
+      }
       save_diagnostic_block: {
         Args: {
           p_answers?: Json

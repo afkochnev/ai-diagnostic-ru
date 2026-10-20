@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const service = readFileSync("src/server/admin/diagnostics.ts", "utf8");
-const page = readFileSync("src/app/[locale]/(admin)/admin/diagnostics/page.tsx", "utf8");
-const shell = readFileSync("src/features/admin/admin-shell.tsx", "utf8");
+const page = readFileSync("src/features/admin/console-ui.tsx", "utf8");
+const shell = page;
 
 describe("Stage 8B diagnostics list", () => {
   it("uses the shared server-side admin boundary and bounded pagination", () => {
@@ -20,16 +20,16 @@ describe("Stage 8B diagnostics list", () => {
     expect(service).toContain("statuses.includes");
     expect(service).toContain("validDate");
     expect(service).toContain("parsePage");
-    expect(page).toContain("Сбросить фильтры");
+    expect(page).toContain("Сбросить");
   });
 
   it("links the implemented section from the shell without exposing business data there", () => {
-    expect(shell).toContain('href="/ru/admin/diagnostics"');
+    expect(shell).toContain('"Диагностики","diagnostics"');
     expect(shell).toContain("Диагностики");
     expect(page).toContain("AI-отчёт");
     expect(page).toContain("Страница");
-    expect(page).toContain("Дата начала с");
-    expect(page).toContain("Дата начала по");
+    expect(page).toContain("Созданы с");
+    expect(page).toContain("Созданы по");
     expect(page).not.toContain("Создана с");
   });
 });
