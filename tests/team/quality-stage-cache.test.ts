@@ -2,6 +2,7 @@ import { stagePrompt } from "@/server/team/quality/prompts";
 import { it,expect,vi } from "vitest";
 import { mkdtempSync,mkdirSync,readFileSync,writeFileSync,chmodSync,lstatSync,rmSync,realpathSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { z } from "zod";
 import { qualityCase } from "../../scripts/fixtures/team-quality-cases";
 import { authoredStageStubs } from "../../scripts/fixtures/team-quality-stage-stubs";
@@ -11,7 +12,7 @@ import { experimentAccounting } from "@/server/team/quality/experiment-accountin
 import { researchLedger,appendResearchJournal } from "@/server/team/quality/research-ledger";
 
 const scope:CacheScope={sourceFingerprint:"a".repeat(64),codeSHA256:"b".repeat(64),model:"gpt-5.6-sol",effort:"medium"};
-function area(){const root=realpathSync(mkdtempSync("/private/tmp/quality-cache-test-"));chmodSync(root,0o700);const a=join(root,"a"),b=join(root,"b");mkdirSync(a,{mode:0o700});mkdirSync(b,{mode:0o700});return {root,a,b,close:()=>rmSync(root,{recursive:true,force:true})};}
+function area(){const root=realpathSync(mkdtempSync(join(tmpdir(),"quality-cache-test-")));chmodSync(root,0o700);const a=join(root,"a"),b=join(root,"b");mkdirSync(a,{mode:0o700});mkdirSync(b,{mode:0o700});return {root,a,b,close:()=>rmSync(root,{recursive:true,force:true})};}
 const request:StageRequest={stage:"extract",input:{groups:[{question_position:1,texts:["RAW_SOURCE_ALPHA","RAW_SOURCE_BETA"]}]},schema:z.strictObject({safe:z.string()}),maxOutputTokens:4000,deadline:Date.now()+60000};
 it("stores only a checked result and hashes, with private modes; request order is not persisted",()=>{
  const t=area();try{

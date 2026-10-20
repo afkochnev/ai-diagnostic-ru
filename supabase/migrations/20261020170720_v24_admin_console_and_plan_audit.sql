@@ -81,12 +81,13 @@ select d.id,'team',c.id,c.name,c.account_id,c.account_name,c.plan,d.created_by_u
  (select count(*) from public.team_participants p where p.team_diagnostic_id=d.id and p.status='completed' and p.revoked_at is null),
  (select count(*) from public.team_participants p where p.team_diagnostic_id=d.id and p.revoked_at is not null),
  case when (select count(*) from public.team_participants p where p.team_diagnostic_id=d.id and p.status='completed' and p.revoked_at is null)<3 then 'threshold' when r.team_diagnostic_id is null then 'pending' else 'ready' end,
- coalesce((select x.status from public.team_ai_reports x where x.team_diagnostic_id=d.id order by x.version desc limit 1),'none'),
- (select max(x.version) from public.team_ai_reports x where x.team_diagnostic_id=d.id),
- exists(select 1 from public.team_report_artifacts a join public.team_ai_reports x on x.id=a.team_report_id where x.team_diagnostic_id=d.id and a.status='ready'),
+ coalesce((select x.status from public.team_ai_reports x where x.team_diagnostic_id=d.id and x.source_fingerprint=source.fingerprint order by x.version desc limit 1),'none'),
+ (select max(x.version) from public.team_ai_reports x where x.team_diagnostic_id=d.id and x.source_fingerprint=source.fingerprint),
+ exists(select 1 from public.team_report_artifacts a join public.team_ai_reports x on x.id=a.team_report_id where x.team_diagnostic_id=d.id and x.source_fingerprint=source.fingerprint and a.status='ready'),
  concat_ws(' ',d.id::text,d.title,c.name,c.account_name,u.full_name,c.owner_email)
 from public.team_diagnostics d join private.admin_v24_companies c on c.id=d.company_id join public.users u on u.id=d.created_by_user_id
-left join public.team_results r on r.team_diagnostic_id=d.id and r.source_fingerprint=(select fingerprint from private.team_source(d.id)) left join public.maturity_level_translations mt on mt.maturity_level_id=r.maturity_level_id and mt.locale='ru';
+cross join lateral private.team_source(d.id) source
+left join public.team_results r on r.team_diagnostic_id=d.id and r.source_fingerprint=source.fingerprint left join public.maturity_level_translations mt on mt.maturity_level_id=r.maturity_level_id and mt.locale='ru';
 
 create view private.admin_v24_leads with(security_invoker=true) as
 select l.id,l.name,l.email,l.user_id,l.company_id,c.name company_name,c.account_id,c.account_name,
@@ -176,12 +177,12 @@ begin
   select to_jsonb(v)-'search_text' into payload from private.admin_v24_diagnostics v where v.id=p_id and v.type='team';
   if payload is null then return null;end if;
   result:=jsonb_build_object('item',payload,'result',null,'report',null,
-   'pdfs',(select coalesce(jsonb_agg(x),'[]') from(select a.id,a.team_report_id,a.template_version,a.generated_at,a.checksum from public.team_report_artifacts a join public.team_ai_reports r on r.id=a.team_report_id where r.team_diagnostic_id=p_id and r.status='completed' and a.status='ready' order by a.generated_at desc limit 25)x));
+   'pdfs',(select coalesce(jsonb_agg(x),'[]') from(select a.id,a.team_report_id,a.template_version,a.generated_at,a.checksum from public.team_report_artifacts a join public.team_ai_reports r on r.id=a.team_report_id where r.team_diagnostic_id=p_id and r.status='completed' and r.completed_participant_count>=3 and r.prompt_version in('TEAM-RU-2','TEAM-RU-3') and r.source_fingerprint=(select fingerprint from private.team_source(p_id)) and a.status='ready' order by a.generated_at desc limit 25)x));
   if (payload->>'completed')::integer>=3 then
    select jsonb_build_object('overall',to_jsonb(r),'blocks',(select coalesce(jsonb_agg(to_jsonb(b)||jsonb_build_object('title',tr.title) order by db.position),'[]') from public.team_block_results b join public.diagnostic_blocks db on db.id=b.block_id join public.diagnostic_block_translations tr on tr.block_id=b.block_id and tr.locale='ru' where b.team_diagnostic_id=p_id and b.source_fingerprint=r.source_fingerprint)) into payload
     from public.team_results r where r.team_diagnostic_id=p_id and r.source_fingerprint=(select fingerprint from private.team_source(p_id));
    result:=jsonb_set(result,'{result}',coalesce(payload,'null'));
-   select jsonb_build_object('id',r.id,'version',r.version,'pipeline',r.prompt_version,'model',r.model,'content',r.structured_content) into payload from public.team_ai_reports r where r.team_diagnostic_id=p_id and r.status='completed' order by (r.provider_mode='openai') desc nulls last,r.version desc limit 1;
+   select jsonb_build_object('id',r.id,'version',r.version,'pipeline',r.prompt_version,'model',r.model,'content',r.structured_content) into payload from public.team_ai_reports r where r.team_diagnostic_id=p_id and r.status='completed' and r.source_fingerprint=(select fingerprint from private.team_source(p_id)) order by case r.prompt_version when 'TEAM-RU-3' then 3 when 'TEAM-RU-2' then 2 else 1 end desc,(r.provider_mode='openai') desc nulls last,r.version desc limit 1;
    result:=jsonb_set(result,'{report}',coalesce(payload,'null'));
   end if;
   return result;
@@ -189,7 +190,7 @@ begin
  if p_section='team_pdf' then
   select jsonb_build_object('content_base64',a.content_base64,'checksum',a.checksum,'version',r.version) into result
    from public.team_report_artifacts a join public.team_ai_reports r on r.id=a.team_report_id
-   where a.id=p_id and a.status='ready' and r.status='completed' and r.completed_participant_count>=3;
+   where a.id=p_id and a.status='ready' and r.status='completed' and r.completed_participant_count>=3 and r.prompt_version in('TEAM-RU-2','TEAM-RU-3') and r.source_fingerprint=(select fingerprint from private.team_source(r.team_diagnostic_id));
   return result;
  end if;
  if p_section not in('accounts','users','companies','diagnostics','leads','feedback') then raise exception 'admin_invalid_section';end if;
@@ -214,7 +215,7 @@ begin
     'memberships',(select coalesce(jsonb_agg(x),'[]') from(select m.user_id,u.full_name,au.email,m.role,m.status from public.company_profiles c join public.account_memberships m on m.account_id=c.account_id join public.users u on u.id=m.user_id join auth.users au on au.id=u.id where c.id=p_id order by m.joined_at limit 25)x),
     'report_counts',jsonb_build_object('individual',(select count(*) from public.ai_reports r join public.diagnostics d on d.id=r.diagnostic_id where d.company_id=p_id),'team',(select count(*) from public.team_ai_reports r join public.team_diagnostics d on d.id=r.team_diagnostic_id where d.company_id=p_id)),
     'pdf_counts',jsonb_build_object('individual',(select count(*) from public.report_artifacts a join public.ai_reports r on r.id=a.report_id join public.diagnostics d on d.id=r.diagnostic_id where d.company_id=p_id),'team',(select count(*) from public.team_report_artifacts a join public.team_ai_reports r on r.id=a.team_report_id join public.team_diagnostics d on d.id=r.team_diagnostic_id where d.company_id=p_id)));
-   return result||jsonb_build_object('profile',(select jsonb_build_object('industry_key',industry_key,'country',country,'employee_count',employee_count,'company_age_years',company_age_years,'management_levels',management_levels,'products',products,'customer_segments',customer_segments,'sales_channels',sales_channels,'main_goals',main_goals,'key_problems',key_problems) from public.company_profiles where id=p_id));
+   return result||jsonb_build_object('profile',(select jsonb_build_object('industry',coalesce((select name from public.industry_translations it where it.industry_key=c.industry_key and it.locale='ru'),c.industry_key),'annual_revenue',coalesce((select name from public.revenue_range_translations rt where rt.revenue_key=c.annual_revenue_key and rt.locale='ru'),c.annual_revenue_key),'country',country,'employee_count',employee_count,'company_age_years',company_age_years,'management_levels',management_levels,'products',products,'customer_segments',customer_segments,'sales_channels',sales_channels,'main_goals',main_goals,'key_problems',key_problems) from public.company_profiles c where c.id=p_id));
   end if;
   return result;
  end if;

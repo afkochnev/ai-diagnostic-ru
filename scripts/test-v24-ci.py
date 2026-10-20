@@ -13,7 +13,7 @@ try:
  for name,image,label,script in specs:
   run('docker','run','--detach','--network','none','--name',name,'--label','codex.task='+label,'--label','codex.parent=v24','--env','POSTGRES_HOST_AUTH_METHOD=trust',image);owned.append(name)
   for attempt in range(30):
-   if subprocess.run(['docker','exec',name,'pg_isready','-U','postgres'],capture_output=True).returncode==0:break
+   if subprocess.run(['docker','exec',name,'pg_isready','-h','127.0.0.1','-U','postgres','-d','postgres'],capture_output=True).returncode==0:break
    time.sleep(1)
   else:raise RuntimeError('local database unavailable')
   run('python3',script,'--container',name)
