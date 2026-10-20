@@ -71,7 +71,10 @@ try:
     migrations = sorted((ROOT / 'supabase/migrations').glob('*.sql'))
     candidate = next(x for x in migrations if 'plans_entitlements_billing_foundation' in x.name)
     for m in migrations:
-        if m == candidate or m.name.endswith("_v24_admin_console_and_plan_audit.sql"): continue
+        # Keep this original V2.3 worker scenario at its own schema checkpoint.
+        # Later reporting pipelines intentionally change legacy claim behavior.
+        # Final billing invariants are also covered by test-v24-local.py.
+        if m == candidate or m.name[:14] > candidate.name[:14]: continue
         if m.name == '20261013000100_account_foundation.sql':
             sql((ROOT / 'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
         if 'team_aggregation_report' in m.name:
