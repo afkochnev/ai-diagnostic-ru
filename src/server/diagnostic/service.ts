@@ -8,6 +8,8 @@ export type SaveDiagnosticResult = { revision: number; current_block_id: string 
 export type DiagnosticPageData = Awaited<ReturnType<typeof getDiagnostic>>;
 export class DiagnosticError extends Error { constructor(public readonly code: "not_found" | "company_missing" | "selection_required" | "conflict" | "invalid", message: string) { super(message); } }
 
+import {loadQuestionnaire} from "./questionnaire";
+
 const MANAGEABILITY_DEFINITION_KEY = "manageability";
 
 export type PublishedMethodologyVersion = {
@@ -87,33 +89,12 @@ export async function getDiagnostic(diagnosticId: string, userId: string) {
     throw error;
   }
   const client = await createAuthClient();
-  const [{ data: company }, { data: blocks }, { data: blockTranslations }, { data: questions }, { data: questionTranslations }, { data: options }, { data: optionTranslations }, { data: answers }] = await Promise.all([
-    client.from("company_profiles").select("id,name").eq("id", diagnostic.company_id).maybeSingle(),
-    client.from("diagnostic_blocks").select("id,key,position,weight,is_active").eq("version_id", diagnostic.version_id).eq("is_active", true).order("position"),
-    client.from("diagnostic_block_translations").select("block_id,title,description").eq("locale", "ru"),
-    client.from("questions").select("id,block_id,key,position,answer_type,weight,is_required,is_active,reverse_score").eq("version_id", diagnostic.version_id).eq("is_active", true).order("position"),
-    client.from("question_translations").select("question_id,prompt,help_text").eq("locale", "ru"),
-    client.from("question_options").select("id,question_id,key,position,score_value").order("position"),
-    client.from("question_option_translations").select("option_id,label").eq("locale", "ru"),
-    client.from("answers").select("question_id,text_value,numeric_value,revision").eq("diagnostic_id", diagnostic.id),
+  const [{data:company},{data:answers}]=await Promise.all([
+    client.from("company_profiles").select("id,name").eq("id",diagnostic.company_id).maybeSingle(),
+    client.from("answers").select("question_id,text_value,numeric_value,revision").eq("diagnostic_id",diagnostic.id),
   ]);
-  if (!company || !blocks || !questions) throw new DiagnosticError("not_found", "Diagnostic data not found");
-  const blockText = new Map((blockTranslations ?? []).map((row) => [row.block_id, row]));
-  const questionText = new Map((questionTranslations ?? []).map((row) => [row.question_id, row]));
-  const optionText = new Map((optionTranslations ?? []).map((row) => [row.option_id, row.label]));
-  const questionOptions = new Map<string, { id: string; position: number; score_value: number; label: string }[]>();
-  for (const option of options ?? []) {
-    const list = questionOptions.get(option.question_id) ?? [];
-    list.push({ id: option.id, position: option.position, score_value: option.score_value, label: optionText.get(option.id) ?? String(option.position) });
-    questionOptions.set(option.question_id, list);
-  }
-  const answerMap = new Map((answers ?? []).map((answer) => [answer.question_id, answer]));
-  return {
-    diagnostic, company, blocks: (blocks ?? []).map((block) => ({
-      ...block, title: blockText.get(block.id)?.title ?? block.key,
-      questions: (questions ?? []).filter((question) => question.block_id === block.id).sort((a, b) => a.position - b.position).map((question) => ({ ...question, prompt: questionText.get(question.id)?.prompt ?? "", help_text: questionText.get(question.id)?.help_text ?? null, options: questionOptions.get(question.id) ?? [], answer: answerMap.get(question.id) ?? null })),
-    })),
-  };
+  if(!company)throw new DiagnosticError("not_found","Diagnostic data not found");
+  return {diagnostic,company,blocks:await loadQuestionnaire(client,diagnostic.version_id,answers??[])};
 }
 
 export async function saveDiagnosticAnswers(diagnosticId: string, userId: string, expectedRevision: number, mutationId: string, currentBlockId: string, inputs: DiagnosticAnswerInput[], answersDirty = true): Promise<SaveDiagnosticResult> {

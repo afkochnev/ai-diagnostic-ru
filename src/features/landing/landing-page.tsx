@@ -1,3 +1,4 @@
+import {FreeLanding} from "@/features/acquisition/free-landing";
 import Image from "next/image";
 import { ButtonLink } from "@/components/ui/button-link";
 import { Card } from "@/components/ui/card";
@@ -5,7 +6,8 @@ import { Container } from "@/components/ui/container";
 import { localePath, type Locale } from "@/i18n/config";
 import type { Messages } from "@/i18n/messages";
 
-export function LandingPage({ locale, messages, authenticated = false }: { locale: Locale; messages: Messages; authenticated?: boolean }) {
+export function LandingPage({ locale, messages, authenticated = false, acquisition=false, attribution={} }: { locale: Locale; messages: Messages; authenticated?: boolean; acquisition?:boolean; attribution?:Record<string,string> }) {
+  if(acquisition)return <FreeLanding authenticated={authenticated} attribution={attribution}/>;
   const content = messages.landing;
   const registrationPath = localePath(locale, authenticated ? "/account" : "/register");
 

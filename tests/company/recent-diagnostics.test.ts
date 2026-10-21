@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock('server-only',()=>({}));
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 const data=vi.hoisted(()=>({individual:[] as unknown[],teams:[] as unknown[],enabled:true}));

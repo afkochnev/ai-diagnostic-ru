@@ -4,9 +4,9 @@ import { createTeamAction, inviteTeamAction, renewTeamInvitationAction } from "@
 import type { TeamActionState } from "@/server/team/contracts";
 const input = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3";
 const button = "mt-4 min-h-12 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50";
-export function CreateTeamForm({ companyId }: { companyId: string }) {
+export function CreateTeamForm({ companyId,defaultTitle }: { companyId: string;defaultTitle?:string }) {
   const [state, action, pending] = useActionState(createTeamAction, {});
-  return <form action={action}><input type="hidden" name="companyId" value={companyId} /><label>Название командной диагностики<input name="title" required minLength={2} maxLength={200} className={input} /></label>{state.error && <p role="alert">{state.error}</p>}<button className={button} disabled={pending}>Создать командную диагностику</button></form>;
+  return <form action={action}><input type="hidden" name="companyId" value={companyId} /><label>Название командной диагностики<input name="title" defaultValue={defaultTitle} required minLength={2} maxLength={200} className={input} /></label>{state.error && <p role="alert">{state.error}</p>}<button className={button} disabled={pending}>Создать командную диагностику</button></form>;
 }
 export function InviteTeamForm({ teamId, participantId }: { teamId: string; participantId?: string }) {
   const [copied, setCopied] = useState(false);

@@ -1,3 +1,5 @@
+import {acquisitionEnabled} from "@/server/acquisition/contracts";
+import {deliveryMilestone} from "@/server/acquisition/service";
 import { NextResponse } from "next/server";
 import { requireIdentity } from "@/server/auth/session";
 import { getPdfForReport } from "@/server/pdf/service";
@@ -11,6 +13,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ reportId: 
     const { reportId } = await params;
     if (!uuid.test(reportId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
     const pdf = await getPdfForReport(reportId, identity.user.id);
+    if(acquisitionEnabled())await deliveryMilestone("pdf",reportId,identity.user.id);
     return new NextResponse(new Uint8Array(pdf.bytes), { headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${pdf.fileName}"`, "Cache-Control": "private, no-store" } });
   } catch (error) {
     const message = error instanceof Error && ["pdf_report_not_ready", "pdf_artifact_not_ready"].includes(error.message) ? "pdf_not_ready" : error instanceof Error && error.message === "pdf_access_denied" ? "access_denied" : "pdf_failed";

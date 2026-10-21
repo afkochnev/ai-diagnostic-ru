@@ -1,0 +1,12 @@
+import 'server-only';
+import {z} from 'zod';
+import {requireAdmin} from '@/server/auth/admin';
+import {createAuthClient} from '@/server/supabase/server';
+export const funnelFilters=z.object({from:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal('')).optional(),to:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal('')).optional(),utm_source:z.string().regex(/^[A-Za-z0-9._-]{0,100}$/).optional(),utm_medium:z.string().regex(/^[A-Za-z0-9._-]{0,100}$/).optional(),utm_campaign:z.string().regex(/^[A-Za-z0-9._-]{0,100}$/).optional()}).strict();
+export const stageLabels:Record<string,string>={landing_view:'Открыли лендинг',landing_cta_clicked:'Нажали начать',anonymous_diagnostic_started:'Начали диагностику',anonymous_diagnostic_completed:'Завершили диагностику',company_profile_completed:'Заполнили профиль компании',claim_email_submitted:'Запросили доступ по email',claim_email_verified:'Подтвердили email',diagnostic_claimed:'Сохранили диагностику',individual_result_ready:'Индекс рассчитан',individual_report_ready:'AI-отчёт готов',individual_report_viewed:'Открыли отчёт',individual_pdf_downloaded:'Скачали PDF',advanced_offer_viewed:'Увидели предложение Team',team_explainer_viewed:'Открыли описание Team',advanced_cta_clicked:'Запросили Advanced',account_became_advanced:'Advanced активирован',team_diagnostic_created:'Создали Team',first_team_invitation_sent:'Первое приглашение принято провайдером',team_report_ready:'Team-отчёт готов'};
+export async function acquisitionFunnel(filters:Record<string,unknown>){
+ await requireAdmin();const parsed=funnelFilters.parse(filters);
+ const client=await createAuthClient();const {data,error}=await (client as unknown as {rpc(n:string,a:Record<string,unknown>):Promise<{data:unknown;error:unknown}>}).rpc('read_acquisition_funnel',{p_filters:parsed});
+ if(error)throw Error('admin_funnel_unavailable');
+ return z.object({cohort_size:z.number(),block_progress:z.array(z.object({block_position:z.number(),total_blocks:z.number(),sessions:z.number()})),stages:z.record(z.string(),z.number()),campaigns:z.array(z.object({utm_source:z.string().nullable(),utm_medium:z.string().nullable(),utm_campaign:z.string().nullable(),visits:z.number()})).max(25),intents:z.array(z.object({account_id:z.uuid(),company_id:z.uuid(),source_surface:z.string(),destination:z.literal('team_create'),created_at:z.string()})).max(25),conversions:z.array(z.object({from:z.string(),to:z.string(),denominator:z.number(),numerator:z.number()})).optional()}).parse(data);
+}

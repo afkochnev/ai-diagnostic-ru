@@ -31,4 +31,12 @@ describe("team invitation and answer contracts", () => {
     vi.stubEnv("APP_URL","https://ai-diagnostic-staging-web.onrender.com");
     vi.stubEnv("SUPABASE_URL","https://foreign.supabase.co"); expect(teamFoundationEnabled()).toBe(false);
   });
+  it("allows explicit isolated loopback acceptance but never broadens production", () => {
+    vi.stubEnv("APP_URL","http://127.0.0.1:3250");vi.stubEnv("SUPABASE_URL","http://127.0.0.1:55321");
+    vi.stubEnv("NODE_ENV","development");vi.stubEnv("TEAM_LOCAL_ACCEPTANCE",undefined);
+    expect(teamFoundationEnabled()).toBe(false);
+    vi.stubEnv("TEAM_LOCAL_ACCEPTANCE","1");expect(teamFoundationEnabled()).toBe(true);
+    vi.stubEnv("NODE_ENV","production");expect(teamFoundationEnabled()).toBe(false);
+    vi.stubEnv("NODE_ENV","development");vi.stubEnv("SUPABASE_URL","https://foreign.supabase.co");expect(teamFoundationEnabled()).toBe(false);
+  });
 });

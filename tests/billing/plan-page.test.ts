@@ -15,7 +15,7 @@ describe("Account plan screen", () => {
   it("shows Free core/PDF and Advanced capabilities without invented pricing or checkout", async () => {
     const html = renderToStaticMarkup(await AccountPlanPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('Текущий тариф: <strong>Free</strong>'); expect(html).toContain("PDF");
-    expect(html).toContain("Несколько компаний"); expect(html).toContain("Оплата будет подключена позже.");
+    expect(html).toContain("Несколько компаний"); expect(html).toContain("Оплата будет подключена на следующем этапе.");
     expect(html).not.toContain('<form'); expect(html).not.toContain('checkout'); expect(html).not.toMatch(/€|₽|\$\d/);
     expect(state.read).toHaveBeenCalledWith("account-a");
   });
