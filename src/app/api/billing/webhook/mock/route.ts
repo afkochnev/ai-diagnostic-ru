@@ -2,7 +2,7 @@ import {NextResponse} from 'next/server';
 import {billingConfig} from '@/server/billing/contracts';
 import {processWebhook} from '@/server/billing/service';
 export async function POST(request:Request){
- if(!billingConfig().enabled)return NextResponse.json({error:'billing_unavailable'},{status:404});
+ if(!billingConfig().enabled||billingConfig().provider!=='mock')return NextResponse.json({error:'billing_unavailable'},{status:404});
  // Stream limit also rejects chunked bodies; Content-Length is not an authority.
  const reader=request.body?.getReader();if(!reader)return new Response(null,{status:400});
  const chunks:Uint8Array[]=[];let size=0;

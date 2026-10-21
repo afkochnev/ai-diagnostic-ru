@@ -1,16 +1,17 @@
 import 'server-only';
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import {billingConfig,verifiedEventSchema,type VerifiedBillingEvent,type Checkout} from './contracts';
-export interface BillingProvider {
- createCheckout(checkout:Checkout):Promise<{reference:string;customerRef:string;subscriptionRef:string;paymentRef:string;url:string}>;
- parseAndVerifyWebhook(body:string,signature:string,now?:number):VerifiedBillingEvent;
+export interface BillingProvider<Context=Checkout> {
+ createCheckout(checkout:Context):Promise<{reference:string;customerRef:string;subscriptionRef:string;paymentRef:string;url:string}>;
+ parseAndVerifyWebhook?(body:string,signature:string,now?:number):VerifiedBillingEvent;
+ retrieveVerifiedPayment?(reference:string,context:Context):Promise<VerifiedBillingEvent|null>;
  retrieveCheckout?(reference:string):Promise<{status:string}>;
  cancelSubscription?(reference:string,mode:'now'|'period_end'):Promise<void>;
 }
 /** Separate, domain-bound HMAC format. Never a stand-in verifier for a real provider. */
 export class MockBillingProvider implements BillingProvider {
  constructor(private readonly secret:string,private readonly env:Record<string,string|undefined>=process.env){
-  if(!billingConfig(env).enabled||secret.length<32)throw Error('billing_unavailable');
+  if(!billingConfig(env).enabled||billingConfig(env).provider!=='mock'||secret.length<32)throw Error('billing_unavailable');
  }
  async createCheckout(checkout:Checkout){if(!checkout.test_mode)throw Error('billing_invalid_offer');return {reference:`mock-checkout-${checkout.id}`,customerRef:`mock-customer-${checkout.account_id}`,subscriptionRef:`mock-sub-${checkout.id}`,paymentRef:`mock-payment-${checkout.id}`,url:`/ru/billing/mock/${checkout.id}`};}
  sign(body:string,timestamp=Math.floor(Date.now()/1000)){

@@ -1,19 +1,31 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-const state = vi.hoisted(() => ({ accounts: [{ id: "account-a", name: "Аккаунт A" }], plan: "Free", read: vi.fn(), company: vi.fn() }));
+const state = vi.hoisted(() => ({ accounts: [{ id: "account-a", name: "Аккаунт A" }], plan: "Free", read: vi.fn(), company: vi.fn(), annual:vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ redirect: (p: string) => { throw Error(`redirect:${p}`); } }));
 vi.mock("@/server/auth/session", () => ({ requireIdentity: async () => ({ user: { id: "owner" } }) }));
 vi.mock("@/server/account/queries", () => ({ listAccessibleAccounts: async () => state.accounts }));
 vi.mock("@/server/entitlements", () => ({ getAccountPlan: state.read }));
 vi.mock("@/server/account/authorization",()=>({requireCompanyRead:state.company}));
+vi.mock('@/server/billing/service',async original=>({...await original<typeof import('@/server/billing/service')>(),annualAccess:state.annual}));
 import AccountPlanPage from "@/app/[locale]/(workspace)/account/plan/page";
 beforeEach(() => {
   state.accounts = [{ id: "account-a", name: "Аккаунт A" }]; state.plan = "Free";
-  state.company.mockReset();state.company.mockResolvedValue({id:"30000000-0000-4000-8000-000000000001",name:"Legacy Company",account_id:"account-a"});
+  state.annual.mockReset();state.annual.mockResolvedValue(null);state.company.mockReset();state.company.mockResolvedValue({id:"30000000-0000-4000-8000-000000000001",name:"Legacy Company",account_id:"account-a"});
   state.read.mockReset(); state.read.mockImplementation(async () => ({ display_name: state.plan, plan: state.plan.toLowerCase(), entitlements: {team_diagnostics:state.plan==="Advanced",multi_company:state.plan==="Advanced"} }));
 });
+afterEach(()=>vi.unstubAllEnvs());
 describe("Account plan screen", () => {
+  it("shows approved no-VAT price but cannot checkout with unconfirmed fiscal mode",async()=>{
+    vi.stubEnv('BILLING_PROVIDER','yookassa');vi.stubEnv('BILLING_ENABLED','true');
+    const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
+    expect(html).toContain('480 ₽');expect(html).toContain('Без НДС');expect(html).toContain('без автоматического продления');expect(html).toContain('Оплата временно недоступна');expect(html).not.toContain('<form');expect(html).not.toContain('включая НДС');
+  });
+  it("offers explicit annual renewal and preserves the remaining paid term",async()=>{
+    vi.stubEnv('BILLING_PROVIDER','yookassa');state.plan='Advanced';state.annual.mockResolvedValue({renewable:true,effective_until:'2027-10-21T12:00:00Z'});
+    const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
+    expect(html).toContain('Продлить Advanced на год');expect(html).toContain('21.10.2027');expect(html).toContain('оставшееся оплаченное время сохраняется');
+  });
   it("shows Free core/PDF and Advanced capabilities without invented pricing or checkout while billing is disabled", async () => {
     const html = renderToStaticMarkup(await AccountPlanPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('Текущий тариф: <strong>Free</strong>'); expect(html).toContain("PDF");

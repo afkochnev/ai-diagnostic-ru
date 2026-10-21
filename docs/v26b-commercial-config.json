@@ -49,8 +49,8 @@
     "paymentModeVerificationRequiredBeforeProduction": true
   },
   "scope": {
-    "kind": "Approved configuration contract for V2.6B, not an active checkout or receipt request",
-    "runtimeAdapterImplemented": false,
+    "kind": "Authoritative commercial contract consumed by the implemented adapter; payment creation remains gated on confirmed receipt settings and a separately approved sandbox rollout",
+    "runtimeAdapterImplemented": true,
     "realProviderCalls": 0,
     "stagingChanged": false,
     "productionChanged": false
