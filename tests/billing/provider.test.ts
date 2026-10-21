@@ -1,0 +1,15 @@
+import {describe,it,expect,vi} from 'vitest';
+vi.mock('server-only',()=>({}));
+import {MockBillingProvider} from '@/server/billing/provider';
+import {billingConfig,teamContinuation} from '@/server/billing/contracts';
+const env={BILLING_ENABLED:'true',BILLING_PROVIDER:'mock',APP_URL:'https://ai-diagnostic-staging-web.onrender.com',SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co',NODE_ENV:'production'};
+const body=JSON.stringify({provider:'mock',event_ref:'event-1',type:'payment_succeeded',checkout_id:'10000000-0000-4000-8000-000000000001',subscription_ref:'sub',payment_ref:'pay',customer_ref:'customer',occurred_at:new Date().toISOString(),amount_minor:null,currency:null});
+describe('billing adapter boundary',()=>{
+ it('allows only explicitly enabled mock with exact staging origin/project',()=>expect(billingConfig(env).enabled).toBe(true));
+ it.each([{...env,BILLING_ENABLED:'false'},{...env,BILLING_PROVIDER:'stripe'},{...env,APP_URL:'https://audit.iteam.ru'},{...env,SUPABASE_URL:'https://production.supabase.co'},{...env,APP_URL:'https://ai-diagnostic-staging-web.onrender.com.evil'}])('fails closed for disabled, unsupported and production configuration %#',e=>expect(billingConfig(e).enabled).toBe(false));
+ it('allows local nonproduction tests, never production loopback',()=>{const e={...env,NODE_ENV:'test',APP_URL:'http://127.0.0.1:3000',SUPABASE_URL:'http://127.0.0.1:55321'};expect(billingConfig(e).enabled).toBe(true);expect(billingConfig({...e,NODE_ENV:'production'}).enabled).toBe(false);});
+ it('verifies HMAC before interpreting event',()=>{const p=new MockBillingProvider('a'.repeat(40),env);expect(p.parseAndVerifyWebhook(body,p.sign(body)).event_ref).toBe('event-1');});
+ it.each(['tampered','wrong-secret','expired','future','missing','real-format','oversize','unexpected-data'])('rejects %s',mode=>{const p=new MockBillingProvider('a'.repeat(40),env);let b=body,s=p.sign(body);if(mode==='tampered')b=body.replace('event-1','event-2');if(mode==='wrong-secret')s=new MockBillingProvider('b'.repeat(40),env).sign(body);if(mode==='expired')s=p.sign(body,Math.floor(Date.now()/1000)-301);if(mode==='future')s=p.sign(body,Math.floor(Date.now()/1000)+301);if(mode==='missing')s='';if(mode==='real-format')s='t=123,v1=test';if(mode==='oversize'){b='x'.repeat(4097);s=p.sign(b);}if(mode==='unexpected-data'){b=JSON.stringify({...JSON.parse(body),email:'forbidden'});s=p.sign(b);}expect(()=>p.parseAndVerifyWebhook(b,s)).toThrow();});
+ it('does not accept arbitrary continuation URLs',()=>{expect(teamContinuation('https://evil.test')).toBeNull();expect(teamContinuation('../admin')).toBeNull();expect(teamContinuation('10000000-0000-4000-8000-000000000001')).toContain('/ru/companies/10000000-0000-4000-8000-000000000001/diagnostics?new=1&type=team');});
+ it('requires strong private key and production guard at constructor',()=>{expect(()=>new MockBillingProvider('short',env)).toThrow();expect(()=>new MockBillingProvider('a'.repeat(40),{...env,APP_URL:'https://prod.test'})).toThrow();});
+});

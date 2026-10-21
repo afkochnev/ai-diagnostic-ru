@@ -9,13 +9,13 @@ vi.mock("@/server/entitlements", () => ({ getAccountPlan: state.read }));
 import AccountPlanPage from "@/app/[locale]/(workspace)/account/plan/page";
 beforeEach(() => {
   state.accounts = [{ id: "account-a", name: "Аккаунт A" }]; state.plan = "Free";
-  state.read.mockReset(); state.read.mockImplementation(async () => ({ display_name: state.plan }));
+  state.read.mockReset(); state.read.mockImplementation(async () => ({ display_name: state.plan, plan: state.plan.toLowerCase(), entitlements: {team_diagnostics:state.plan==="Advanced",multi_company:state.plan==="Advanced"} }));
 });
 describe("Account plan screen", () => {
-  it("shows Free core/PDF and Advanced capabilities without invented pricing or checkout", async () => {
+  it("shows Free core/PDF and Advanced capabilities without invented pricing or checkout while billing is disabled", async () => {
     const html = renderToStaticMarkup(await AccountPlanPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('Текущий тариф: <strong>Free</strong>'); expect(html).toContain("PDF");
-    expect(html).toContain("Несколько компаний"); expect(html).toContain("Оплата будет подключена на следующем этапе.");
+    expect(html).toContain("Несколько компаний"); expect(html).toContain("Стоимость и условия оплаты пока не настроены.");
     expect(html).not.toContain('<form'); expect(html).not.toContain('checkout'); expect(html).not.toMatch(/€|₽|\$\d/);
     expect(state.read).toHaveBeenCalledWith("account-a");
   });
