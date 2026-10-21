@@ -19,5 +19,7 @@ scripts/**
 !scripts/consultation-worker.ts
 tests
 supabase
-docs
+# Keep operator documentation out; this non-secret JSON is a runtime contract.
+docs/**
+!docs/v26b-commercial-config.json
 .github

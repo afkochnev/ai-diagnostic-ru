@@ -27,6 +27,7 @@ COPY --from=build /app/.next ./.next
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/package-lock.json ./package-lock.json
 COPY --from=build /app/tsconfig.json ./tsconfig.json
+COPY --from=build /app/docs/v26b-commercial-config.json ./docs/v26b-commercial-config.json
 COPY --from=build /app/src ./src
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/public ./public
