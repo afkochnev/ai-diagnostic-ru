@@ -30,7 +30,7 @@ Existing Companies, Teams, invited participants, results, reports and PDF remain
 
 ## Receipt configuration gates
 
-`payment_mode` has no default. It must be set from the actual YooKassa/fiscal configuration and explicitly confirmed **before any sandbox payment**. Receipt solution confirmation is also required. Tests use fake configuration and transport only; their sample mode is not merchant approval.
+`payment_mode=full_payment` is the owner-approved staging TEST decision, defined by the authoritative commercial config. Any different environment value is rejected. Receipt solution confirmation is still required; production fiscal confirmation remains a separate gate. Tests use fake transport only.
 
 USN is known; its subtype is not. Do not infer `tax_system_code` from VAT, amount or USN. If the selected receipt solution does not require the application to send this code, omit it. If required, use only the merchant/accountant-confirmed USN code. Its absence is not an unconditional implementation blocker. The selected receipt solution may also require a confirmed measure; this is configurable, with no guessed default. The YooKassa receipt solution requires a measure and does not require `tax_system_code`.
 

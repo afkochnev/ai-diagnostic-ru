@@ -161,9 +161,14 @@ try:
  assert sql(f"select effective_until<now()+interval '367 days' from private.account_subscriptions where account_id='{accounts[8]}' and status='active'")=='t'
  passed('expiry denies expansion immediately without worker, preserves resources; bounded idempotent cleanup and lapsed renewal')
  sql(f"update public.user_roles set role='administrator' where user_id='{uid(8)}'")
+ actor(0,f"select public.billing_record_yookassa_receipt('{c8}','{ref8}','succeeded')",role='service_role')
+ actor(1,f"select public.billing_record_yookassa_receipt('{c8}','{ref8}','canceled')",'permission denied')
+ actor(0,f"select public.billing_record_yookassa_receipt('{c8}','{ref8}','pending')",role='service_role')
+ assert sql(f"select receipt_state from private.billing_checkout_sessions where id='{c8}'")=='succeeded'
  admin=json.loads(actor(8,"select public.billing_admin_read('{\"provider\":\"yookassa\"}')"))
+ assert any(r['test_mode'] is True and r['receipt_state']=='succeeded' and r['receipt_checked_at'] for r in admin['rows'])
  assert admin['total']>0 and any(r['amount_minor']==48000 and r['currency']=='RUB' and r['annual_access'] and not r['auto_renewal'] for r in admin['rows'])
- for forbidden in ['secret_key','card_number','receipt','raw_payload','customer_email']:assert forbidden not in json.dumps(admin)
+ for forbidden in ['secret_key','card_number','raw_payload','customer_email']:assert forbidden not in json.dumps(admin)
  actor(1,"select public.billing_admin_read('{}')",'admin_access_denied')
  passed('Admin YooKassa filter, annual dates/amount/no-renewal and safe projection; ordinary owner denied Admin')
  sql("update private.billing_configuration set mock_enabled=true,provider_key='mock'")

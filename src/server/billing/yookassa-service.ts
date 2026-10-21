@@ -8,7 +8,8 @@ export type YooKassaDependencies={rpc:typeof billingRpc;provider:()=>YooKassaBil
 const runtime: YooKassaDependencies={rpc:billingRpc,provider:()=>new YooKassaBillingProvider()};
 
 async function verify(c:YooKassaContext,deps:YooKassaDependencies){
- const event=await deps.provider().retrieveVerifiedPayment(c.provider_payment_ref,c);
+ const {event,receiptState}=await deps.provider().retrieveVerifiedPaymentDetails(c.provider_payment_ref,c);
+ await deps.rpc('billing_record_yookassa_receipt',{p_checkout_id:c.id,p_payment_ref:c.provider_payment_ref,p_state:receiptState},true);
  if(!event)return {status:'pending' as const,error:null};
  const canonical=JSON.stringify(event);
  return resultSchema.parse(await deps.rpc('billing_process_verified_event',{p_event:event,p_hash:createHash('sha256').update(canonical).digest('hex')},true));

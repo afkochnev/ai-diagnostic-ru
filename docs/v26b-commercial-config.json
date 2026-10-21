@@ -21,7 +21,8 @@
     "calculateVatAmount": false
   },
   "environmentDefaults": {
-    "YOOKASSA_VAT_CODE": "1"
+    "YOOKASSA_VAT_CODE": "1",
+    "YOOKASSA_PAYMENT_MODE": "full_payment"
   },
   "receiptItem": {
     "description": "Доступ Advanced к AI Company Audit на 1 год",
@@ -31,7 +32,8 @@
       "currency": "RUB"
     },
     "payment_subject": "service",
-    "vat_code": 1
+    "vat_code": 1,
+    "payment_mode": "full_payment"
   },
   "merchantTax": {
     "regime": "USN",
@@ -44,9 +46,10 @@
   "receiptConfiguration": {
     "solution": null,
     "applicationMustSendTaxSystemCode": null,
-    "payment_mode": null,
-    "paymentModeVerified": false,
-    "paymentModeVerificationRequiredBeforeProduction": true
+    "payment_mode": "full_payment",
+    "paymentModeVerified": true,
+    "paymentModeVerificationRequiredBeforeProduction": true,
+    "paymentModeVerificationScope": "Owner-approved staging TEST shop only; production fiscal confirmation still required"
   },
   "scope": {
     "kind": "Authoritative commercial contract consumed by the implemented adapter; payment creation remains gated on confirmed receipt settings and a separately approved sandbox rollout",
@@ -58,5 +61,6 @@
   "references": [
     "https://yookassa.ru/developers/payment-acceptance/receipts/54fz/other-services/parameters-values",
     "https://yookassa.ru/developers/payment-acceptance/receipts/54fz/yoomoney/parameters-values"
-  ]
+  ],
+  "payment_mode": "full_payment"
 }

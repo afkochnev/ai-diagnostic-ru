@@ -6,7 +6,7 @@ import {verifiedEventSchema,type VerifiedBillingEvent} from './contracts';
 const paymentId=z.string().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
 export const yookassaContextSchema=z.object({id:z.uuid(),account_id:z.uuid(),company_id:z.uuid().nullable(),offer_id:z.uuid(),offer_key:z.literal(annualOffer.key),amount_minor:z.literal(annualOffer.amount_minor),currency:z.literal(annualOffer.currency),merchant_ref:z.string().regex(/^\d{1,20}$/),provider_test_mode:z.literal(true),provider_payment_ref:z.string(),created_at:z.string(),status:z.string()});
 export type YooKassaContext=z.infer<typeof yookassaContextSchema>;
-const paymentSchema=z.object({id:paymentId,status:z.enum(['pending','waiting_for_capture','succeeded','canceled']),paid:z.boolean(),test:z.boolean(),amount:z.object({value:z.string().regex(/^\d+\.\d{2}$/),currency:z.string()}),refunded_amount:z.object({value:z.string().regex(/^\d+\.\d{2}$/),currency:z.string()}).optional(),recipient:z.object({account_id:z.string()}),metadata:z.object({checkout_id:z.uuid(),account_id:z.uuid(),offer_id:z.uuid()}),created_at:z.iso.datetime({offset:true}),captured_at:z.iso.datetime({offset:true}).optional(),cancellation_details:z.object({reason:z.string(),party:z.string()}).optional(),confirmation:z.object({type:z.string(),confirmation_url:z.string().optional()}).optional()});
+const paymentSchema=z.object({id:paymentId,status:z.enum(['pending','waiting_for_capture','succeeded','canceled']),paid:z.boolean(),test:z.boolean(),receipt_registration:z.enum(['pending','succeeded','canceled']).optional(),amount:z.object({value:z.string().regex(/^\d+\.\d{2}$/),currency:z.string()}),refunded_amount:z.object({value:z.string().regex(/^\d+\.\d{2}$/),currency:z.string()}).optional(),recipient:z.object({account_id:z.string()}),metadata:z.object({checkout_id:z.uuid(),account_id:z.uuid(),offer_id:z.uuid()}),created_at:z.iso.datetime({offset:true}),captured_at:z.iso.datetime({offset:true}).optional(),cancellation_details:z.object({reason:z.string(),party:z.string()}).optional(),confirmation:z.object({type:z.string(),confirmation_url:z.string().optional()}).optional()});
 type Payment=z.infer<typeof paymentSchema>;
 export type YooKassaFetch=(url:string,init:RequestInit)=>Promise<Response>;
 export class YooKassaError extends Error {
@@ -54,17 +54,21 @@ export class YooKassaBillingProvider implements BillingProvider<YooKassaContext>
   return {reference:p.id,customerRef:`account-${c.account_id}`,subscriptionRef:`annual-${c.id}`,paymentRef:p.id,url:url.href};
  }
  async retrieveVerifiedPayment(id:string,c:YooKassaContext):Promise<VerifiedBillingEvent|null>{
+  return (await this.retrieveVerifiedPaymentDetails(id,c)).event;
+ }
+ async retrieveVerifiedPaymentDetails(id:string,c:YooKassaContext){
   paymentId.parse(id);c=yookassaContextSchema.parse(c);
   if(id!==c.provider_payment_ref)throw new YooKassaError('billing_verification_mismatch');
   const p=await this.request('payments/'+id,'GET');
   if(p.id!==id)throw new YooKassaError('billing_verification_mismatch');this.validate(p,c);
   // Refund entitlement policy remains undecided; never grant a fresh year from a refunded payment.
   if(p.refunded_amount&&(p.refunded_amount.value!=='0.00'||p.refunded_amount.currency!==c.currency))throw new YooKassaError('billing_refund_reconciliation_required');
-  if(p.status==='pending'||p.status==='waiting_for_capture')return null;
+  if(p.status==='pending'||p.status==='waiting_for_capture')return {event:null,receiptState:p.receipt_registration??null};
   if((p.status==='succeeded'&&!p.paid)||(p.status==='canceled'&&p.paid))throw new YooKassaError('billing_verification_mismatch');
   if(p.status==='succeeded'&&!p.captured_at)throw new YooKassaError('billing_verification_mismatch');
   const at=p.captured_at??p.created_at;
   if(Date.parse(at)<Date.parse(c.created_at)-1000||Date.parse(at)>Date.now()+300000)throw new YooKassaError('billing_verification_mismatch');
-  return verifiedEventSchema.parse({provider:'yookassa',event_ref:`${id}-${p.status}`,type:p.status==='succeeded'?'payment_succeeded':'checkout_cancelled',checkout_id:c.id,subscription_ref:`annual-${c.id}`,payment_ref:id,customer_ref:`account-${c.account_id}`,occurred_at:new Date(at).toISOString(),amount_minor:annualOffer.amount_minor,currency:annualOffer.currency});
+  const event=verifiedEventSchema.parse({provider:'yookassa',event_ref:`${id}-${p.status}`,type:p.status==='succeeded'?'payment_succeeded':'checkout_cancelled',checkout_id:c.id,subscription_ref:`annual-${c.id}`,payment_ref:id,customer_ref:`account-${c.account_id}`,occurred_at:new Date(at).toISOString(),amount_minor:annualOffer.amount_minor,currency:annualOffer.currency});
+  return {event,receiptState:p.receipt_registration??null};
  }
 }

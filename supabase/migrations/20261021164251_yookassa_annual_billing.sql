@@ -3,7 +3,9 @@ begin;
 alter table private.billing_configuration add column yookassa_enabled boolean not null default false,
  add column yookassa_shop_id text check(yookassa_shop_id ~ '^[0-9]{1,20}$');
 alter table private.billing_checkout_sessions add column merchant_ref text,
- add column provider_test_mode boolean;
+ add column provider_test_mode boolean,
+ add column receipt_state text check(receipt_state in('pending','succeeded','canceled')),
+ add column receipt_checked_at timestamptz;
 alter table private.billing_plan_audit add column paid_until_before timestamptz,add column paid_until_after timestamptz;
 -- Replace only the V2.6A offer shape constraint, leaving all existing offers untouched.
 do $$declare n text;begin
@@ -189,6 +191,21 @@ grant execute on function public.billing_start_yookassa_checkout(uuid,uuid),publ
 revoke all on function public.billing_yookassa_payment_context(text),public.billing_bind_yookassa_payment(uuid,text),public.billing_process_verified_event(jsonb,text),public.billing_expire_yookassa_entitlements(int) from public,anon,authenticated;
 grant execute on function public.billing_yookassa_payment_context(text),public.billing_bind_yookassa_payment(uuid,text),public.billing_process_verified_event(jsonb,text),public.billing_expire_yookassa_entitlements(int) to service_role;
 
+-- Only the allowlisted receipt status from authenticated provider GET is retained.
+-- It cannot grant access or change any financial state; notification bodies never enter here.
+create function public.billing_record_yookassa_receipt(p_checkout_id uuid,p_payment_ref text,p_state text) returns void
+language plpgsql security definer set search_path='' as $$begin
+ perform private.billing_service_actor();
+ if p_state is not null and p_state not in('pending','succeeded','canceled') then raise exception 'billing_invalid_receipt_state';end if;
+ update private.billing_checkout_sessions set
+ receipt_state=case when receipt_state in('succeeded','canceled') and (p_state is null or p_state='pending') then receipt_state else coalesce(p_state,receipt_state) end,
+ receipt_checked_at=clock_timestamp()
+ where id=p_checkout_id and provider_key='yookassa' and provider_checkout_ref=p_payment_ref and provider_test_mode;
+ if not found then raise exception 'billing_not_found';end if;
+end $$;
+revoke all on function public.billing_record_yookassa_receipt(uuid,text,text) from public,anon,authenticated;
+grant execute on function public.billing_record_yookassa_receipt(uuid,text,text) to service_role;
+
 create or replace function public.billing_admin_read(p_filters jsonb default '{}') returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare actor uuid;data jsonb;page_no int;begin
@@ -200,10 +217,10 @@ declare actor uuid;data jsonb;page_no int;begin
  or coalesce(p_filters->>'payment','') not in('','pending','succeeded','failed','refunded','partially_refunded') then raise exception 'billing_invalid_filter';end if;
  page_no:=greatest(1,least(10000,coalesce((p_filters->>'page')::int,1)));
  with rows as(
- select a.id,a.name,private.effective_account_plan(a.id) plan,coalesce(s.source,'system_default') source,s.provider_key,
+ select a.id,a.name,private.effective_account_plan(a.id) plan,coalesce(s.source,'system_default') source,coalesce(s.provider_key,c.provider_key) provider_key,
  case when s.provider_customer_ref is null then null else left(s.provider_customer_ref,10)||'…'||right(s.provider_customer_ref,6) end customer_ref,
  case when s.provider_subscription_ref is null then null else left(s.provider_subscription_ref,10)||'…'||right(s.provider_subscription_ref,6) end subscription_ref,
- case when s.provider_key='yookassa' and s.effective_until<=clock_timestamp() then 'ended' else coalesce(ps.status,s.status) end subscription_status,s.effective_from,s.effective_until,c.id checkout_id,c.status checkout_status,p.status payment_status,p.amount_minor,p.currency,coalesce(s.provider_key='yookassa',false) annual_access,false auto_renewal,a.created_at,
+ case when s.provider_key='yookassa' and s.effective_until<=clock_timestamp() then 'ended' else coalesce(ps.status,s.status) end subscription_status,s.effective_from,s.effective_until,c.id checkout_id,c.status checkout_status,p.status payment_status,p.amount_minor,p.currency,coalesce(c.provider_test_mode,(select test_mode from private.billing_offers where id=c.offer_id)) test_mode,c.receipt_state,c.receipt_checked_at,coalesce(s.provider_key='yookassa',false) annual_access,false auto_renewal,a.created_at,
  greatest(a.updated_at,s.updated_at,ps.updated_at) updated_at,
  exists(select 1 from private.account_subscriptions x where x.account_id=a.id and x.status='active' and x.source='provider') provider_managed
  from public.accounts a

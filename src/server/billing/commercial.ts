@@ -6,7 +6,7 @@ export function billingEnvironmentAllowed(env: Record<string,string|undefined>) 
  const local=env.NODE_ENV!=='production'&&/^http:\/\/127\.0\.0\.1:\d+$/.test(env.APP_URL??'')&&/^http:\/\/127\.0\.0\.1:\d+$/.test(env.SUPABASE_URL??'');
  return staging||local;
 }
-export const paymentModes=['full_payment','full_prepayment','partial_prepayment','advance','partial_payment','credit','credit_payment'] as const;
+export const paymentModes=[annualOffer.payment_mode] as const;
 export function receiptSettings(env: Record<string,string|undefined>) {
  const mode=env.YOOKASSA_PAYMENT_MODE;
  if(env.YOOKASSA_RECEIPT_CONFIG_CONFIRMED!=='true'||env.YOOKASSA_PAYMENT_MODE_CONFIRMED!=='true'||!paymentModes.includes(mode as typeof paymentModes[number]))throw Error('billing_receipt_unconfirmed');
