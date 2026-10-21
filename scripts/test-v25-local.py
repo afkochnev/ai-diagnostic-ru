@@ -57,6 +57,10 @@ try:
  actor(1,f"select public.acquisition_session('read','{s}','{h}')",'permission denied')
  passed('secret-proof authorization, pinned v4, private deny-all tables and no public rows/jobs before claim')
  answers=json.loads(sql(f"select jsonb_agg(jsonb_build_object('question_id',id,'value',case when answer_type='text' then to_jsonb('Synthetic complete answer '||key) else '2'::jsonb end) order by id) from public.questions where version_id='{version}' and is_active"))
+ ps,ph,pv,_=fresh();first_ids=json.loads(sql(f"select jsonb_agg(id) from public.questions where block_id='{block}' and is_active"))
+ rpc('save',ps,ph,{'expected_revision':1,'mutation_id':sql('select gen_random_uuid()'),'current_block_id':block,'answers':[v for v in answers if v['question_id'] in first_ids]})
+ assert sql(f"select count(*) from private.product_events where visit_id='{pv}' and event_name='diagnostic_block_completed'")=='1'
+ passed('first completed block never fabricates completion of an unvisited optional block')
  bad=answers.copy();bad[0]={**bad[0],'value':7}
  rpc('save',s,h,{'expected_revision':1,'mutation_id':sql('select gen_random_uuid()'),'current_block_id':block,'answers':bad},error='acquisition_invalid')
  assert json.loads(rpc('read',s,h))['revision']==1

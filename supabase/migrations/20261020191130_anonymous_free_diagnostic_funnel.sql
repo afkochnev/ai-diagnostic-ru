@@ -178,7 +178,10 @@ begin
   update private.anonymous_diagnostic_sessions set answers=merged,current_block_id=bid,revision=revision+1,updated_at=now() where id=s.id;
   insert into private.anonymous_diagnostic_mutations values(s.id,(p_payload->>'mutation_id')::uuid,s.revision+1);
   for item in select jsonb_build_object('block_position',b.position,'total_blocks',(select count(*) from public.diagnostic_blocks where version_id=s.methodology_version_id and is_active),'id',b.id) from public.diagnostic_blocks b
-   where b.version_id=s.methodology_version_id and b.is_active and not exists(select 1 from public.questions q2 where q2.block_id=b.id and q2.version_id=s.methodology_version_id and q2.is_active and q2.is_required and not(merged ? q2.id::text)) loop
+   where b.version_id=s.methodology_version_id and b.is_active
+   and (b.id in(s.current_block_id,bid)
+    or exists(select 1 from public.questions q2 where q2.block_id=b.id and q2.version_id=s.methodology_version_id and q2.is_active and (q2.is_required or merged ? q2.id::text)))
+   and not exists(select 1 from public.questions q2 where q2.block_id=b.id and q2.version_id=s.methodology_version_id and q2.is_active and q2.is_required and not(merged ? q2.id::text)) loop
    perform private.acquisition_event(s.visit_id,'diagnostic_block_completed',item->>'id',item-'id');
   end loop;
   return jsonb_build_object('revision',s.revision+1,'current_block_id',bid);
