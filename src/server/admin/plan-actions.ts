@@ -16,7 +16,7 @@ export async function changeAdminPlan(_:PlanActionState,form:FormData):Promise<P
  // The database independently checks the actor, locks the Account, re-reads its
  // plan, closes the old subscription and writes the new plan and audit atomically.
  const {data,error}=await client.rpc("admin_assign_account_plan",{p_account_id:account,p_target_plan:target,p_expected_plan:expected,p_reason:reason});
- if(error){const message=error.message;return {error:message.includes("admin_plan_changed_refresh")?"Тариф уже изменён. Обновите страницу перед новой операцией.":message.includes("admin_not_found")?"Аккаунт не найден или недоступен.":"Не удалось изменить тариф. Обновите страницу и проверьте права доступа."};}
+ if(error){const message=error.message;return {error:message.includes("billing_provider_managed")?"Тариф управляется оплатой. Ручная смена недоступна.":message.includes("admin_plan_changed_refresh")?"Тариф уже изменён. Обновите страницу перед новой операцией.":message.includes("admin_not_found")?"Аккаунт не найден или недоступен.":"Не удалось изменить тариф. Обновите страницу и проверьте права доступа."};}
  const result=z.object({status:z.enum(["changed","unchanged"]),plan:z.enum(["free","advanced"])}).safeParse(data);
  if(!result.success)return {error:"Не удалось подтвердить результат изменения. Обновите страницу."};
  revalidatePath(`/ru/admin/accounts/${account}`);revalidatePath("/ru/admin/accounts");revalidatePath("/ru/admin");
