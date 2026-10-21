@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-const state = vi.hoisted(() => ({ accounts: [{ id: "account-a", name: "Аккаунт A" }], plan: "Free", read: vi.fn() }));
+const state = vi.hoisted(() => ({ accounts: [{ id: "account-a", name: "Аккаунт A" }], plan: "Free", read: vi.fn(), company: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ redirect: (p: string) => { throw Error(`redirect:${p}`); } }));
 vi.mock("@/server/auth/session", () => ({ requireIdentity: async () => ({ user: { id: "owner" } }) }));
 vi.mock("@/server/account/queries", () => ({ listAccessibleAccounts: async () => state.accounts }));
 vi.mock("@/server/entitlements", () => ({ getAccountPlan: state.read }));
+vi.mock("@/server/account/authorization",()=>({requireCompanyRead:state.company}));
 import AccountPlanPage from "@/app/[locale]/(workspace)/account/plan/page";
 beforeEach(() => {
   state.accounts = [{ id: "account-a", name: "Аккаунт A" }]; state.plan = "Free";
+  state.company.mockReset();state.company.mockResolvedValue({id:"30000000-0000-4000-8000-000000000001",name:"Legacy Company",account_id:"account-a"});
   state.read.mockReset(); state.read.mockImplementation(async () => ({ display_name: state.plan, plan: state.plan.toLowerCase(), entitlements: {team_diagnostics:state.plan==="Advanced",multi_company:state.plan==="Advanced"} }));
 });
 describe("Account plan screen", () => {
@@ -32,5 +34,14 @@ describe("Account plan screen", () => {
     state.plan = "Advanced";
     const html = renderToStaticMarkup(await AccountPlanPage({ searchParams: Promise.resolve({ account: "account-a" }) }));
     expect(html).toContain('Текущий тариф: <strong>Advanced</strong>');
+  });
+  it("preserves an authorized legacy Company without inventing a second acquisition intent",async()=>{
+    const id="30000000-0000-4000-8000-000000000001";
+    const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({account:"account-a",company:id})}));
+    expect(state.company).toHaveBeenCalledWith(id,"owner");expect(html).toContain("Legacy Company");expect(html).toContain(`/ru/companies/${id}/team-explainer`);
+  });
+  it("rejects a Company from another Account even if the caller can access both",async()=>{
+    state.company.mockResolvedValue({id:"30000000-0000-4000-8000-000000000001",name:"Foreign context",account_id:"account-b"});
+    await expect(AccountPlanPage({searchParams:Promise.resolve({account:"account-a",company:"30000000-0000-4000-8000-000000000001"})})).rejects.toThrow("redirect:/ru/access-denied");
   });
 });

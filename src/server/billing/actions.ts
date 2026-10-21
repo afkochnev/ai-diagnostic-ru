@@ -15,7 +15,7 @@ export async function startCheckout(form:FormData){
  const company=z.uuid().nullable().parse(form.get('company')||null);
  let target:string;
  try {const id=z.uuid().parse(await billingRpc('billing_start_checkout',{p_account_id:account,p_company_id:company}));const created=await mockProvider().createCheckout(await readCheckout(id));await billingRpc('billing_bind_checkout',{p_checkout_id:id,p_checkout_ref:created.reference,p_customer_ref:created.customerRef,p_subscription_ref:created.subscriptionRef,p_payment_ref:created.paymentRef},true);target=created.url;}
- catch {redirect(`/ru/account/plan?account=${account}&billingError=1`);}
+ catch {redirect(`/ru/account/plan?account=${account}${company?`&company=${company}`:''}&billingError=1`);}
  redirect(target);
 }
 export async function simulatePayment(form:FormData){
