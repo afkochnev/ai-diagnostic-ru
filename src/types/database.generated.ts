@@ -154,62 +154,62 @@ export type Database = {
       company_profiles: {
         Row: {
           account_id: string
-          annual_revenue_key: string
-          company_age_years: number
-          country: string
+          annual_revenue_key: string | null
+          company_age_years: number | null
+          country: string | null
           created_at: string
-          customer_segments: string
+          customer_segments: string | null
           employee_count: number
           id: string
           industry_key: string
           key_problems: string
           main_goals: string
-          management_levels: number
+          management_levels: number | null
           name: string
           owner_user_id: string
           products: string
           revision: number
-          sales_channels: string
+          sales_channels: string | null
           updated_at: string
         }
         Insert: {
           account_id?: string
-          annual_revenue_key: string
-          company_age_years: number
-          country: string
+          annual_revenue_key?: string | null
+          company_age_years?: number | null
+          country?: string | null
           created_at?: string
-          customer_segments: string
+          customer_segments?: string | null
           employee_count: number
           id?: string
           industry_key: string
           key_problems: string
           main_goals: string
-          management_levels: number
+          management_levels?: number | null
           name: string
           owner_user_id: string
           products: string
           revision?: number
-          sales_channels: string
+          sales_channels?: string | null
           updated_at?: string
         }
         Update: {
           account_id?: string
-          annual_revenue_key?: string
-          company_age_years?: number
-          country?: string
+          annual_revenue_key?: string | null
+          company_age_years?: number | null
+          country?: string | null
           created_at?: string
-          customer_segments?: string
+          customer_segments?: string | null
           employee_count?: number
           id?: string
           industry_key?: string
           key_problems?: string
           main_goals?: string
-          management_levels?: number
+          management_levels?: number | null
           name?: string
           owner_user_id?: string
           products?: string
           revision?: number
-          sales_channels?: string
+          sales_channels?: string | null
           updated_at?: string
         }
         Relationships: [

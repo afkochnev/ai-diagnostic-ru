@@ -66,7 +66,7 @@ try:
  sql('create database '+db,database='postgres')
  sql((ROOT/'supabase/tests/fixtures/methodology-retirement-local-auth.sql').read_text())
  for path in sorted((ROOT/'supabase/migrations').glob('*.sql')):
-  if path==candidate or path.name.endswith("_v24_admin_console_and_plan_audit.sql"):continue
+  if path.name>=candidate.name:break
   if path.name=='20261013000100_account_foundation.sql':sql((ROOT/'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
   if 'team_aggregation_report' in path.name:sql((ROOT/'supabase/tests/team-foundation.sql').read_text());sql("update public.accounts set status='active'")
   sql(path.read_text())

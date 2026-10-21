@@ -1,4 +1,5 @@
 "use server";
+import {deliveryMilestone} from "@/server/acquisition/service";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -89,6 +90,7 @@ async function deliverInvitation(participantId: string, email: string, title: st
       emailedUrl+=`&auth=${credential.envelope}`;
     }
     const receipt=await provider.send({ to: email,...teamInvitationMessage({company,team:title,inviter,url:emailedUrl,singleEmail:provider.name!=="mock"}), idempotencyKey: `team-invitation/${participantId}/${hash}` });
+    await deliveryMilestone("invitation",participantId);
     emailStatus = provider.name === "mock" ? "mock" : "sent";
     console.info("[team-email]",{event:"invitation_delivery",provider:provider.name,providerAccepted:true,providerMessageId:receipt.providerMessageId,correlation:hash.slice(0,12)});
     return {emailStatus,recipient:email,participantId,provider:provider.name,providerMessageId:receipt.providerMessageId,...(emailStatus==="mock"?{invitationUrl}:{})};

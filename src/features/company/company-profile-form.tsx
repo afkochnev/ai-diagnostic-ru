@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import type { CompanyProfileState } from "@/validation/company";
 
 type Reference = { industry_key: string; name: string } | { revenue_key: string; name: string };
-type Company = Record<string, string | number> | null;
+type Company = Record<string, string | number | null> | null;
 type Props = { action: (state: CompanyProfileState, form: FormData) => Promise<CompanyProfileState>; company: Company; industries: Reference[]; revenues: Reference[]; returnTo?: string; accountId: string };
 const input = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
 const fields = [

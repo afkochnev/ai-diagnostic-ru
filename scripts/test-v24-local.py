@@ -35,7 +35,7 @@ try:
  sql('alter table auth.users add column created_at timestamptz not null default now();create table auth.sessions(id uuid primary key,user_id uuid not null references auth.users(id));')
  candidate=next((ROOT/'supabase/migrations').glob('*_v24_admin_console_and_plan_audit.sql'))
  for m in sorted((ROOT/'supabase/migrations').glob('*.sql')):
-  if m==candidate:continue
+  if m.name>=candidate.name:break
   if 'account_foundation.sql' in m.name:sql((ROOT/'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
   if 'team_aggregation_report' in m.name:sql((ROOT/'supabase/tests/team-foundation.sql').read_text());sql("update public.accounts set status='active'")
   sql(m.read_text())
