@@ -1,0 +1,62 @@
+{
+  "status": "APPROVED_COMMERCIAL_INPUTS_PRODUCTION_DISABLED",
+  "approvedBy": "User instruction, 2026-10-21",
+  "provider": "yookassa",
+  "plan": "advanced",
+  "billing_mode": "one_time",
+  "price": 480,
+  "amount_minor": 48000,
+  "currency": "RUB",
+  "term": "1_year",
+  "auto_renewal": false,
+  "recurring": false,
+  "vat": "none",
+  "vat_included": false,
+  "vat_code": 1,
+  "productionEnabled": false,
+  "display": {
+    "price": "480 ₽",
+    "optionalClarification": "Без НДС",
+    "showVatAmount": false,
+    "calculateVatAmount": false
+  },
+  "environmentDefaults": {
+    "YOOKASSA_VAT_CODE": "1"
+  },
+  "receiptItem": {
+    "description": "Доступ Advanced к AI Company Audit на 1 год",
+    "quantity": 1,
+    "amount": {
+      "value": "480.00",
+      "currency": "RUB"
+    },
+    "payment_subject": "service",
+    "vat_code": 1
+  },
+  "merchantTax": {
+    "regime": "USN",
+    "subtype": null,
+    "tax_system_code": null,
+    "source": "Confirmed merchant/accounting configuration only",
+    "sendTaxSystemCode": "Only if required by the selected, confirmed YooKassa receipt solution; otherwise omit",
+    "implementationBlockedByUnknownTaxSystemCode": false
+  },
+  "receiptConfiguration": {
+    "solution": null,
+    "applicationMustSendTaxSystemCode": null,
+    "payment_mode": null,
+    "paymentModeVerified": false,
+    "paymentModeVerificationRequiredBeforeProduction": true
+  },
+  "scope": {
+    "kind": "Approved configuration contract for V2.6B, not an active checkout or receipt request",
+    "runtimeAdapterImplemented": false,
+    "realProviderCalls": 0,
+    "stagingChanged": false,
+    "productionChanged": false
+  },
+  "references": [
+    "https://yookassa.ru/developers/payment-acceptance/receipts/54fz/other-services/parameters-values",
+    "https://yookassa.ru/developers/payment-acceptance/receipts/54fz/yoomoney/parameters-values"
+  ]
+}
