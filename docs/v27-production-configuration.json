@@ -1,5 +1,5 @@
 {
-  "status": "REVIEW_SLOTS_ONLY_DO_NOT_IMPORT_AS_ENV",
+  "status": "PREPARED_NOT_INSTALLED_PRODUCTION_DISABLED",
   "scope": "Production values are prepared, not installed. Preserve current Individual provider settings and all existing secrets.",
   "productionOrigin": "https://audit.iteam.ru",
   "supabaseProject": "fhvxqeaujjeiflanqsbg",
@@ -30,9 +30,16 @@
     "YOOKASSA_RECEIPT_SOLUTION": null,
     "YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE": null,
     "YOOKASSA_TAX_SYSTEM_CODE": null,
-    "YOOKASSA_REFUND_RECEIPT_MODE": null
+    "YOOKASSA_REFUND_RECEIPT_MODE": null,
+    "YOOKASSA_PRODUCTION_CONFIRMED": "false",
+    "YOOKASSA_PRODUCTION_FISCAL_CONFIRMED": "false",
+    "BILLING_ENABLED": "false",
+    "YOOKASSA_RECONCILIATION_ENABLED": "false",
+    "YOOKASSA_RECEIPT_MEASURE": null,
+    "YOOKASSA_RECEIPT_REQUIRES_MEASURE": null,
+    "YOOKASSA_TAX_SYSTEM_CODE_CONFIRMED": "false"
   },
-  "paymentSlotsAreNotSupportedByCurrentTestOnlyAdapter": true,
+  "paymentSlotsAreNotSupportedByCurrentTestOnlyAdapter": false,
   "commercialAuthority": "docs/v26b-commercial-config.json",
   "commercialVersion": "advanced-terms-ru-v1",
   "webhook": "https://audit.iteam.ru/api/billing/webhook/yookassa",
@@ -109,5 +116,26 @@
   "retentionModel": "docs/v27-retention-model.json",
   "retentionModelOwnerApproved": true,
   "legalPackage": "docs/v27-legal-package.json",
-  "newLegalTextsApproved": false
+  "newLegalTextsApproved": true,
+  "privacyLegalStagingGate": "V27_PRIVACY_LEGAL_STAGING_PASS",
+  "canonicalMainSHA": "9823b3f7b619b22137c0c9626714b627e36207b3",
+  "productionCapableAdapterImplemented": true,
+  "productionCapableAdapterVerificationScope": "Local fake HTTP and networkless SQL only; production configuration not installed or remotely verified",
+  "databaseBillingSlots": {
+    "installationDefaults": {
+      "yookassa_enabled": false,
+      "yookassa_test_mode": true,
+      "yookassa_live_approved": false,
+      "yookassa_reconciliation_enabled": false
+    },
+    "futureProductionModeRequires": "Separately authorized merchant + test_mode=false + live_approved=true + unreferenced live offer + explicit creation/reconciliation flags; no SQL executed now.",
+    "neverConvertReferencedOffer": true
+  },
+  "productionReadinessPending": [
+    "Confirm production merchant identity and fiscal solution/payment_mode/measure; tax_system_code only if required and confirmed",
+    "Authorize exact canonical code/migration/configuration rollout after refreshed preflight and backup",
+    "Publish approved legal versions and install protected production configuration only in separately authorized rollout",
+    "Separate explicit owner change to authoritative productionEnabled before real creation; currently false",
+    "Read-only GET /me verification with production keys and a bounded real-money smoke require separate authorization; not performed"
+  ]
 }

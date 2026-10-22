@@ -6,9 +6,20 @@ export function billingEnvironmentAllowed(env: Record<string,string|undefined>) 
  const local=env.NODE_ENV!=='production'&&/^http:\/\/127\.0\.0\.1:\d+$/.test(env.APP_URL??'')&&/^http:\/\/127\.0\.0\.1:\d+$/.test(env.SUPABASE_URL??'');
  return staging||local;
 }
+// Exact deployment identity is independent of merchant secrets and browser input.
+export function productionBillingEnvironment(env: Record<string,string|undefined>) {
+ return env.NODE_ENV==='production'&&env.APP_URL==='https://audit.iteam.ru'&&env.SUPABASE_URL==='https://fhvxqeaujjeiflanqsbg.supabase.co';
+}
+export function yookassaRuntimeMode(env: Record<string,string|undefined>): 'test'|'production'|null {
+ if(env.BILLING_PROVIDER!=='yookassa'||!/^\d{1,20}$/.test(env.YOOKASSA_SHOP_ID??''))return null;
+ if(billingEnvironmentAllowed(env)&&env.YOOKASSA_TEST_MODE==='true'&&/^test_[A-Za-z0-9_-]{8,}$/.test(env.YOOKASSA_SECRET_KEY??''))return 'test';
+ if(productionBillingEnvironment(env)&&env.YOOKASSA_TEST_MODE==='false'&&env.YOOKASSA_PRODUCTION_CONFIRMED==='true'&&/^live_[A-Za-z0-9_-]{8,}$/.test(env.YOOKASSA_SECRET_KEY??''))return 'production';
+ return null;
+}
 export const paymentModes=[annualOffer.payment_mode] as const;
 export function receiptSettings(env: Record<string,string|undefined>) {
  const mode=env.YOOKASSA_PAYMENT_MODE;
+ if(productionBillingEnvironment(env)&&env.YOOKASSA_PRODUCTION_FISCAL_CONFIRMED!=='true')throw Error('billing_receipt_unconfirmed');
  if(env.YOOKASSA_RECEIPT_CONFIG_CONFIRMED!=='true'||env.YOOKASSA_PAYMENT_MODE_CONFIRMED!=='true'||!paymentModes.includes(mode as typeof paymentModes[number]))throw Error('billing_receipt_unconfirmed');
  if(env.YOOKASSA_VAT_CODE!==undefined&&env.YOOKASSA_VAT_CODE!==String(annualOffer.vat_code))throw Error('billing_receipt_invalid');
  const solution=env.YOOKASSA_RECEIPT_SOLUTION;

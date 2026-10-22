@@ -1,3 +1,5 @@
+> Historical V2.6B test-only baseline. Current production-capable contracts and OFF-by-default release gates: [V2.7 readiness](runbooks/v27-yookassa-production-readiness.md). This history does not authorize a live rollout.
+
 # V2.6B — YooKassa, local implementation
 
 `docs/v26b-commercial-config.json` is the commercial authority. Its approved offer is one payment of **480 RUB**, **48000 minor units**, for **one calendar year** of Account Advanced. No auto-renewal, recurring charge or saved payment method. The sale is without VAT (`vat_code=1`); no VAT amount is calculated. Price, currency, description, quantity, subject and VAT code are not accepted from the browser or environment.

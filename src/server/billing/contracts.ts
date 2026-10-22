@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {billingEnvironmentAllowed} from './commercial';
+import {billingEnvironmentAllowed,productionBillingEnvironment,annualOffer,yookassaRuntimeMode} from './commercial';
 export const eventTypes=['payment_succeeded','payment_failed','checkout_cancelled','subscription_cancel_pending','subscription_ended','subscription_payment_failed','payment_refunded'] as const;
 const ref=z.string().regex(/^[A-Za-z0-9_-]{1,160}$/);
 export const verifiedEventSchema=z.strictObject({provider:z.string().regex(/^[a-z][a-z0-9_-]{0,39}$/),event_ref:ref,type:z.enum(eventTypes),checkout_id:z.uuid(),subscription_ref:ref,payment_ref:ref,customer_ref:ref,occurred_at:z.iso.datetime({offset:true}),amount_minor:z.number().int().nonnegative().safe().nullable(),currency:z.string().regex(/^[A-Z]{3}$/).nullable()});
@@ -8,6 +8,6 @@ export const checkoutSchema=z.object({id:z.uuid(),account_id:z.uuid(),account_na
 export type Checkout=z.infer<typeof checkoutSchema>;
 export function billingConfig(env:Record<string,string|undefined>=process.env){
  const provider=env.BILLING_PROVIDER==='yookassa'?'yookassa':'mock';
- return {enabled:env.BILLING_ENABLED==='true'&&['mock','yookassa'].includes(env.BILLING_PROVIDER??'')&&billingEnvironmentAllowed(env),provider};
+ return {enabled:env.BILLING_ENABLED==='true'&&['mock','yookassa'].includes(env.BILLING_PROVIDER??'')&&(billingEnvironmentAllowed(env)||(provider==='yookassa'&&productionBillingEnvironment(env)&&annualOffer.productionEnabled&&yookassaRuntimeMode(env)==='production')),provider};
 }
 export function teamContinuation(companyId:string|null){return companyId&&z.uuid().safeParse(companyId).success?`/ru/companies/${companyId}/diagnostics?new=1&type=team#team-create`:null;}
