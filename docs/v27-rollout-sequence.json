@@ -120,5 +120,14 @@
   "firstProductionMutation": "Separately approved write pause/backup or configuration step. Current task stops before it.",
   "billingMode": "TEST_ONLY_ADAPTER_NOT_READY_FOR_PRODUCTION_REAL_PAYMENTS",
   "productionEnabled": false,
-  "productionTouched": false
+  "productionTouched": false,
+  "privacyFinalizationExtension": {
+    "candidate": "507e494ed0b18b733455cbd66663b2376172a366",
+    "stagingMigration": "20261022185201_operational_retention_and_marketing_withdrawal.sql",
+    "stagingApplied": true,
+    "productionApplied": false,
+    "includedInHistoricalSequence": false,
+    "futureLegalPublicationApproved": false,
+    "nextProductionPlanRequiresRefreshAfterCanonicalApproval": true
+  }
 }

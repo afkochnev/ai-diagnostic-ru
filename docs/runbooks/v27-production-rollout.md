@@ -331,3 +331,7 @@ USN subtype не определён; tax_system_code — только если �
 [resume](https://api-docs.render.com/reference/resume-service-1),
 [Supabase backups](https://supabase.com/docs/guides/platform/backups).
 CLI-синтаксис проверен по installed Render2.28.0 / Supabase2.117.0 help.
+
+## Дополнение privacy-finalization: только staging, 22 октября 2026
+
+Retention-миграция 20261022185201 прошла staging-приёмку в PR #9. Она не применена в production и не входит в исторический пакет 47 миграций/17 ожидающих выше. Эти команды не являются разрешением запуска нового расширения. Перед будущим production-развёртыванием потребуется обновлённый канонический пакет и dry-run после отдельного утверждения PR/релиза. Финальные privacy/consent тексты и их точные хеши пока не утверждены; SQL их публикации подготовлен отдельно и не включён в текущие применяемые миграции. Production по текущему заданию не менять.
