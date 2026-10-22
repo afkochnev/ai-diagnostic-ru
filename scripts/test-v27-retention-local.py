@@ -40,6 +40,9 @@ try:
  sql(candidate.read_text());after=hashes();assert all(after[k]==v for k,v in before.items())
  assert sql('select count(*) from public.privacy_legal_documents')=='0'
  ok('additive migration rollback/apply preserves every old row; final legal registry remains empty')
+ evidence_migration=next((ROOT/'supabase/migrations').glob('*_team_existing_identity_consent_evidence.sql'))
+ evidence_before=hashes();sql(evidence_migration.read_text());assert hashes()==evidence_before
+ ok('existing Team identity evidence migration is additive and does not mutate any old row')
  for role in ['anon','authenticated']:
   sql('set role '+role+';select public.run_retention_maintenance()',error='permission denied')
   for table in ['retention_holds','retention_runs','marketing_preferences','marketing_withdrawals']:
@@ -136,5 +139,16 @@ try:
  assert json.loads(sql(f"select jsonb_object_agg(kind,version) from public.user_consents where user_id='{team_user}'"))=={'data_processing':current,'marketing':'marketing-consent-ru-v1'}
  assert actor(f"select public.marketing_send_allowed('{team_user}')")=='f'
  ok('final Team single-email consent is explicit, rejects stale versions and provisions exact final evidence with marketing false')
+ # Existing identity: current consent must be appended when only the old temporary grant exists.
+ token2=secrets.token_hex(32);hash2=hashlib.sha256(token2.encode()).hexdigest()
+ participant2=sql(f"insert into public.team_participants(team_diagnostic_id,email,display_name) values('{team}','retention@example.test','Existing synthetic participant') returning id")
+ sql(f"insert into private.team_invitations(participant_id,token_hash,expires_at) values('{participant2}','{hash2}',now()+interval '1 day')")
+ assert actor(f"select public.finalize_team_invitation_identity('{token2}',true,'{current}','marketing-consent-ru-v1')",user,role='authenticated')==participant2
+ assert actor(f"select public.finalize_team_invitation_identity('{token2}',true,'{current}','marketing-consent-ru-v1')",user,role='authenticated')==participant2
+ assert sql(f"select count(*) from public.user_consents where user_id='{user}' and kind='data_processing' and version='{current}'")=='1'
+ assert sql(f"select md5(string_agg(to_jsonb(c)::text,',' order by id)) from public.user_consents c where user_id='{user}' and version='temporary-ru-v1'")==consent_hash
+ assert sql(f"select count(*) from public.user_consents where user_id='{user}' and kind='marketing'")=='1'
+ assert actor(f"select public.marketing_send_allowed('{user}')")=='f'
+ ok('existing Team identity appends current data consent once, preserves old temporary grants and does not alter marketing eligibility')
  print(json.dumps({'status':'PASS','checks':checks,'count':len(checks),'productionTouched':False,'stagingTouched':False}),flush=True)
 finally:sql('drop database if exists '+db+' with(force)',database='postgres')
