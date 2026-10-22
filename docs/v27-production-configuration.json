@@ -35,7 +35,7 @@
     "YOOKASSA_PRODUCTION_FISCAL_CONFIRMED": "false",
     "BILLING_ENABLED": "false",
     "YOOKASSA_RECONCILIATION_ENABLED": "false",
-    "YOOKASSA_RECEIPT_MEASURE": null,
+    "YOOKASSA_RECEIPT_MEASURE": "another",
     "YOOKASSA_RECEIPT_REQUIRES_MEASURE": null,
     "YOOKASSA_TAX_SYSTEM_CODE_CONFIRMED": "false"
   },
@@ -107,7 +107,7 @@
       "preserveExistingIfPresent": true
     }
   },
-  "taxSystemCode": "Omit unless actual selected receipt solution requires it; confirmed merchant/accounting value only. USN subtype is unconfirmed.",
+  "taxSystemCode": "OMIT if the actual confirmed receipt solution does not require application-level tax_system_code (including Receipts from YooKassa). If an external register requires it, keep production billing blocked until the exact accounting-confirmed code is supplied. USN subtype is unconfirmed; never infer 2 or 3.",
   "productionEnabled": false,
   "productionTouched": false,
   "acceptedRisk": "OWNER_ACCEPTED_RU_DATA_LOCALIZATION_RISK",
@@ -132,10 +132,34 @@
     "neverConvertReferencedOffer": true
   },
   "productionReadinessPending": [
-    "Confirm production merchant identity and fiscal solution/payment_mode/measure; tax_system_code only if required and confirmed",
+    "Obtain only factual owner confirmations A/B: actual iTeam production shop ID and connected receipt solution. full_payment and another are owner-approved product settings, not accountant/fiscal confirmation; require an accounting-confirmed tax_system_code only if the actual receipt solution needs it.",
     "Authorize exact canonical code/migration/configuration rollout after refreshed preflight and backup",
     "Publish approved legal versions and install protected production configuration only in separately authorized rollout",
     "Separate explicit owner change to authoritative productionEnabled before real creation; currently false",
     "Read-only GET /me verification with production keys and a bounded real-money smoke require separate authorization; not performed"
-  ]
+  ],
+  "ownerApprovedProductConfiguration": {
+    "payment_subject": "service",
+    "description": "Доступ Advanced к AI Company Audit на 1 год",
+    "price": 480,
+    "amount_minor": 48000,
+    "currency": "RUB",
+    "vat_code": 1,
+    "vat_included": false,
+    "payment_mode": "full_payment",
+    "measure": "another",
+    "scope": "Owner-approved product parameters only; not confirmation of actual merchant fiscal setup or accountant approval.",
+    "productionFiscalConfirmation": false
+  },
+  "merchantConfirmation": {
+    "candidateShopId": "1079713",
+    "productionShopIdConfirmed": false,
+    "actualReceiptSolution": null,
+    "receiptSolutionConfirmed": false,
+    "requiredOwnerInputs": [
+      "A. Confirm whether 1079713 is the actual iTeam production shop: YES/NO.",
+      "B. Confirm the receipt solution in that shop: Receipts from YooKassa or external register (name)."
+    ],
+    "secretHandling": "No live secret requested, recorded or installed in this phase."
+  }
 }

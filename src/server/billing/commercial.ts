@@ -25,7 +25,7 @@ export function receiptSettings(env: Record<string,string|undefined>) {
  const solution=env.YOOKASSA_RECEIPT_SOLUTION;
  if(!['yookassa','external'].includes(solution??''))throw Error('billing_receipt_unconfirmed');
  const measure=env.YOOKASSA_RECEIPT_MEASURE;
- if(measure!==undefined&&!['piece','other'].includes(measure))throw Error('billing_receipt_invalid');
+ if(measure!==undefined&&!['piece','another'].includes(measure))throw Error('billing_receipt_invalid');
  if((solution==='yookassa'||env.YOOKASSA_RECEIPT_REQUIRES_MEASURE==='true')&&!measure)throw Error('billing_receipt_unconfirmed');
  const required=env.YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE;
  if(solution==='yookassa'&&required==='true')throw Error('billing_receipt_invalid');
