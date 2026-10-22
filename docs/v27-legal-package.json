@@ -1,8 +1,8 @@
 {
-  "status": "OWNER_APPROVED_AWAITING_STAGING_PUBLICATION",
+  "status": "V27_PRIVACY_LEGAL_STAGING_PASS",
   "approved": true,
-  "published": false,
-  "effectiveDate": null,
+  "published": true,
+  "effectiveDate": "2026-10-22",
   "documents": [
     {
       "version": "data-processing-policy-ru-v1",
@@ -10,8 +10,13 @@
       "sha256": "d1e56ca672f3444333e51a3edc1397ceb62d89932f1c0f7620566aaa29b14de6",
       "bytes": 15123,
       "approved": true,
-      "published": false,
-      "draftSha256": "d1e56ca672f3444333e51a3edc1397ceb62d89932f1c0f7620566aaa29b14de6"
+      "published": true,
+      "draftSha256": "d1e56ca672f3444333e51a3edc1397ceb62d89932f1c0f7620566aaa29b14de6",
+      "publishedEnvironments": [
+        "staging"
+      ],
+      "productionPublished": false,
+      "publishedAt": "2026-10-22T19:42:06.530665+00:00"
     },
     {
       "version": "data-processing-consent-ru-v1",
@@ -19,8 +24,13 @@
       "sha256": "45dbeac12254747f406bcc7915512a71afc504687c592a96d22726305f4ecc94",
       "bytes": 6301,
       "approved": true,
-      "published": false,
-      "draftSha256": "45dbeac12254747f406bcc7915512a71afc504687c592a96d22726305f4ecc94"
+      "published": true,
+      "draftSha256": "45dbeac12254747f406bcc7915512a71afc504687c592a96d22726305f4ecc94",
+      "publishedEnvironments": [
+        "staging"
+      ],
+      "productionPublished": false,
+      "publishedAt": "2026-10-22T19:42:06.538855+00:00"
     },
     {
       "version": "marketing-consent-ru-v1",
@@ -28,8 +38,13 @@
       "sha256": "f8767fad986137079748f00cafaca1e74d95ccf648546c8dd4d6e5b019e67dae",
       "bytes": 3792,
       "approved": true,
-      "published": false,
-      "draftSha256": "f8767fad986137079748f00cafaca1e74d95ccf648546c8dd4d6e5b019e67dae"
+      "published": true,
+      "draftSha256": "f8767fad986137079748f00cafaca1e74d95ccf648546c8dd4d6e5b019e67dae",
+      "publishedEnvironments": [
+        "staging"
+      ],
+      "productionPublished": false,
+      "publishedAt": "2026-10-22T19:42:06.539254+00:00"
     }
   ],
   "futureConsentKindMapping": {
@@ -37,10 +52,6 @@
     "marketing": "marketing-consent-ru-v1"
   },
   "futurePolicyReference": "data-processing-policy-ru-v1",
-  "activeConsentVersionsRemain": {
-    "data_processing": "temporary-ru-v1",
-    "marketing": "temporary-ru-v1"
-  },
   "historyRewriteAllowed": false,
   "applyOnlyToNewConsentsAndRelevantNewScenarios": true,
   "existingAnonymousSessionTransition": "Existing V2.5 explicit re-consent for a new action after version change; append a new consent event, preserve old events. No retroactive blanket acceptance.",
@@ -53,8 +64,25 @@
   "publicationSQLPrepared": "artifacts/v27-production-launch/privacy-finalization/publication-pending-owner-approval.sql",
   "publicationPlanPrepared": true,
   "operationalRetentionVerifiedOnStaging": true,
-  "legalRowsChanged": false,
+  "legalRowsChanged": true,
   "ownerApprovalRecordedAt": "2026-10-22T19:34:49.621830+00:00",
   "publicationMigration": "supabase/migrations/20261022193427_publish_approved_privacy_legal_v1.sql",
-  "ownerApprovalEvidence": "../artifacts/v27-production-launch/privacy-legal-staging/owner-approval.json"
+  "ownerApprovalEvidence": "../artifacts/v27-production-launch/privacy-legal-staging/owner-approval.json",
+  "publicationScope": "STAGING_ONLY",
+  "publishedEnvironments": [
+    "staging"
+  ],
+  "productionPublished": false,
+  "stagingPublishedAt": "2026-10-22T19:42:06.530665+00:00",
+  "stagingCurrentConsentVersions": {
+    "marketing": "marketing-consent-ru-v1",
+    "data_processing": "data-processing-consent-ru-v1"
+  },
+  "productionCurrentConsentVersions": {
+    "data_processing": "temporary-ru-v1",
+    "marketing": "temporary-ru-v1"
+  },
+  "historicalConsentRecordsChanged": false,
+  "stagingLedgerMigrations": 50,
+  "acceptanceEvidence": "../artifacts/v27-production-launch/privacy-legal-staging/final-privacy-readiness.json"
 }

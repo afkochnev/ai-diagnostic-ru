@@ -38,13 +38,15 @@ Authoritative цена остаётся в `docs/v26b-commercial-config.json`.
 
 ## 2. Незакрытые gates — не обходить
 
-1. Финальные privacy/consent тексты остаются неутверждёнными. Следующий пакет:
-   `data-processing-policy-ru-v1`, `data-processing-consent-ru-v1`,
-   `marketing-consent-ru-v1`; проекты находятся только в `docs/legal/drafts/`.
-   `data_processing` и `marketing` остаются `temporary-ru-v1`; исторические
-   согласия не переписывать. Публикация требует отдельного утверждения текстов.
-   Retention model утверждена владельцем в `docs/v27-retention-model.json`;
-   её операционное исполнение не объявлено реализованным.
+1. Финальные privacy/consent тексты утверждены владельцем по точным хешам и
+   опубликованы только на staging: `data-processing-policy-ru-v1`,
+   `data-processing-consent-ru-v1`, `marketing-consent-ru-v1`.
+   Статус: `V27_PRIVACY_LEGAL_STAGING_PASS`; manifest: `docs/v27-legal-package.json`.
+   Исторические согласия сохранены; существующим пользователям новые согласия
+   автоматически не добавляются. Production остаётся на temporary-ru-v1.
+   Перед production требуется отдельное разрешение и обновлённый точный пакет.
+   Retention проверена на synthetic staging; удаление Account выполняется вручную
+   по runbook, production scheduling и реальное удаление не выполнялись.
    `OWNER_ACCEPTED_RU_DATA_LOCALIZATION_RISK` — accepted risk, не blocking gate
    V2.7 и не утверждение полного юридического соответствия. Продолжается текущая
    архитектура Supabase/Render/OpenAI/Resend/YooKassa. Российский data plane,
@@ -317,7 +319,7 @@ USN subtype не определён; tax_system_code — только если �
 
 ## 12. Формат будущего разрешения
 
-До утверждения финальных privacy/consent текстов и закрытия технических/configuration gates rollout
+До закрытия оставшихся технических/configuration gates и обновления точного пакета rollout
 не запрашивается как готовый к исполнению. Когда gates закрыты, разрешение
 должно прямо назвать `v27-runbook-owner-risk-retention-20261022` и фактический SHA-256
 этого файла, migration inventory из раздела11, intermediate/final web/worker
@@ -334,4 +336,4 @@ CLI-синтаксис проверен по installed Render2.28.0 / Supabase2.
 
 ## Дополнение privacy-finalization: только staging, 22 октября 2026
 
-Retention-миграция 20261022185201 прошла staging-приёмку в PR #9. Она не применена в production и не входит в исторический пакет 47 миграций/17 ожидающих выше. Эти команды не являются разрешением запуска нового расширения. Перед будущим production-развёртыванием потребуется обновлённый канонический пакет и dry-run после отдельного утверждения PR/релиза. Финальные privacy/consent тексты и их точные хеши пока не утверждены; SQL их публикации подготовлен отдельно и не включён в текущие применяемые миграции. Production по текущему заданию не менять.
+Retention-миграция 20261022185201 прошла staging-приёмку в PR #9. Она не применена в production и не входит в исторический пакет 47 миграций/17 ожидающих выше. Эти команды не являются разрешением запуска нового расширения. Перед будущим production-развёртыванием потребуется обновлённый канонический пакет и dry-run после отдельного утверждения PR/релиза. Финальные privacy/consent тексты и bundle утверждены владельцем по точным хешам; публикация 20261022193427 применена только на staging после exact dry-run. Staging ledger — 50; production ledger — прежние 30. Исторический production plan выше не включает это расширение и не готов к исполнению без обновления и отдельного разрешения. Production по текущему заданию не менять.

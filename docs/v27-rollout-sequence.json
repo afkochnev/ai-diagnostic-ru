@@ -127,7 +127,10 @@
     "stagingApplied": true,
     "productionApplied": false,
     "includedInHistoricalSequence": false,
-    "futureLegalPublicationApproved": false,
-    "nextProductionPlanRequiresRefreshAfterCanonicalApproval": true
+    "futureLegalPublicationApproved": true,
+    "nextProductionPlanRequiresRefreshAfterCanonicalApproval": true,
+    "stagingLegalPublicationApplied": true,
+    "stagingLegalPublicationMigration": "20261022193427_publish_approved_privacy_legal_v1.sql",
+    "stagingMigrationCount": 50
   }
 }
