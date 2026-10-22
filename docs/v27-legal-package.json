@@ -1,6 +1,6 @@
 {
-  "status": "TECHNICAL_READY_AWAITING_OWNER_TEXT_APPROVAL",
-  "approved": false,
+  "status": "OWNER_APPROVED_AWAITING_STAGING_PUBLICATION",
+  "approved": true,
   "published": false,
   "effectiveDate": null,
   "documents": [
@@ -9,7 +9,7 @@
       "path": "docs/legal/drafts/data-processing-policy-ru-v1.md",
       "sha256": "d1e56ca672f3444333e51a3edc1397ceb62d89932f1c0f7620566aaa29b14de6",
       "bytes": 15123,
-      "approved": false,
+      "approved": true,
       "published": false,
       "draftSha256": "d1e56ca672f3444333e51a3edc1397ceb62d89932f1c0f7620566aaa29b14de6"
     },
@@ -18,7 +18,7 @@
       "path": "docs/legal/drafts/data-processing-consent-ru-v1.md",
       "sha256": "45dbeac12254747f406bcc7915512a71afc504687c592a96d22726305f4ecc94",
       "bytes": 6301,
-      "approved": false,
+      "approved": true,
       "published": false,
       "draftSha256": "45dbeac12254747f406bcc7915512a71afc504687c592a96d22726305f4ecc94"
     },
@@ -27,7 +27,7 @@
       "path": "docs/legal/drafts/marketing-consent-ru-v1.md",
       "sha256": "f8767fad986137079748f00cafaca1e74d95ccf648546c8dd4d6e5b019e67dae",
       "bytes": 3792,
-      "approved": false,
+      "approved": true,
       "published": false,
       "draftSha256": "f8767fad986137079748f00cafaca1e74d95ccf648546c8dd4d6e5b019e67dae"
     }
@@ -44,14 +44,17 @@
   "historyRewriteAllowed": false,
   "applyOnlyToNewConsentsAndRelevantNewScenarios": true,
   "existingAnonymousSessionTransition": "Existing V2.5 explicit re-consent for a new action after version change; append a new consent event, preserve old events. No retroactive blanket acceptance.",
-  "publicationMigrationCreated": false,
+  "publicationMigrationCreated": true,
   "productionTouched": false,
   "existingUsersNoAutomaticConsentMigration": true,
   "finalProposedBundleSha256": "ba79e8c1315d0ed82537e58ce3e5cc632e7a00293603b57d50931837cafe6664",
   "structureApproved": true,
-  "finalTextHashesApproved": false,
+  "finalTextHashesApproved": true,
   "publicationSQLPrepared": "artifacts/v27-production-launch/privacy-finalization/publication-pending-owner-approval.sql",
   "publicationPlanPrepared": true,
   "operationalRetentionVerifiedOnStaging": true,
-  "legalRowsChanged": false
+  "legalRowsChanged": false,
+  "ownerApprovalRecordedAt": "2026-10-22T19:34:49.621830+00:00",
+  "publicationMigration": "supabase/migrations/20261022193427_publish_approved_privacy_legal_v1.sql",
+  "ownerApprovalEvidence": "../artifacts/v27-production-launch/privacy-legal-staging/owner-approval.json"
 }

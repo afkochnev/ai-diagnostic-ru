@@ -108,13 +108,29 @@ try:
  actor(f"select public.withdraw_marketing_consent(gen_random_uuid(),'{owner}')",user,role='authenticated',error='marketing_forbidden')
  sql(f"update public.user_consents set version='changed' where user_id='{user}'",'immutable')
  ok('self withdrawal, duplicate request idempotence, cross-user denial; eligibility false with immutable grant and withdrawal evidence retained')
- # Isolated, deliberately synthetic publication. NEVER run this portion on staging.
+ # Publish the exact owner-approved bytes in this disposable local DB only.
  history=sql("select md5(string_agg(to_jsonb(c)::text,',' order by id)) from public.user_consents c")
- for kind,version in [('policy','data-processing-policy-ru-v1'),('data_processing','data-processing-consent-ru-v1'),('marketing','marketing-consent-ru-v1')]:
-  body='SYNTHETIC LOCAL VERSION TRANSITION ONLY '+version
-  sql(f"insert into public.privacy_legal_documents values('{version}','{kind}','{body}','{hashlib.sha256(body.encode()).hexdigest()}',"+('null' if kind=='policy' else "'data-processing-policy-ru-v1'")+",now(),now())")
- sql("update public.consent_documents set version=case when kind='data_processing' then 'data-processing-consent-ru-v1' else 'marketing-consent-ru-v1' end,is_temporary=false")
+ publication=next((ROOT/'supabase/migrations').glob('*_publish_approved_privacy_legal_v1.sql')).read_text()
+ documents=json.loads((ROOT/'docs/v27-legal-package.json').read_text())['documents']
+ for d in documents:assert hashlib.sha256((ROOT/d['path']).read_bytes()).hexdigest()==d['sha256']
+ original=hashes()
+ sql(publication.rsplit('commit;',1)[0]+'select publication_rollback_probe();commit;','does not exist')
+ assert hashes()==original
+ sql(publication.replace('ba79e8c1315d0ed82537e58ce3e5cc632e7a00293603b57d50931837cafe6664', 'unapproved',1),'owner_final_text_approval_required')
+ assert hashes()==original
+ sql(publication)
+ for d in documents:
+  assert sql("select body_sha256 from public.privacy_legal_documents where version='"+d['version']+"'")==d['sha256']
+  assert sql("select encode(sha256(convert_to(body,'UTF8')),'hex') from public.privacy_legal_documents where version='"+d['version']+"'")==d['sha256']
+ assert sql("select bool_and(not is_temporary) from public.consent_documents")=='t'
  assert sql("select md5(string_agg(to_jsonb(c)::text,',' order by id)) from public.user_consents c")==history
+ assert sql(f"select count(*) from public.user_consents where user_id='{user}' and version<>'temporary-ru-v1'")=='0'
+ published=hashes()
+ sql(publication,'unexpected_current_consent_versions');assert hashes()==published
+ sql("update public.privacy_legal_documents set body=body",'immutable')
+ sql("set role anon;update public.privacy_legal_documents set body=body",'permission denied')
+ assert sql("set role anon;select count(*) from public.privacy_legal_documents")=='3'
+ ok('exact approved publication is atomic, validates approval/hash, denies replay and edits, preserves all history and grants no automatic consent')
  current='data-processing-consent-ru-v1';new=sql('select gen_random_uuid()')
  sql(f"insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values('{new}','final@example.test',now(),"+lit({'full_name':'Synthetic final','data_processing_consent':True,'marketing_consent':False,'data_processing_version':current,'marketing_version':'marketing-consent-ru-v1'})+")")
  assert json.loads(sql(f"select jsonb_object_agg(kind,version) from public.user_consents where user_id='{new}'"))=={'data_processing':current,'marketing':'marketing-consent-ru-v1'}

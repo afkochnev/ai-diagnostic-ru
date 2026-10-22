@@ -95,7 +95,7 @@
     "operatorProcess": "scripts/retention-maintenance.ts",
     "operatorCadence": "Manual daily bounded review/execution per runbook; only synthetic ID scope is authorized for staging mutations in this acceptance"
   },
-  "implementationFollowup": "Production executor/scheduling and real subject-deletion execution remain separately controlled. No Team age purge. Final legal texts still await exact owner hash approval.",
+  "implementationFollowup": "Production executor/scheduling and real subject-deletion execution remain separately controlled. No Team age purge. Final exact text hashes approved by owner 2026-10-22; publication scope is staging only.",
   "productionTouched": false,
   "operationalGate": "PASS_STAGING_SYNTHETIC_CLEANUP_WITH_MANUAL_DELETION_RUNBOOK",
   "evidence": "artifacts/v27-production-launch/privacy-finalization/"
