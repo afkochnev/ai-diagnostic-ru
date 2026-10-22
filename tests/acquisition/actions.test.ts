@@ -1,5 +1,6 @@
 import {beforeEach,describe,it,expect,vi} from 'vitest';
-const s=vi.hoisted(()=>({guard:vi.fn(),context:vi.fn(),rpc:vi.fn(),claim:vi.fn(),session:vi.fn(),request:vi.fn(),identity:vi.fn(),policy:vi.fn(),auth:vi.fn(),set:vi.fn(),clear:vi.fn(),jarGet:vi.fn(),cookieSet:vi.fn(),limit:vi.fn()}));
+const s=vi.hoisted(()=>({startEnabled:true,guard:vi.fn(),context:vi.fn(),rpc:vi.fn(),claim:vi.fn(),session:vi.fn(),request:vi.fn(),identity:vi.fn(),policy:vi.fn(),auth:vi.fn(),set:vi.fn(),clear:vi.fn(),jarGet:vi.fn(),cookieSet:vi.fn(),limit:vi.fn()}));
+vi.mock('@/server-runtime/launch-gates',()=>({acquisitionStartEnabled:()=>s.startEnabled}));
 vi.mock('server-only',()=>({}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw Error('REDIRECT:'+url);}}));
 vi.mock('next/headers',()=>({cookies:async()=>({get:s.jarGet,set:s.cookieSet})}));
@@ -14,6 +15,10 @@ import {startAnonymous,sendAccess,confirmAccess,finishClaim} from '@/server/acqu
 const form=(values:Record<string,string>)=>{const f=new FormData();Object.entries(values).forEach(([k,v])=>f.set(k,v));return f;};
 beforeEach(()=>{vi.clearAllMocks();s.guard.mockResolvedValue(undefined);s.identity.mockResolvedValue(null);s.context.mockResolvedValue({id:'session',hash:'hash',secret:'secret'});s.policy.mockResolvedValue({versions:{data_processing:'current',marketing:'current'}});s.session.mockResolvedValue({consent_version:'current',marketing_version:'current'});s.rpc.mockResolvedValue({id:'new-session',consent_version:'current',marketing_version:'current'});s.request.mockResolvedValue(undefined);s.jarGet.mockImplementation((k:string)=>({value:k==='aca-access'?'envelope':'session'}));});
 describe('V25 server actions preserve authority before external work',()=>{
+ it('stops only new anonymous start before any identity/session/provider work',async()=>{
+  s.startEnabled=false;expect((await startAnonymous({},form({consent:'on',consent_version:'current'}))).error).toContain('временно недоступно');
+  expect(s.rpc).not.toHaveBeenCalled();expect(s.identity).not.toHaveBeenCalled();s.startEnabled=true;
+ });
  it('does not create any session or request Auth before explicit current consent',async()=>{
   expect((await startAnonymous({},form({}))).error).toContain('согласие');expect(s.rpc).not.toHaveBeenCalled();expect(s.request).not.toHaveBeenCalled();
   expect((await startAnonymous({},form({consent:'on',consent_version:'old'}))).error).toContain('обновились');expect(s.rpc).not.toHaveBeenCalled();

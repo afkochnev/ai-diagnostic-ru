@@ -1,10 +1,10 @@
 import {NextResponse} from 'next/server';
-import {yookassaConfigured,YooKassaError} from '@/server/billing/yookassa';
+import {yookassaVerificationConfigured,YooKassaError} from '@/server/billing/yookassa';
 import {processYooKassaWebhook} from '@/server/billing/yookassa-service';
 import {limitedBillingBody} from '@/server/billing/http';
 import {enforceRateLimit} from '@/server/rate-limit';
 export async function POST(request:Request){
- if(!yookassaConfigured())return NextResponse.json({error:'billing_unavailable'},{status:404});
+ if(!yookassaVerificationConfigured())return NextResponse.json({error:'billing_unavailable'},{status:404});
  try {
   const body=await limitedBillingBody(request);
   // Global bounded work protects the privileged lookup/GET. Never trust X-Forwarded-For as verification.

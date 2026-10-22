@@ -1,8 +1,6 @@
-/** Staging rollout; isolated loopback acceptance is explicit and never production. */
+import {launchEnvironment} from '@/server-runtime/launch-gates';
+export {teamCreationEnabled,teamInvitationsEnabled} from '@/server-runtime/launch-gates';
+/** Production is OFF until its exact origin/project pair and explicit flag agree. */
 export function teamFoundationEnabled() {
-  return (process.env.APP_URL === "https://ai-diagnostic-staging-web.onrender.com"
-    && process.env.SUPABASE_URL === "https://vflgxgdwlftlyjslyrmo.supabase.co")
-    || (process.env.NODE_ENV !== "production" && process.env.TEAM_LOCAL_ACCEPTANCE === "1"
-      && /^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.APP_URL ?? "")
-      && /^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.SUPABASE_URL ?? ""));
+  return launchEnvironment('team');
 }

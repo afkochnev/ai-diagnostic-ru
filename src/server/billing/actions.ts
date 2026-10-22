@@ -9,13 +9,14 @@ import {authConfig} from '@/server/supabase/config';
 import {enforceRateLimit} from '@/server/rate-limit';
 import {billingRpc,mockProvider,processWebhook,readCheckout} from './service';
 import {billingConfig,verifiedEventSchema} from './contracts';
+import {commercialAcceptanceSchema,commercialTermsRpc} from './legal-contract';
 async function guard(){if(!billingConfig().enabled||(await headers()).get('origin')!==authConfig().APP_URL)throw Error('billing_unavailable');return requireIdentity();}
 export async function startCheckout(form:FormData){
  const identity=await guard(),account=z.uuid().parse(form.get('account'));
  await requireAccountWrite(account,identity.user.id);await enforceRateLimit(`billing:start:${identity.user.id}`,20,60);
  const company=z.uuid().nullable().parse(form.get('company')||null);
  let target:string;
- try {if(billingConfig().provider==='yookassa'){target=await createYooKassaPayment(account,company,z.email().parse(identity.user.email));}else{const id=z.uuid().parse(await billingRpc('billing_start_checkout',{p_account_id:account,p_company_id:company}));const created=await mockProvider().createCheckout(await readCheckout(id));await billingRpc('billing_bind_checkout',{p_checkout_id:id,p_checkout_ref:created.reference,p_customer_ref:created.customerRef,p_subscription_ref:created.subscriptionRef,p_payment_ref:created.paymentRef},true);target=created.url;}}
+ try {const terms=commercialAcceptanceSchema.parse({version:form.get('terms_version'),sha256:form.get('terms_sha256'),accepted:form.get('terms_accepted')==='on'});if(billingConfig().provider==='yookassa'){target=await createYooKassaPayment(account,company,z.email().parse(identity.user.email),terms);}else{const id=z.uuid().parse(await billingRpc('billing_start_checkout',{p_account_id:account,p_company_id:company,...commercialTermsRpc(terms)}));const created=await mockProvider().createCheckout(await readCheckout(id));await billingRpc('billing_bind_checkout',{p_checkout_id:id,p_checkout_ref:created.reference,p_customer_ref:created.customerRef,p_subscription_ref:created.subscriptionRef,p_payment_ref:created.paymentRef},true);target=created.url;}}
  catch {redirect(`/ru/account/plan?account=${account}${company?`&company=${company}`:''}&billingError=1`);}
  redirect(target);
 }

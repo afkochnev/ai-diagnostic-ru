@@ -10,11 +10,13 @@ import {guardOrigin,cookieContext,setContext,newSecret,hash,clearAnonymous,limit
 import {sessionRpc,claimRpc,ownSession,type ClaimResult,type Choices} from './service';
 import {emailSchema,shortProfileSchema,safeAttribution,acquisitionCookie} from './contracts';
 import {requestAccess,accessProof} from './email';
+import {acquisitionStartEnabled} from '@/server-runtime/launch-gates';
 export type AcquisitionState={error?:string;sent?:boolean};
 const message=(e:unknown)=>e instanceof Error && e.message.includes('conflict')?'Данные изменились в другой вкладке. Обновите страницу.':e instanceof Error && e.message.includes('consent')?'Условия обновились. Подтвердите действующее согласие.':e instanceof Error && e.message.includes('advanced_required')?'В тарифе Free можно работать с одной компанией. Выберите существующую компанию или подключите Advanced.':e instanceof Error && e.message.includes('expired')?'Срок хранения диагностики истёк. Начните новую диагностику.':'Не удалось продолжить. Ваши сохранённые ответы остаются доступными до окончания срока хранения.';
 export async function startAnonymous(_:AcquisitionState,form:FormData):Promise<AcquisitionState>{
  let id:string;
  try{
+  if(!acquisitionStartEnabled())return {error:'Начало новой диагностики временно недоступно. Сохранённые результаты доступны в вашем кабинете.'};
   await guardOrigin();
   if(await getIdentity())redirect('/ru/account');
   if(form.get('consent')!=='on')return {error:'Подтвердите согласие на обработку данных.'};
