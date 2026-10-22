@@ -1,6 +1,6 @@
 # V2.7 — точная инструкция будущего production rollout
 
-Версия: v27-runbook-canonical-pr8-20261022. Подготовлено к рассмотрению; разрешения на выполнение нет.
+Версия: v27-runbook-owner-risk-retention-20261022. Подготовлено к рассмотрению; разрешения на выполнение нет.
 
 **STOP до первой production mutation.** Команды изменения ниже — только будущая
 процедура после отдельного разрешения владельца с SHA-256 этой инструкции.
@@ -38,11 +38,19 @@ Authoritative цена остаётся в `docs/v26b-commercial-config.json`.
 
 ## 2. Незакрытые gates — не обходить
 
-1. `BLOCKED_PENDING_FINAL_PRIVACY_CONSENT_RETENTION_DOCUMENTS` подтверждён владельцем.
-   `data_processing` и `marketing` остаются `temporary-ru-v1`. Нет утверждённых
-   privacy, обязательного processing consent, отдельного marketing consent и
-   retention/deletion/anonymization. Тексты самостоятельно не создавать.
-   Новые документы должны иметь новые версии; исторические согласия не переписывать.
+1. Финальные privacy/consent тексты остаются неутверждёнными. Следующий пакет:
+   `data-processing-policy-ru-v1`, `data-processing-consent-ru-v1`,
+   `marketing-consent-ru-v1`; проекты находятся только в `docs/legal/drafts/`.
+   `data_processing` и `marketing` остаются `temporary-ru-v1`; исторические
+   согласия не переписывать. Публикация требует отдельного утверждения текстов.
+   Retention model утверждена владельцем в `docs/v27-retention-model.json`;
+   её операционное исполнение не объявлено реализованным.
+   `OWNER_ACCEPTED_RU_DATA_LOCALIZATION_RISK` — accepted risk, не blocking gate
+   V2.7 и не утверждение полного юридического соответствия. Продолжается текущая
+   архитектура Supabase/Render/OpenAI/Resend/YooKassa. Российский data plane,
+   self-hosted Supabase и иная миграция локализации для этого запуска не требуются.
+   Документы должны прямо раскрывать внешних поставщиков и возможную обработку
+   за пределами РФ, без обещания, что все данные физически хранятся в России.
 2. Текущий YooKassa adapter — TEST-only. Он блокирует production целиком, в том
    числе TEST-платёж в production. Поддержка реальных платежей `test=false`
    требует отдельной реализации/проверки. `productionEnabled=false` сохраняется.
@@ -309,9 +317,9 @@ USN subtype не определён; tax_system_code — только если �
 
 ## 12. Формат будущего разрешения
 
-До получения документов и закрытия технических/configuration gates rollout
+До утверждения финальных privacy/consent текстов и закрытия технических/configuration gates rollout
 не запрашивается как готовый к исполнению. Когда gates закрыты, разрешение
-должно прямо назвать `v27-runbook-canonical-pr8-20261022` и фактический SHA-256
+должно прямо назвать `v27-runbook-owner-risk-retention-20261022` и фактический SHA-256
 этого файла, migration inventory из раздела11, intermediate/final web/worker
 из раздела1, backup/drain/write-pause, initial flags OFF и границы smoke.
 Это описание необходимых полей разрешения, а не предоставленное разрешение.

@@ -102,5 +102,12 @@
   },
   "taxSystemCode": "Omit unless actual selected receipt solution requires it; confirmed merchant/accounting value only. USN subtype is unconfirmed.",
   "productionEnabled": false,
-  "productionTouched": false
+  "productionTouched": false,
+  "acceptedRisk": "OWNER_ACCEPTED_RU_DATA_LOCALIZATION_RISK",
+  "localizationIsBlockingV27": false,
+  "fullLegalComplianceAsserted": false,
+  "retentionModel": "docs/v27-retention-model.json",
+  "retentionModelOwnerApproved": true,
+  "legalPackage": "docs/v27-legal-package.json",
+  "newLegalTextsApproved": false
 }

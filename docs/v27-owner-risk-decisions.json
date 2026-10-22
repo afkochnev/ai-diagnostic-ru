@@ -1,0 +1,30 @@
+{
+  "decisions": [
+    {
+      "id": "OWNER_ACCEPTED_RU_DATA_LOCALIZATION_RISK",
+      "status": "ACCEPTED_RISK",
+      "blockingV27": false,
+      "acceptedBy": "Product owner, direct instruction 2026-10-22",
+      "scope": "Limited launch for a controlled circle of users in Russia, followed by planned English-language international development",
+      "architecture": [
+        "Supabase",
+        "Render",
+        "OpenAI",
+        "Resend",
+        "YooKassa"
+      ],
+      "infrastructureMigrationRequiredForCurrentLaunch": false,
+      "excludedFromCurrentLaunch": [
+        "Separate Russian data plane",
+        "Self-hosted Supabase",
+        "Other infrastructure migration for localization"
+      ],
+      "legalComplianceClaim": false,
+      "doesNotApproveFinalLegalTexts": true,
+      "requiresHonestProviderAndCrossBorderDisclosure": true,
+      "allDataPhysicallyStoredInRussia": false,
+      "doesNotAuthorizeProductionMutations": true
+    }
+  ],
+  "productionTouched": false
+}

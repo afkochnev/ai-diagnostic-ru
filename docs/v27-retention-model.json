@@ -1,0 +1,79 @@
+{
+  "status": "OWNER_APPROVED_PRODUCT_RETENTION_MODEL",
+  "approvedBy": "Product owner, direct instruction 2026-10-22",
+  "rules": [
+    {
+      "id": "anonymous_unfinished",
+      "category": "Незавершённые anonymous diagnostic sessions",
+      "rule": "7_days",
+      "description": "7 дней",
+      "operationalEnforcementVerified": false
+    },
+    {
+      "id": "account_company_answers_diagnostics_reports",
+      "category": "Аккаунт, профиль компании, ответы, диагностики и отчёты",
+      "rule": "account_lifetime_or_valid_deletion_request",
+      "description": "Пока существует аккаунт либо до запроса пользователя на удаление",
+      "operationalEnforcementVerified": false
+    },
+    {
+      "id": "deletion_request",
+      "category": "Обоснованный запрос на удаление",
+      "rule": "applicable_requirement_deadline",
+      "description": "Удалить или необратимо анонимизировать персональные данные в установленный применимыми требованиями срок, кроме сведений с отдельным законным основанием хранения",
+      "operationalEnforcementVerified": false
+    },
+    {
+      "id": "marketing",
+      "category": "Маркетинговое согласие",
+      "rule": "until_withdrawal",
+      "description": "До отзыва; доказательство выдачи и отзыва может сохраняться как audit/legal evidence",
+      "operationalEnforcementVerified": false
+    },
+    {
+      "id": "consent_document_history",
+      "category": "История согласий и версий документов",
+      "rule": "audit_legal_evidence",
+      "description": "Как audit/legal evidence; сроки и исключения должны опираться на применимое основание, без выдуманного фиксированного периода",
+      "operationalEnforcementVerified": false
+    },
+    {
+      "id": "product_analytics",
+      "category": "Product analytics без raw answers",
+      "rule": "up_to_12_months",
+      "description": "До 12 месяцев",
+      "operationalEnforcementVerified": false
+    },
+    {
+      "id": "email_delivery_logs",
+      "category": "Email delivery logs",
+      "rule": "up_to_12_months",
+      "description": "До 12 месяцев",
+      "operationalEnforcementVerified": false
+    },
+    {
+      "id": "payments_receipts_accounting",
+      "category": "Платёжные, чековые и обязательные бухгалтерские записи",
+      "rule": "mandatory_statutory_period",
+      "description": "В течение обязательного срока хранения; число лет не угадывать",
+      "operationalEnforcementVerified": false
+    },
+    {
+      "id": "team_responses",
+      "category": "Team responses",
+      "rule": "account_or_team_lifetime_or_valid_deletion_request",
+      "description": "Пока существует соответствующий Account/Team Diagnostic либо до удаления данных пользователя с учётом обязательных исключений",
+      "operationalEnforcementVerified": false
+    }
+  ],
+  "approvalIsNotImplementationProof": true,
+  "observedCurrentBehavior": {
+    "anonymousAccessExpiresAfterDays": 7,
+    "physicalPurgeVerified": false,
+    "twelveMonthCleanupVerified": false,
+    "accountErasureWorkflowVerified": false,
+    "marketingWithdrawalWorkflowVerified": false
+  },
+  "implementationFollowup": "Prepare bounded erasure/anonymization, expiry purge, analytics/email-log cleanup, provider/backup handling and audit/legal exceptions. No data deleted in this change.",
+  "productionTouched": false
+}

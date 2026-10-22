@@ -1,0 +1,45 @@
+{
+  "status": "DRAFT_OWNER_REVIEW_REQUIRED",
+  "approved": false,
+  "published": false,
+  "effectiveDate": null,
+  "documents": [
+    {
+      "version": "data-processing-policy-ru-v1",
+      "path": "docs/legal/drafts/data-processing-policy-ru-v1.md",
+      "approved": false,
+      "published": false,
+      "draftSha256": "366f19dac7ea26d71175396e4bf5e7964cd19080d1fe000c3351cbdf4343f0d4"
+    },
+    {
+      "version": "data-processing-consent-ru-v1",
+      "path": "docs/legal/drafts/data-processing-consent-ru-v1.md",
+      "approved": false,
+      "published": false,
+      "draftSha256": "58fe01865abf474f8428b7a0e15bf617e43279355c4377bd7d4e031aa7f4c8e9"
+    },
+    {
+      "version": "marketing-consent-ru-v1",
+      "path": "docs/legal/drafts/marketing-consent-ru-v1.md",
+      "approved": false,
+      "published": false,
+      "draftSha256": "06812cfe8ceecea4b392b590dfaabcc74364ffd5458d630a26be4e76b2bce0b7"
+    }
+  ],
+  "futureConsentKindMapping": {
+    "data_processing": "data-processing-consent-ru-v1",
+    "marketing": "marketing-consent-ru-v1"
+  },
+  "futurePolicyReference": "data-processing-policy-ru-v1",
+  "activeConsentVersionsRemain": {
+    "data_processing": "temporary-ru-v1",
+    "marketing": "temporary-ru-v1"
+  },
+  "historyRewriteAllowed": false,
+  "applyOnlyToNewConsentsAndRelevantNewScenarios": true,
+  "existingAnonymousSessionTransition": "Existing V2.5 explicit re-consent for a new action after version change; append a new consent event, preserve old events. No retroactive blanket acceptance.",
+  "publicationMigrationCreated": false,
+  "supabaseRowsChanged": false,
+  "productionTouched": false,
+  "existingUsersNoAutomaticConsentMigration": true
+}
