@@ -6,7 +6,7 @@ import { emailSchema, loginSchema, passwordSchema, registrationSchema, type Auth
 import { getMessages } from "@/i18n/messages";
 
 type Mode = "register" | "login" | "forgot" | "resend" | "reset" | "confirm" | "mfa";
-type Policy = { versions: Record<string, string>; temporary: boolean; dataUrl: string; marketingUrl: string };
+type Policy = { versions: Record<string, string>; temporary: boolean; dataUrl: string; marketingUrl: string; policyUrl?: string };
 type Props = { action: (state: AuthState, form: FormData) => Promise<AuthState>; mode: Mode; policy?: Policy; hidden?: Record<string, string> };
 const copy = getMessages("ru").auth;
 const inputClass = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
@@ -54,7 +54,8 @@ export function AuthForm({ action, mode, policy, hidden = {} }: Props) {
       {mode === "mfa" && <label className="block text-sm font-medium">{copy.mfaCode}<input className={inputClass} name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required /></label>}
       {mode === "register" && policy && <>
         <label className="flex items-start gap-3 text-sm leading-relaxed"><input type="checkbox" name="data_processing_consent" required className="mt-1 h-5 w-5 shrink-0 accent-brand" /><span>{copy.dataConsent}</span></label>
-        <Link className="block text-sm underline" href={policy.dataUrl}>{copy.dataLink}</Link>
+        <Link className="block text-sm underline" href={policy.dataUrl}>{policy.temporary ? copy.dataLink : "Согласие на обработку персональных данных"}</Link>
+        {policy.policyUrl && <Link className="block text-sm underline" href={policy.policyUrl}>Политика обработки персональных данных</Link>}
         <label className="flex items-start gap-3 text-sm leading-relaxed"><input type="checkbox" name="marketing_consent" className="mt-1 h-5 w-5 shrink-0 accent-brand" /><span>{copy.marketingConsent}</span></label>
         <Link className="block text-sm underline" href={policy.marketingUrl}>{copy.marketingLink}</Link>
         {policy.temporary && <p className="text-xs leading-relaxed text-muted">{copy.temporaryLegal}</p>}
