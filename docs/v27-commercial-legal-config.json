@@ -1,0 +1,23 @@
+{
+  "version": "advanced-terms-ru-v1",
+  "versionApproval": "Owner instruction, 2026-10-22",
+  "documentSourceStatus": "AWAITING_APPROVED_FULL_TEXT_AND_REQUISITES",
+  "approvedTextInvented": false,
+  "issuer": {
+    "legalName": "ООО «АйТим Менеджмент»",
+    "confirmedRequisitesSource": null
+  },
+  "authoritativePriceConfig": "docs/v26b-commercial-config.json",
+  "refundPolicy": {
+    "kind": "full_on_user_request",
+    "contact": "info@iteam.ru",
+    "amount_minor": 48000,
+    "currency": "RUB",
+    "onVerifiedSucceededFullRefund": "End Advanced and make Account Free; preserve historical data, diagnostics and reports",
+    "pendingOrCanceledRefund": "Do not change entitlement",
+    "duplicateRefund": "Do not revoke a later purchase"
+  },
+  "productionBillingEnabled": false,
+  "productionRefundExecuted": false,
+  "publicationRequiresApprovedSource": true
+}

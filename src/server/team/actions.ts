@@ -15,7 +15,7 @@ import { enforceRateLimit } from "@/server/rate-limit";
 import { invitationToken, teamCreation, teamInvitation, teamSave, type TeamActionState } from "./contracts";
 import { sealInvitation } from "./invitation-envelope";
 import { invitationCompany, ownerTeam, teamRpc } from "./service";
-import { teamFoundationEnabled } from "./capabilities";
+import { teamFoundationEnabled,teamCreationEnabled,teamInvitationsEnabled } from "./capabilities";
 import { sendTeamCodeAction } from "./passwordless-actions";
 import { z } from "zod";
 import { ordinaryTeamReportProvider } from "./ordinary-provider";
@@ -30,6 +30,8 @@ async function origin() {
 function failure(error: unknown): TeamActionState {
   const code = error instanceof Error ? error.message : "";
   const messages: Record<string, string> = {
+    team_creation_paused: "Создание новых командных диагностик временно приостановлено. Сохранённые диагностики и отчёты доступны.",
+    team_invitations_paused: "Новые приглашения временно приостановлены. Уже приглашённые участники могут продолжить диагностику.",
     team_real_provider_unavailable: "Подготовка реального AI-отчёта пока недоступна. Тестовый отчёт вместо него не создаётся.",
     advanced_required: "Эта возможность доступна на тарифе Advanced.",
     team_already_invited: "Этот участник уже приглашён. При необходимости выпустите новую ссылку.",
@@ -49,6 +51,7 @@ export async function createTeamAction(_: TeamActionState, form: FormData): Prom
   let id: string;
   let companyId: string;
   try {
+    if(!teamCreationEnabled())throw Error('team_creation_paused');
     await origin(); const identity = await requireIdentity();
     const input = teamCreation.parse({ companyId: value(form,"companyId"), title: value(form,"title") });
     companyId = input.companyId;
@@ -62,6 +65,7 @@ export async function createTeamAction(_: TeamActionState, form: FormData): Prom
 }
 export async function inviteTeamAction(_: TeamActionState, form: FormData): Promise<TeamActionState> {
   try {
+    if(!teamInvitationsEnabled())throw Error('team_invitations_paused');
     await origin(); const identity = await requireIdentity();
     const input = teamInvitation.parse({ teamId: value(form,"teamId"), email: value(form,"email"), displayName: value(form,"displayName") });
     const record = await ownerTeam(input.teamId);
@@ -100,6 +104,7 @@ async function deliverInvitation(participantId: string, email: string, title: st
 }
 export async function renewTeamInvitationAction(_: TeamActionState, form: FormData): Promise<TeamActionState> {
   try {
+    if(!teamInvitationsEnabled())throw Error('team_invitations_paused');
     await origin(); const identity = await requireIdentity();
     const participantId = z.uuid().parse(value(form,"participantId")), teamId = z.uuid().parse(value(form,"teamId"));
     const record = await ownerTeam(teamId), participant = record?.participants.find((p) => p.id === participantId);

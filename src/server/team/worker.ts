@@ -7,6 +7,7 @@ import { validateAndRepairSynthesis } from "./synthesis-repair";
 import { generateTeamReportV3, synthesizeTeamTextsV3, repairV3Fields } from "./report-v3-provider";
 import { qualitativeCoverage, validateCoreQuality } from "./report-v3-contracts";
 import { validateAndRepairReport } from "./report-privacy";
+import {launchEnvironment} from '@/server-runtime/launch-gates';
 export type TeamJob = { id: string; kind: "team_aggregate" | "team_ai_report"; lease_token: string; attempts: number; pipeline_version?: string | null };
 type Rpc = (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
 export async function processTeamJob(job: TeamJob, rpc: Rpc) {
@@ -76,8 +77,9 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
   }
 }
 export async function runTeamJobs() {
-  // Production stays disabled. Team provider defaults to mock independently of legacy AI.
-  if (process.env.APP_URL !== "https://ai-diagnostic-staging-web.onrender.com" || process.env.SUPABASE_URL !== "https://vflgxgdwlftlyjslyrmo.supabase.co") return 0;
+  // Creation/invitation kill switches do not stop processing existing work.
+  // Production still requires an explicit TEAM_ENABLED=true on the exact pair.
+  if (!launchEnvironment('team')) return 0;
   const db = createAdminClient();
   const rpc: Rpc = async (name,args) => { const r = await db.rpc(name,args); return { data: r.data, error: r.error }; };
   const { data, error } = await rpc("claim_team_jobs_v3", { p_limit: 1, p_lease_seconds: 600 });

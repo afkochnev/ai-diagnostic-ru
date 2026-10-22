@@ -1,10 +1,10 @@
 import {z} from 'zod';
+import {launchEnvironment} from '@/server-runtime/launch-gates';
 export const acquisitionCookie='aca-anonymous';
 export const visitCookie='aca-journey';
 export const sessionTtlSeconds=7*24*60*60;
 export function acquisitionEnabled(env:Record<string,string|undefined>=process.env){
- return (env.APP_URL==='https://ai-diagnostic-staging-web.onrender.com' && env.SUPABASE_URL==='https://vflgxgdwlftlyjslyrmo.supabase.co')
- || (env.NODE_ENV!=='production' && /^http:\/\/127\.0\.0\.1:\d+$/.test(env.APP_URL??'') && /^http:\/\/127\.0\.0\.1:\d+$/.test(env.SUPABASE_URL??''));
+ return launchEnvironment('acquisition',env);
 }
 const safe=z.string().regex(/^[A-Za-z0-9._-]{1,100}$/);
 export const attributionSchema=z.object({utm_source:safe.optional(),utm_medium:safe.optional(),utm_campaign:safe.optional(),utm_content:safe.optional(),referrer_host:safe.optional(),landing_variant:safe.optional()}).strict();

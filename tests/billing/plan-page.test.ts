@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-const state = vi.hoisted(() => ({ accounts: [{ id: "account-a", name: "Аккаунт A" }], plan: "Free", read: vi.fn(), company: vi.fn(), annual:vi.fn() }));
+const state = vi.hoisted(() => ({ accounts: [{ id: "account-a", name: "Аккаунт A" }], plan: "Free", read: vi.fn(), company: vi.fn(), annual:vi.fn(),terms:vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ redirect: (p: string) => { throw Error(`redirect:${p}`); } }));
 vi.mock("@/server/auth/session", () => ({ requireIdentity: async () => ({ user: { id: "owner" } }) }));
@@ -8,14 +8,28 @@ vi.mock("@/server/account/queries", () => ({ listAccessibleAccounts: async () =>
 vi.mock("@/server/entitlements", () => ({ getAccountPlan: state.read }));
 vi.mock("@/server/account/authorization",()=>({requireCompanyRead:state.company}));
 vi.mock('@/server/billing/service',async original=>({...await original<typeof import('@/server/billing/service')>(),annualAccess:state.annual}));
+vi.mock('@/server/billing/legal',()=>({currentCommercialTerms:state.terms}));
+vi.mock('@/server/acquisition/service',()=>({conversionContinuation:async()=>null}));
 import AccountPlanPage from "@/app/[locale]/(workspace)/account/plan/page";
 beforeEach(() => {
+  state.terms.mockReset();state.terms.mockResolvedValue(null);
   state.accounts = [{ id: "account-a", name: "Аккаунт A" }]; state.plan = "Free";
   state.annual.mockReset();state.annual.mockResolvedValue(null);state.company.mockReset();state.company.mockResolvedValue({id:"30000000-0000-4000-8000-000000000001",name:"Legacy Company",account_id:"account-a"});
   state.read.mockReset(); state.read.mockImplementation(async () => ({ display_name: state.plan, plan: state.plan.toLowerCase(), entitlements: {team_diagnostics:state.plan==="Advanced",multi_company:state.plan==="Advanced"} }));
 });
 afterEach(()=>vi.unstubAllEnvs());
 describe("Account plan screen", () => {
+  function readyPayment(){for(const [k,v]of Object.entries({APP_URL:'https://ai-diagnostic-staging-web.onrender.com',SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co',BILLING_PROVIDER:'yookassa',BILLING_ENABLED:'true',YOOKASSA_TEST_MODE:'true',YOOKASSA_SHOP_ID:'123456',YOOKASSA_SECRET_KEY:'test_synthetic',YOOKASSA_RECEIPT_CONFIG_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE:'full_payment',YOOKASSA_RECEIPT_SOLUTION:'external',YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE:'false'}))vi.stubEnv(k,v);}
+  it('shows an exact version link and explicit acceptance with the document digest before checkout',async()=>{
+    readyPayment();state.terms.mockResolvedValue({version:'advanced-terms-ru-v1',content_sha256:'a'.repeat(64)});
+    const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
+    expect(html).toContain('/ru/legal/advanced/advanced-terms-ru-v1');expect(html).toContain('name="terms_accepted"');expect(html).toContain('name="terms_sha256"');expect(html).toContain('a'.repeat(64));expect(html).toContain('info@iteam.ru');expect(html).toContain('аккаунт переходит на Free');
+  });
+  it('denies checkout when terms are unavailable even if all provider/fiscal gates pass',async()=>{
+    readyPayment();state.terms.mockResolvedValue(null);
+    const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
+    expect(html).not.toContain('<form');expect(html).toContain('Оплата временно недоступна');
+  });
   it("shows approved no-VAT price but cannot checkout with unconfirmed fiscal mode",async()=>{
     vi.stubEnv('BILLING_PROVIDER','yookassa');vi.stubEnv('BILLING_ENABLED','true');
     const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));

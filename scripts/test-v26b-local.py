@@ -3,7 +3,7 @@
 import argparse,concurrent.futures,hashlib,json,secrets,subprocess,datetime
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-p=argparse.ArgumentParser();p.add_argument('--container',required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--container',required=True);p.add_argument('--with-v27',action='store_true');a=p.parse_args()
 info=json.loads(subprocess.check_output(['docker','inspect',a.container]))[0]
 assert a.container in ('ai-diagnostic-v26b-isolated','ai-diagnostic-v26b-ci-isolated') and info['HostConfig']['NetworkMode']=='none' and info['Config']['Labels'].get('codex.task')=='v26b' and not any(info['NetworkSettings']['Ports'].values())
 db='v26b_'+secrets.token_hex(6);checks=[]
@@ -181,5 +181,6 @@ try:
  sql("update private.billing_plan_audit set new_plan='free'",'diagnostic results are immutable')
  sql("delete from private.billing_events where provider_key='yookassa'",'diagnostic results are immutable')
  passed('financial journal and prior subscription history remain immutable')
+ if a.with_v27:exec(compile((ROOT/'scripts/fixtures/v27-commercial-refund-assertions.py').read_text(),'v27-commercial-refund-assertions.py','exec'))
  print(json.dumps({'status':'PASS','groups':len(checks),'checks':checks,'scope':'networkless isolated local PostgreSQL; synthetic identities only','preExistingRowsPreserved':preserved_rows,'realYooKassaCalls':0,'stagingTouched':False,'productionTouched':False}),flush=True)
 finally:sql('drop database if exists '+db+' with(force)',database='postgres')

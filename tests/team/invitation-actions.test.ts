@@ -9,7 +9,7 @@ vi.mock("next/cache",()=>({revalidatePath:state.revalidate}));
 vi.mock("@/server/auth/session",()=>({requireIdentity:async()=>({user:{id:"owner",email_confirmed_at:"confirmed"}})}));
 vi.mock("@/server/account/authorization",()=>({requireCompanyWrite:vi.fn(async()=>({account_id:"account"}))}));
 vi.mock("@/server/supabase/config",()=>({authConfig:()=>({APP_URL:"https://ai-diagnostic-staging-web.onrender.com",AUTH_FLOW_SECRET:"synthetic-secret",secure:true})}));
-vi.mock("@/server/team/capabilities",()=>({teamFoundationEnabled:()=>true}));
+vi.mock("@/server/team/capabilities",()=>({teamFoundationEnabled:()=>true,teamCreationEnabled:()=>true,teamInvitationsEnabled:()=>true}));
 vi.mock("@/server/team/single-email",()=>({singleEmailCredential:state.credential}));
 vi.mock("@/server/rate-limit",()=>({enforceRateLimit:vi.fn()}));
 vi.mock("@/server/team/service",()=>({teamRpc:state.rpc,invitationCompany:async()=>"Synthetic company",ownerTeam:async()=>({team:{company_id:"company",title:"Synthetic team"},participants:[{id:"10000000-0000-4000-8000-000000000001",email:"participant@example.test"}]})}));
