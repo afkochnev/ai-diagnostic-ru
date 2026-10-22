@@ -31,6 +31,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:unit -- --maxWorkers=2
       - run: npm run build
+      - name: Verify actual Docker build context and authoritative commercial contract
+        run: docker build --target build --tag ai-diagnostic-web-build:ci .
   sql:
     name: isolated-sql
     runs-on: ubuntu-latest

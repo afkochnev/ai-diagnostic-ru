@@ -3,7 +3,7 @@
 import argparse,concurrent.futures,hashlib,json,secrets,subprocess,datetime
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-p=argparse.ArgumentParser();p.add_argument('--container',required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--container',required=True);p.add_argument('--with-v26b',action='store_true');a=p.parse_args()
 info=json.loads(subprocess.check_output(['docker','inspect',a.container]))[0]
 assert a.container in ('ai-diagnostic-v26-isolated','ai-diagnostic-v26-ci-isolated') and info['HostConfig']['NetworkMode']=='none' and info['Config']['Labels'].get('codex.task')=='v26' and not any(info['NetworkSettings']['Ports'].values())
 db='v26_'+secrets.token_hex(6);checks=[]
@@ -44,6 +44,7 @@ try:
  before=hashes();sql(candidate.read_text().rsplit('commit;',1)[0]+'select missing_v26_rollback_probe();commit;','does not exist')
  assert sql("select to_regclass('private.billing_events') is null")=='t';assert hashes()==before
  sql(candidate.read_text());after=hashes();assert all(after[k]==v for k,v in before.items());passed('additive migration rollback and historical row preservation')
+ if a.with_v26b:sql(next((ROOT/'supabase/migrations').glob('*_yookassa_annual_billing.sql')).read_text())
  accounts={};companies={}
  for n in range(1,6):
   metadata={'full_name':'V26 Synthetic '+str(n),'data_processing_consent':True,'marketing_consent':False,'data_processing_version':'temporary-ru-v1','marketing_version':'temporary-ru-v1'}
