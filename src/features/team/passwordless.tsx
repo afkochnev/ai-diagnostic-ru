@@ -30,7 +30,7 @@ export function TeamPasswordless({policy,view}:{policy:TeamEntryPolicy;view:Team
     {accepted && !waiting && <p role="alert">Срок проверки письма истёк. Запросите письмо ещё раз, если сессия приглашения ещё действует.</p>}
     <form action={send} className="space-y-4">
       {Object.entries(policy.versions).map(([kind,version])=><input key={kind} type="hidden" name={`${kind}_version`} value={version}/>)}
-      <label className="flex items-start gap-3 text-sm leading-relaxed"><input type="checkbox" name="data_processing_consent" required checked={consented} onChange={e=>setConsented(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-brand"/><span>{text.dataConsent}</span></label>
+      <label className="flex items-start gap-3 text-sm leading-relaxed"><input type="checkbox" name="data_processing_consent" required checked={consented} onChange={e=>setConsented(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-brand"/><span>{policy?.temporary ? text.dataConsent : "Я даю согласие на обработку персональных данных."}</span></label>
       <Link href={policy.dataUrl} className="block text-sm underline">{policy.temporary ? text.dataLink : "Согласие на обработку персональных данных"}</Link>
       {policy.policyUrl && <Link href={policy.policyUrl} className="block text-sm underline">Политика обработки персональных данных</Link>}
       {policy.temporary && <p className="text-xs text-muted">{text.temporaryLegal}</p>}
