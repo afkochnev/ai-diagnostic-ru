@@ -9,6 +9,12 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      privacy_legal_documents: {
+        Row: { version: string; kind: string; body: string; body_sha256: string; policy_version: string | null; approved_at: string; published_at: string }
+        Insert: { version: string; kind: string; body: string; body_sha256: string; policy_version?: string | null; approved_at: string; published_at: string }
+        Update: { version?: string; kind?: string; body?: string; body_sha256?: string; policy_version?: string | null; approved_at?: string; published_at?: string }
+        Relationships: []
+      }
       accounts: {
         Row: { id: string; name: string; status: string; legacy_origin_user_id: string | null; created_at: string; updated_at: string }
         Insert: { id?: string; name: string; status?: string; legacy_origin_user_id?: string | null; created_at?: string; updated_at?: string }
@@ -257,6 +263,7 @@ export type Database = {
       }
       consultation_notification_deliveries: {
         Row: {
+          retention_minimized_at: string | null
           attempt_count: number
           created_at: string
           id: string
@@ -271,6 +278,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          retention_minimized_at?: string | null
           attempt_count?: number
           created_at?: string
           id?: string
@@ -285,6 +293,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          retention_minimized_at?: string | null
           attempt_count?: number
           created_at?: string
           id?: string
@@ -717,6 +726,7 @@ export type Database = {
       }
       email_deliveries: {
         Row: {
+          retention_minimized_at: string | null
           ai_report_id: string
           ai_report_version: number
           attempt_count: number
@@ -735,6 +745,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          retention_minimized_at?: string | null
           ai_report_id: string
           ai_report_version: number
           attempt_count?: number
@@ -753,6 +764,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          retention_minimized_at?: string | null
           ai_report_id?: string
           ai_report_version?: number
           attempt_count?: number
@@ -1493,6 +1505,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      run_retention_maintenance: { Args: {p_dry_run?: boolean; p_batch_size?: number; p_scope?: Json}; Returns: Json }
+      withdraw_marketing_consent: { Args: {p_request_id: string; p_user_id?: string}; Returns: boolean }
+      marketing_send_allowed: { Args: {p_user_id: string}; Returns: boolean }
       read_admin_console: {
         Args: { p_section: string; p_id?: string | null; p_filters?: Json }
         Returns: Json

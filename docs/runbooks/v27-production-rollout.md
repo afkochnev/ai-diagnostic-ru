@@ -1,385 +1,339 @@
-# V2.7 production rollout reconstruction — BLOCKED
+# V2.7 — точная инструкция будущего production rollout
 
-This is an audited preparation document, not permission to execute production
-commands. **STOP: production mutations remain unauthorized.** Commercial checkout versioning
-and verified full refunds are implemented in the continuation candidate. Final
-privacy documents, production payment support and final staging acceptance remain
-separate gates. The historical baseline below is retained for provenance only.
-The commands below describe the exact audited candidate, not an approved launch.
-Any runtime correction requires a new manifest, CI and affected staging acceptance.
-No production write, email, AI request or payment was executed during V2.7.
+Версия: v27-runbook-owner-risk-retention-20261022. Подготовлено к рассмотрению; разрешения на выполнение нет.
 
-## Owner-authorized continuation, 22 October 2026
+**STOP до первой production mutation.** Команды изменения ниже — только будущая
+процедура после отдельного разрешения владельца с SHA-256 этой инструкции.
+Одобрение PR #7/#8, оферты или этого подготовительного этапа разрешением не является.
 
-The owner approved commercial version `advanced-terms-ru-v1` and full 480 RUB
-refunds requested at `info@iteam.ru`. The owner subsequently supplied the complete
-approved offer and merchant requisites. The exact versioned source is
-`docs/legal/advanced-terms-ru-v1.md`; only the publication-date placeholder is
-filled as 22 October 2026. Its SHA-256 is
-`5e98f8712abd03413598efced5f1e1445701af873e552e32d9797c495191fe94`.
-The approved legal address is 123100, Moscow, Presnenskaya naberezhnaya 12,
-office 10/45; no address from another public document is substituted.
-Publication is additive and rejects any conflicting document under the same
-version. Checkout remains closed wherever the approved immutable document is absent.
+## 1. Зафиксированные артефакты и ограничения
 
-The continuation branch implements commercial version/hash acceptance, full-refund
-verification and independent launch controls. These are LOCAL changes, not the
-canonical deployed RC in the table below. The three new migration versions are
-`20261022130314`, `20261022131400` and `20261022133523`; the production pending
-inventory is therefore 17, not the historical 14 below. Publication acceptance
-and exact read-only receipts are in
-`artifacts/v27-production-launch/approved-offer-staging/`. The earlier
-blocked runbook is archived there as `runbook-initial-stop.md`.
-
-Operational control semantics after future acceptance:
-
-- `BILLING_ENABLED=false` denies new checkout; verified reconciliation continues
-  with the same exact TEST environment/merchant guards.
-- `YOOKASSA_RECONCILIATION_ENABLED=false` is a separate provider-incident stop.
-- `YOOKASSA_REFUNDS_ENABLED=false` is the default; no refund POST is permitted.
-  `YOOKASSA_REFUND_RECEIPT_MODE=from_original_payment` additionally requires
-  confirmed merchant receipt behavior before any permitted refund initiation.
-- `ACQUISITION_ENABLED` and `TEAM_ENABLED` require explicit `true` on the exact
-  production origin/project pair; production is still unchanged and OFF.
-- Creation stops `ACQUISITION_START_ENABLED=false`, `TEAM_CREATION_ENABLED=false`
-  and `TEAM_INVITATIONS_ENABLED=false` do not disable existing sessions, Team
-  reads/answers or worker processing. Independent `private.launch_controls` DB
-  flags also default false and prevent direct creation-RPC bypass.
-- The ordinary Team worker now uses the same production enable boundary as web.
-  Its source changed; the old worker equivalence proof no longer approves it for
-  this continuation. A new worker artifact/compatibility manifest is required.
-- A successful full refund is proved using authenticated refund GET plus the
-  original payment GET (merchant/test/amount/metadata and total refunded amount).
-  Only then does a service-only atomic transaction end Advanced and create Free.
-  Historical reports/diagnostics/data and original commercial evidence are retained.
-  Pending/canceled refunds do not change access; duplicate old refunds cannot
-  revoke a later purchase. Persist the POST refund ID before verification so
-  recovery uses GET, not a new refund.
-
-Because the payment path changed, the old V26B TEST payment is supporting history,
-not acceptance of this new candidate. Prepare a separately bounded staging TEST
-plan after the approved document is supplied. No provider payment/refund, real
-email, AI request, staging migration/deploy or production mutation was executed
-by this local continuation. Full canonical staging regression, approved final
-privacy versions, Auth/fiscal configuration and all production approvals remain
-open gates. **Do not execute the historical commands below for the new candidate.**
-
-## Pinned scope — historical audited baseline
-
-| Object | Exact identity |
+| Назначение | Точная идентичность |
 | --- | --- |
 | Production origin | `https://audit.iteam.ru` |
 | Production Supabase | `fhvxqeaujjeiflanqsbg` |
+| Render workspace | `tea-daipgd67bikc739jftl0` |
 | Production web | `srv-dak57did0e5s73b1t0b0` |
 | Production worker | `srv-dak5rurl550s73a17l60` |
-| Current production web and worker | `0b8c4acb6a1071e5be06268ba8216c4215036e84` |
-| Intermediate Account-compatible web | `15f36e6ab1ed5229618b34fa3270eca2c47da5ea` |
-| Canonical audited web RC | `7bb206fbf408f25408859403e20e775d8ec3e6c1` |
-| Retained accepted compatible worker | `5bd9965421aadf04503fa4fa8489ca0fe474e3cd` |
-| RC tree | `1a21950d505b34b36503b617c84592e6b840b8ec` |
-| Tools | Node `26.8.1`, Supabase CLI `2.117.0`, Render CLI `2.28.0` |
+| Текущие production web/worker | `0b8c4acb6a1071e5be06268ba8216c4215036e84` |
+| Совместимый промежуточный web | `15f36e6ab1ed5229618b34fa3270eca2c47da5ea` |
+| Принятый canonical final web | `27e8006152ae1239e03a3f49e31bd519eac5764c` |
+| Принятый final worker | `f474a0b125cce0f2b418a569a8b9a95fff3f203f` |
+| Общее дерево final web/worker | `dc421c6f30227e55d3d92df000c31db8592e765c` |
+| Commercial version | `advanced-terms-ru-v1` |
+| SHA-256 оферты | `5e98f8712abd03413598efced5f1e1445701af873e552e32d9797c495191fe94` |
 
-All commands assume the repository directory
-`/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/ai-diagnostic-v22a-team-foundation`.
-Evidence is in its sibling `artifacts/v27-production-launch/` directory.
-Auto-deploy and previews must remain OFF on both production services.
-The owner approved PR7 merge and canonical staging only. That approval is exhausted
-by those actions and does not authorize anything in this production runbook.
+Production baseline на момент проверки: 30 миграций, 38 защищённых таблиц,
+8 365 записей; 26 пользователей, 23 компании, 26 диагностик, 26 отчётов и 17 PDF.
+Это измерения, а не константы следующего запуска: перед действием снять свежий baseline.
+Canonical CI 39823472156: 958 тестов, 8 прежних необязательных пропусков,
+сборки приложения/Docker и полный изолированный SQL — PASS.
+Staging web работает на canonical SHA; worker сохранён на принятом равном дереве.
+Новая TEST-оплата при canonical merge не выполнялась.
 
-## Evidence and limits
+Точная последовательность/хеши: `docs/v27-rollout-sequence.json`.
+Конфигурационные слоты: `docs/v27-production-configuration.json`; это не файл
+для импорта в Environment. Не затирать действующие секреты или Individual-настройки.
+Authoritative цена остаётся в `docs/v26b-commercial-config.json`.
 
-Canonical CI run `39773625622` passed lint, typecheck, build, 914 unit tests
-(8 existing optional skips), full isolated SQL and Linux Docker build. Canonical
-staging web is Live at the RC. The retained worker has byte-identical transitive
-runtime sources/dependencies; it was not redeployed for SHA symmetry.
+## 2. Незакрытые gates — не обходить
 
-Production has 30 ledger entries and 8,365 protected rows across 38 tables.
-Staging has 44 entries and 7,523 protected rows across 73 tables. Before/after
-fingerprints, schema metadata and ledgers match. These are dated observations,
-not future expected counts. No raw answers were exported.
+1. Финальные privacy/consent тексты утверждены владельцем по точным хешам и
+   опубликованы только на staging: `data-processing-policy-ru-v1`,
+   `data-processing-consent-ru-v1`, `marketing-consent-ru-v1`.
+   Статус: `V27_PRIVACY_LEGAL_STAGING_PASS`; manifest: `docs/v27-legal-package.json`.
+   Исторические согласия сохранены; существующим пользователям новые согласия
+   автоматически не добавляются. Production остаётся на temporary-ru-v1.
+   Перед production требуется отдельное разрешение и обновлённый точный пакет.
+   Retention проверена на synthetic staging; удаление Account выполняется вручную
+   по runbook, production scheduling и реальное удаление не выполнялись.
+   `OWNER_ACCEPTED_RU_DATA_LOCALIZATION_RISK` — accepted risk, не blocking gate
+   V2.7 и не утверждение полного юридического соответствия. Продолжается текущая
+   архитектура Supabase/Render/OpenAI/Resend/YooKassa. Российский data plane,
+   self-hosted Supabase и иная миграция локализации для этого запуска не требуются.
+   Документы должны прямо раскрывать внешних поставщиков и возможную обработку
+   за пределами РФ, без обещания, что все данные физически хранятся в России.
+2. Текущий YooKassa adapter — TEST-only. Он блокирует production целиком, в том
+   числе TEST-платёж в production. Поддержка реальных платежей `test=false`
+   требует отдельной реализации/проверки. `productionEnabled=false` сохраняется.
+3. До включения новых Auth-потоков согласовать точный redirect allowlist и
+   включение leaked-password protection; сейчас production HIBP выключен.
+4. До billing нужны подтверждённые production merchant/receipt/refund settings,
+   защищённые live credentials и отдельная приёмка. TEST-реквизиты не копировать.
+5. Перед первым изменением нужен свежий проверенный recovery point/backup,
+   ответственное лицо и отдельное разрешение на точный rollout. Новый backup
+   и восстановление в V2.7 preparation не выполнялись.
 
-The network-isolated PostgreSQL rehearsal applied exact historical SQL to synthetic
-history, checked Account ownership/Free defaults and actual exported application
-services at V1, A, B, Team, billing, V26A and final states. Identity verification
-and PostgREST transport were mocked; SQL/RLS were real. Worker claim RPC contracts
-were checked on empty queues. No live GoTrue or external worker invocation is
-claimed. The final plan service fails on V1/A/B/Team; intermediate-state service
-PASS at billing does not certify all final pages/Admin RPCs. Keep the intermediate
-web until the entire 44-entry ledger exists.
+Разрешённая будущая техническая выкладка с новыми возможностями OFF также
+требует отдельного решения владельца с явным перечислением оставшихся gates;
+эта инструкция не объявляет такое исключение разрешённым.
 
-## Unclosed gates — do not start rollout
+## 3. Read-only проверки перед окном работ
 
-1. Obtain approved final privacy/processing, marketing and commercial/access/
-   refund/receipt documents and exact immutable versions. `temporary-ru-v1`
-   remains current. Do not author legal wording or rewrite historical consents.
-2. Implement required commercial links and a fail-closed server checkout version
-   check. The current plan page only checks billing/provider/receipt readiness.
-3. Review production feature controls. `ACQUISITION_ENABLED` and `TEAM_ENABLED`
-   are not implemented switches. Exact staging origin/project guards currently
-   make these features entirely OFF in production. Do not spoof staging origins.
-4. The current YooKassa adapter is intentionally TEST-only. Production payment
-   support requires a reviewed correction enforcing `test=false` in production
-   and `test=true` in staging. Never merely remove validation or reuse TEST keys.
-5. Complete fresh canonical staging mock flows: anonymous start/claim, Individual
-   report/PDF, Team create/invite/aggregate/report/PDF, Admin and Funnel. These
-   were not executed after the mandatory stop finding. Earlier acceptance and
-   current CI support the audit but do not equal this fresh full live regression.
-6. Before enabling new Auth flows, approve exact production callback paths:
-   `/auth/confirm`, recovery query behavior, `/ru/free/confirm`, `/ru/team/join`,
-   `/ru/team/confirm`. Current allowlist contains only `/auth/confirm`.
-   Enable leaked-password protection through a separately authorized Auth change.
-7. Add actionable receipt failure/pending-age health coverage. Current Admin
-   Billing displays per-payment receipt state; aggregate receipt health is absent.
-8. Confirm retention obligations; seven-day anonymous expiry does not delete data.
-
-After corrections, regenerate the RC/manifest/runbook hashes. A material payment
-path correction requires new staging sandbox acceptance. While the exact accepted
-payment tree remains unchanged, reuse V26B TEST evidence; do not create another
-payment solely for this preparation phase.
-
-## Future preflight, backup and maintenance gates
-
-Obtain explicit production authorization naming the regenerated manifest/runbook
-hashes, exact service SHAs, project, migration set, feature scope, initial billing
-OFF and bounded smoke operations. A generic “continue” is insufficient.
-
-Immediately before the first mutation, repeat safe baseline, ledger, methodology,
-service/auto-deploy, queues/leases and exact dry-run. Inspect pending/failed
-retryable scoring, AI, consultation, email and Team work, not just total row counts.
-Never delete jobs or release leases to manufacture an empty queue. Uncertain
-external requests, active/unknown leases or unexpected data changes mean STOP.
-
-The managed backup API currently lists completed physical daily backups; latest
-observed reference `2035111730`, `2026-10-22T04:58:51.763Z`. PITR is OFF. This is
-backup capability evidence, not a freshly created rollout backup or restore test.
-Future release operator must record a fresh immediately-pre-mutation backup,
-recovery owner, scope, timestamp, retention and tested restoration procedure.
-If only an older managed backup is available, do not waive the freshness gate.
-
-A separately authorized private logical backup can be prepared with the pinned
-CLI, without printing data or passwords. The following are future backup-only
-commands; do not run them during this read-only preparation:
+В репозитории убедиться в точном дереве и required CI:
 
 ```sh
-umask 077
-mkdir -m 700 /private/tmp/aca-v27-production-backup
-./node_modules/.bin/supabase --agent no db dump --project-ref fhvxqeaujjeiflanqsbg --schema public,private,auth,storage --file /private/tmp/aca-v27-production-backup/schema.sql
-./node_modules/.bin/supabase --agent no db dump --project-ref fhvxqeaujjeiflanqsbg --schema public,private,auth,storage --data-only --use-copy --file /private/tmp/aca-v27-production-backup/data.sql
-./node_modules/.bin/supabase --agent no db dump --project-ref fhvxqeaujjeiflanqsbg --role-only --file /private/tmp/aca-v27-production-backup/roles.sql
+git rev-parse 27e8006152ae1239e03a3f49e31bd519eac5764c^{tree}
+git rev-parse f474a0b125cce0f2b418a569a8b9a95fff3f203f^{tree}
+gh run view 39823472156 --json headSha,status,conclusion,jobs
+render workspace current --output json
+render services --output json
 ```
 
-Use a new empty private directory; failure or an existing backup directory means
-STOP, not overwrite. Authenticate privately; never put a DB password in command
-arguments/chat. This export may contain personal data and role material; keep it
-outside evidence/Git and under approved encrypted retention. Do not claim it is
-restorable until the release operator verifies a supported restoration process,
-including Supabase-managed auth/storage constraints. Storage object bytes, service
-secrets and provider settings need separate protected recovery coverage. Recovery
-is a separately approved decision with write-loss assessment, never an automatic
-rollback after a failed migration.
+Оба дерева должны быть `dc421c6f30227e55d3d92df000c31db8592e765c`; CI — success
+для application и isolated-sql. Workspace — только указанный выше; production
+web/worker не suspended, auto-deploy OFF и previews OFF. Не переключать workspace
+молча. Если состояние изменилось, остановиться и пересобрать доказательства.
 
-Future authorized maintenance action (whole web surface, not a global DB fence):
+Снять новый metadata-only snapshot/ledger/counts/отпечатки с read-only транзакцией;
+не сохранять сырые ответы, токены, email или session cookies. До A production
+Account-таблиц ещё нет: компании считать в `public.company_profiles`.
+
+Точная проверка полного пакета без изменений:
+
+```sh
+"/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/ai-diagnostic-v22a-team-foundation/node_modules/.bin/supabase" --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --dry-run --skip-vault --workdir "/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/artifacts/v27-production-launch/approved-offer-staging/production-phase-packages/final/"
+```
+
+Ожидание на исходном ledger30: только 17 файлов таблицы ниже.
+Если появляется `20260918000100`, любой дополнительный файл, неопределённая
+provenance либо ошибка CLI — STOP. Запрещены include-all, reset, migration/ledger
+repair, seed/roles replay и произвольный schema push. `--skip-vault` обязателен.
+
+## 4. Первая mutation — только после отдельного разрешения
+
+В разрешении должны быть названы инструкция/её хеш, все 17 migration hashes,
+промежуточный и final service SHAs, backup/write-pause/drain и флаги OFF.
+
+Сначала backup gate, непосредственно перед первой production mutation.
+
+Backup gate: в
+`https://supabase.com/dashboard/project/fhvxqeaujjeiflanqsbg/database/backups`
+зафиксировать свежий completed recovery point, время и пригодность восстановления.
+Daily physical backups доступны; PITR сейчас OFF, старый daily backup нельзя
+объявлять созданным непосредственно перед rollout. Если нужного recovery point
+нет, STOP: отдельно согласовать fresh logical backup с защищённым хранением
+вне release artifacts или другой подтверждённый механизм. Никакой backup export,
+restore, платный PITR или изменение конфигурации в текущей preparation не разрешены.
+DB backups не покрывают Storage object bytes: сверить inventory отдельно.
+
+Точный write pause для платного production web:
 
 ```sh
 render services update srv-dak57did0e5s73b1t0b0 --maintenance-mode=true --confirm --output json
 ```
 
-Verify readback and quiet direct Auth/API traffic as well. Inspect transactions
-and lock waits. Phase A locks Auth/users/provisioning and Phase B locks
-companies/diagnostics transactionally; web maintenance alone cannot stop direct
-Supabase clients. If a safe quiet window cannot be established, STOP/reschedule.
-Keep legacy report/PDF read access where maintenance mechanism permits it;
-do not invent a global write-pause flag or silently change Auth/RLS.
+Проверить readback `maintenanceMode.enabled=true` и HTTP503 для
+`https://audit.iteam.ru`. Это закрывает публичный web-трафик, но не доступ к
+Supabase Data API/private network. До A/B проверить отсутствие самостоятельных
+внешних writers/прямых API-клиентов; одного HTTP503 для доказательства тишины мало.
+Никакие неизвестные транзакции/очереди не удалять.
 
-## Exact migration packages
+Проверка V1 очередей — read-only SQL через защищённый операторский доступ:
 
-`production-phase-packages.json` pins all SQL bytes and package hashes. Never use
-`--include-all`, migration/ledger repair, reset, seed, or ad hoc schema push.
-`20260918000100` is already ledger-reconciled and must NEVER appear as pending.
-Known staging timestamp alias `20261016181419` does not replace production's
-repository version `20261016175038`.
-
-The full inventory dry-run already passed with exactly these 14 pending files:
-
-1. `20261013000100_account_foundation.sql`
-2. `20261013000200_account_authorization_cutover.sql`
-3. `20261015135524_team_diagnostic_foundation.sql`
-4. `20261015170255_team_aggregation_report.sql`
-5. `20261016075550_team_participant_passwordless.sql`
-6. `20261016175038_team_single_email_consent.sql`
-7. `20261018071921_plans_entitlements_billing_foundation.sql`
-8. `20261018105321_rich_team_ai_report_v2.sql`
-9. `20261018171308_team_synthesis_bounded_repair.sql`
-10. `20261019073437_team_report_v3_and_pdf.sql`
-11. `20261020170720_v24_admin_console_and_plan_audit.sql`
-12. `20261020191130_anonymous_free_diagnostic_funnel.sql`
-13. `20261021132005_billing_commercial_activation.sql`
-14. `20261021164251_yookassa_annual_billing.sql`
-
-Read-only inventory command:
-
-```sh
-./node_modules/.bin/supabase --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --dry-run --skip-vault --workdir ../artifacts/v27-production-launch/production-release
+```sql
+begin transaction isolation level repeatable read read only;
+select kind,status,count(*) from public.jobs group by kind,status;
+select count(*) unsafe_jobs from public.jobs
+where status::text in ('queued','running','processing')
+   or (status::text='failed' and attempts<3 and available_at<=now());
+select count(*) active_or_uncertain_leases from public.jobs
+where lease_expires_at>now()
+   or (status::text in ('running','processing') and lease_token is not null);
+select status,count(*) from public.email_deliveries group by status;
+rollback;
 ```
 
-**Never apply `production-release` as a one-shot cutover.** The future sequence is:
+Требуется unsafe_jobs=0 и active_or_uncertain_leases=0, email queue понятна;
+неизвестный результат провайдера — STOP до сверки по прежнему request ID.
 
-### A. Expand Account foundation while still compatible with V1
+## 5. Account Phase A → совместимый web
 
-Require exactly the original 30-entry ledger and only Phase A pending:
+Сначала dry-run пакета A, затем apply **только под отдельным разрешением**:
 
 ```sh
-./node_modules/.bin/supabase --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --dry-run --skip-vault --workdir ../artifacts/v27-production-launch/production-phase-a
+"/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/ai-diagnostic-v22a-team-foundation/node_modules/.bin/supabase" --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --dry-run --skip-vault --workdir "/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/artifacts/v27-production-launch/approved-offer-staging/production-phase-packages/phase-a/"
+"/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/ai-diagnostic-v22a-team-foundation/node_modules/.bin/supabase" --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --skip-vault --workdir "/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/artifacts/v27-production-launch/approved-offer-staging/production-phase-packages/phase-a/"
 ```
 
-Only under future explicit rollout approval and all gates PASS:
+На ledger30 ожидается только `20261013000100_account_foundation.sql`.
+После успешного применения ledger31, старые данные неизменны, owner backfill
+соответствует каждому исходному пользователю/компании. Не создавать Advanced.
+Оригинальный V1 worker ещё допустим при прежних claim contracts и пустых очередях.
 
 ```sh
-./node_modules/.bin/supabase --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --yes --skip-vault --workdir ../artifacts/v27-production-launch/production-phase-a
 render deploys create srv-dak57did0e5s73b1t0b0 --commit 15f36e6ab1ed5229618b34fa3270eca2c47da5ea --wait --confirm --output json
 ```
 
-Require ledger31, Live exact intermediate web, one correct legacy Account per
-owner, active membership, no orphan Company, unchanged historical identifiers/
-methodology, foreign-owner denial and reachable existing diagnostic/report/PDF.
-Do not create a second Company, transfer/revoke ownership or grant Advanced here.
-Old worker may remain only through the drained, tested V1/A contract.
+Принять только deploy `live` на точном SHA; auto-deploy остаётся OFF.
+Под разрешённой операторской сессией проверить Company/Individual/result/PDF,
+чужую компанию — отказ. Пока публичный write pause включён, использовать
+контролируемый доступ; если для browser smoke требуется снять pause, это отдельный
+зафиксированный подпункт разрешённого окна, после него повторить drain/pause.
+Изолированные app-service/RLS-тесты — доказательство контрактов, а не утверждение,
+что каждая final-страница совместима с неполной схемой.
 
-### B. Stop old worker, then authorization cutover
+## 6. До Phase B остановить только production worker
 
-Drain/inspect leases again. Open
-`https://dashboard.render.com/worker/srv-dak5rurl550s73a17l60`, suspend only this
-worker and verify suspended state and zero leases after graceful termination.
-Keep web write pause. Do not leave old workers running across this boundary.
+После повторного drain выполнить точное действие Render API через защищённый
+Bearer из credential store (не помещать его в команду, файл, чат или лог):
 
-Require ledger31 and only Phase B pending:
-
-```sh
-./node_modules/.bin/supabase --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --dry-run --skip-vault --workdir ../artifacts/v27-production-launch/production-phase-b
+```http
+POST https://api.render.com/v1/services/srv-dak5rurl550s73a17l60/suspend
 ```
 
-Future approved apply only:
+Ожидание HTTP202; readback именно этого service ID: `suspended=suspended`.
+Дождаться завершения процесса и отсутствия leases/uncertain requests. Suspend
+не считать доказательством успешного завершения начатого внешнего запроса.
+Другие сервисы/worker не останавливать.
+
+## 7. Phase B → tail, worker остаётся остановленным
 
 ```sh
-./node_modules/.bin/supabase --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --yes --skip-vault --workdir ../artifacts/v27-production-launch/production-phase-b
+"/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/ai-diagnostic-v22a-team-foundation/node_modules/.bin/supabase" --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --dry-run --skip-vault --workdir "/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/artifacts/v27-production-launch/approved-offer-staging/production-phase-packages/phase-b/"
+"/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/ai-diagnostic-v22a-team-foundation/node_modules/.bin/supabase" --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --skip-vault --workdir "/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/artifacts/v27-production-launch/approved-offer-staging/production-phase-packages/phase-b/"
 ```
 
-Require ledger32, validated Account mappings, correct RLS ownership and historical
-reachability. **This is the boundary after which a general original-V1 rollback
-is not safe.** The old singular Company contract fails once multiple Companies
-are allowed; do not promise a V1 rollback based on a single unchanged Company.
-
-### C. Remaining twelve files while intermediate web remains selected
-
-Require ledger32; pending list must be files3–14 above in exact order:
+После A ожидается только `20261013000200_account_authorization_cutover.sql`,
+затем ledger32. На исходном ledger30 dry-run B закономерно показывает A+B;
+не использовать такой результат как разрешение пропустить проверку между ними.
+С Phase B оригинальный V1 web больше не является общим rollback-артефактом,
+особенно после нескольких компаний на Account. Промежуточный web остаётся MID.
 
 ```sh
-./node_modules/.bin/supabase --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --dry-run --skip-vault --workdir ../artifacts/v27-production-launch/production-tail
+"/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/ai-diagnostic-v22a-team-foundation/node_modules/.bin/supabase" --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --dry-run --skip-vault --workdir "/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/artifacts/v27-production-launch/approved-offer-staging/production-phase-packages/final/"
+"/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/ai-diagnostic-v22a-team-foundation/node_modules/.bin/supabase" --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --skip-vault --workdir "/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/artifacts/v27-production-launch/approved-offer-staging/production-phase-packages/final/"
 ```
 
-Future approved apply only:
+После A/B ожидаются только оставшиеся 15 файлов таблицы ниже, затем ledger47.
+При любом другом наборе/ошибке — STOP, без history repair и без down migrations.
+Сверить source hashes и исходные строки; публикация оферты additive и не должна
+заменять существующий v1 с иным содержимым.
+
+## 8. Final app/worker с возможностями OFF
+
+До старта final runtime через Environment только точных production сервисов
+установить согласованные новые флаги из `docs/v27-production-configuration.json`:
+ACQUISITION_ENABLED=false, ACQUISITION_START_ENABLED=false, TEAM_ENABLED=false,
+TEAM_CREATION_ENABLED=false, TEAM_INVITATIONS_ENABLED=false, BILLING_ENABLED=false,
+YOOKASSA_REFUNDS_ENABLED=false. Проверить и три false в `private.launch_controls`.
+Сохранить прежние Individual AI/email secrets/settings; пустые config slots не импортировать.
 
 ```sh
-./node_modules/.bin/supabase --agent no --output pretty db push --project-ref fhvxqeaujjeiflanqsbg --yes --skip-vault --workdir ../artifacts/v27-production-launch/production-tail
+render deploys create srv-dak57did0e5s73b1t0b0 --commit 27e8006152ae1239e03a3f49e31bd519eac5764c --wait --confirm --output json
 ```
 
-Require ledger44 and exact statement/source hashes, preserved old rows and
-methodology, all existing Accounts Free, no automatic Advanced, no old report
-paywall. A partial failure means inspect committed ledger and STOP; no blind retry,
-ledger repair or down migration. Worker stays stopped until schema is complete.
+Для worker: resume может создать deploy по связанному main. До resume сверить,
+что remote main всё ещё точный canonical SHA с равным деревом. Если main изменился,
+STOP и пересмотреть управление источником. Только после этой проверки:
 
-### D. Core web and retained compatible worker; features remain OFF
+```http
+POST https://api.render.com/v1/services/srv-dak5rurl550s73a17l60/resume
+```
 
-The following candidate commands remain BLOCKED until the recorded RC is
-superseded/accepted with all release gates closed. Do not substitute branch names.
+Дождаться live, проверить фактический commit/tree и безопасные env.
+Затем при необходимости закрепить принятый worker artifact:
 
 ```sh
-render deploys create srv-dak57did0e5s73b1t0b0 --commit 7bb206fbf408f25408859403e20e775d8ec3e6c1 --wait --confirm --output json
-render deploys create srv-dak5rurl550s73a17l60 --commit 5bd9965421aadf04503fa4fa8489ca0fe474e3cd --wait --confirm --output json
+render deploys create srv-dak5rurl550s73a17l60 --commit f474a0b125cce0f2b418a569a8b9a95fff3f203f --wait --confirm --output json
 ```
 
-Select/resume only the specified suspended worker in its Render Dashboard and
-verify actual selected commit/startup/leases. Do not assume deploying a suspended
-service resumes it. Do not deploy final code against a partial ledger.
-Set explicit `BILLING_ENABLED=false` under the future approved config action.
-Current origin guards keep anonymous/Team OFF; there is no usable production
-`ACQUISITION_ENABLED`/`TEAM_ENABLED` toggle in this candidate.
+Если resume уже дал точное принятое дерево/runtime, повторный deploy ради
+совпадения SHA не нужен. При расхождении не допускать неизвестный worker к очередям;
+остановиться, сохранить OFF, forward containment по фактической схеме.
 
-Future approved health check correction:
+## 9. Postflight и отдельные enablement gates
 
-```sh
-render services update srv-dak57did0e5s73b1t0b0 --health-check-path /api/health --confirm --output json
-```
+Через контролируемый доступ проверить health200, login, исходные Company,
+Individual diagnostics/results/reports/PDF; owner/foreign/Admin boundaries;
+все существующие Accounts — Free, прежние Individual отчёты доступны без оплаты.
+Admin smoke требует заранее подтверждённой production administrator-сессии;
+временную staging-роль и staging user ID в production не переносить.
+Проверить System Health: public jobs, Team jobs, AI/email failures, billing
+webhook failure, stale checkout, receipt failure/pending; никаких секретов/сырых ответов.
 
-Verify health, login, an existing Company/Individual diagnostic, existing report
-and PDF, Free defaults, foreign-Account denial, Admin boundary and billing-disabled
-UI. New report/AI/email smoke jobs require explicit provider bounds; do not invoke
-production's currently configured real providers as an implicit read-only test.
-
-After successful approved postflight:
+Сравнить postflight с fresh baseline: исходные строки неизменны; допустимы только
+документированные migration backfill/seed additions. Не сравнивать только общий count.
+Лишь после принятия postflight под отдельным разрешением снять maintenance:
 
 ```sh
 render services update srv-dak57did0e5s73b1t0b0 --maintenance-mode=false --confirm --output json
 ```
 
-Keep auto-deploy OFF and record exact web/worker Live commits, queue state and
-protected-data comparison with expected backfill/smoke additions classified.
+Следующие включения независимы: anonymous/Team после privacy/consent/Auth gates,
+затем billing последним. Реальные письма/AI требуют отдельного bounded smoke.
+Для billing до любой live оплаты требуется новый production-capable адаптер,
+`test=false`, точный merchant и production pair, без TEST credentials.
+Authoritative productionEnabled остаётся false до отдельно принятого изменения.
 
-## Separate feature and real billing stages — currently blocked
+Правильный будущий production webhook:
+`https://audit.iteam.ru/api/billing/webhook/yookassa`;
+события payment.succeeded, payment.canceled. Путь из исходного задания
+`/api/billing/yookassa/webhook` не совпадает с реализованным endpoint.
+Не создавать production subscription на этом этапе. Refund webhook — отдельная
+проверенная конфигурация; реальных возвратов preparation не выполняет.
+Цена480 RUB, service, full_payment, vat_code1, без НДС/его суммы/автопродления.
+USN subtype не определён; tax_system_code — только если нужен выбранной кассе
+и подтверждён бухгалтерией. Проверка production receipt succeeded — отдельный live smoke.
 
-Stage2 may enable acquisition/Team only after reviewed production enable/kill
-controls, final consent/callback tests and separate explicit scope approval.
-Anonymous start OFF must preserve claimed users; Team creation/invite OFF must
-preserve existing Team reads/data/entitlements. There is no existing safe toggle
-to copy into this runbook; implement/test it before permitting activation.
+## 10. Containment и восстановление
 
-Billing is LAST. Approved commercial contract is 480.00 RUB, one calendar year,
-vat_code=1/no VAT, service/full_payment, no recurring charge or automatic renewal.
-Display `480 ₽`, optionally `Без НДС`; do not calculate/display a VAT amount.
-Do not infer USN subtype. Send tax_system_code only when the confirmed production
-receipt solution requires it; otherwise omit. Confirm full_payment against the
-actual production merchant/fiscal setup; the accepted TEST simulator is not proof.
+- До B: сохранять A/backfill; только проверенный для фактического ownership
+  V1/A-compatible артефакт. После B — MID на неполной схеме или принятый final
+  на полном ledger47. Общего возврата к V1 после cutover нет.
+- `BILLING_ENABLED=false` останавливает новые оплаты, сохраняет оплаченный доступ.
+  `YOOKASSA_RECONCILIATION_ENABLED=false` — отдельный provider stop. Не создавать
+  новую оплату/возврат для выяснения состояния прежней: использовать authenticated GET.
+- Для acquisition остановить новые starts app+DB-флагом; для Team — creation/invites
+  app+DB-флагами. Существующие claimed users, Team participation/results и данные сохранить.
+- Refund initiation OFF. Только проверенный successful полный refund480 завершает
+  Advanced и переводит Account в Free; pending/canceled не понижают тариф,
+  duplicate old refund не отзывает позднейшую покупку. Историю не удалять.
+- При проблеме worker: drain → POST suspend точного production ID → readback;
+  не удалять jobs и не освобождать leases вручную. Resume только после проверки
+  выбранного artifact/env/schema, с явным учётом создаваемой deployment операции.
+- Restore — отдельное согласованное recovery-действие с известным backup, scope
+  потери новых записей и Storage objects. Backup capability проверена; restore не репетировался.
 
-Only under separate approval install protected production-shop credentials in
-production web, never TEST credentials. Configure the production merchant's two
-events `payment.succeeded` and `payment.canceled` to the **implemented** route:
+## 11. Точный migration inventory
 
-`https://audit.iteam.ru/api/billing/webhook/yookassa`
+| Порядок | Файл | SHA-256 |
+| --- | --- | --- |
+| 1 | `20261013000100_account_foundation.sql` | `eea60518cb1e3860aa9f69b65bb3305f7d60ab1d6a5ee6df98ae18886eba10f9` |
+| 2 | `20261013000200_account_authorization_cutover.sql` | `785a1b9de7d1ae155a80325fc3fde6838ddfb668aff7d2457b476e229a3ca510` |
+| 3 | `20261015135524_team_diagnostic_foundation.sql` | `fe8df4214ca85d824314e058447ee652e9c075c306f793dd9c35ddb35c41ae19` |
+| 4 | `20261015170255_team_aggregation_report.sql` | `aeb275eb161d3b9d3ae0d7882aecef2644ff0979fa8a6edb85ee67c923659b89` |
+| 5 | `20261016075550_team_participant_passwordless.sql` | `bfb2ace6f36ff202f08c7054211e355a68a1ae980c9eff6fe64a663eaa4a7e85` |
+| 6 | `20261016175038_team_single_email_consent.sql` | `fcc8b41a0f9b74ae17646eaa0ee8c6347b5d10afb164d9c96da806a116eb79e1` |
+| 7 | `20261018071921_plans_entitlements_billing_foundation.sql` | `1a3e534b89e7cd33531491315ee6dbd0be056d3b4b18f858aa0288e457a17dfe` |
+| 8 | `20261018105321_rich_team_ai_report_v2.sql` | `189bd57717c9fe25afb00ad6c2a2b95faf644333f9a169f9d5c289362c471d7d` |
+| 9 | `20261018171308_team_synthesis_bounded_repair.sql` | `40e4271c92723f010840f7ffdf204bd1b1612fb304e9a3f2485a9a4d59262497` |
+| 10 | `20261019073437_team_report_v3_and_pdf.sql` | `00f346fe3e768a2ffb2d6575fb3068d4cf5e9bb652c3e720f298cb254efbbcdd` |
+| 11 | `20261020170720_v24_admin_console_and_plan_audit.sql` | `54d36156707b95e094f528ff3d7da3d34cba1793e33741169afe29cbab7fcf53` |
+| 12 | `20261020191130_anonymous_free_diagnostic_funnel.sql` | `9a0611e003bcaeefdfa5e1f33ec68495ed0151de1aea9a69b2ef8810dc9eb53e` |
+| 13 | `20261021132005_billing_commercial_activation.sql` | `2e6eb79c667bd11520c33b91b75ea7d6edeb9c90d59857273da7734c1cee1f1d` |
+| 14 | `20261021164251_yookassa_annual_billing.sql` | `17fe0fcea30668f91d40095da4324994fe2a1246f0466ddd52b82775d0cadf70` |
+| 15 | `20261022130314_commercial_terms_and_full_refunds.sql` | `f717909be77ea4438f2dc88a7cbe2c826b625c47eba17dba039b44b24634836e` |
+| 16 | `20261022131400_controlled_launch_gates.sql` | `68dd27b6e091b716785e6f3f2a10acb061a96997ebfc85745acb112f3b0aaf22` |
+| 17 | `20261022133523_publish_advanced_terms_ru_v1.sql` | `ae5f937e573d95be28a2810c409f8aa184cd0173f4797b0b345524f6c5b59ed9` |
 
-The conceptual `/api/billing/yookassa/webhook` in the task is reversed and has no
-handler. Do not set it in the merchant dashboard. No production merchant settings
-were read or changed here; existing iTeam integrations must not be overwritten.
+## 12. Формат будущего разрешения
 
-A future real-money smoke needs separate approval for exact count/cost/account,
-server-verified `test=false`, paid/succeeded, exact receipt item and registration
-success, single annual activation and duplicate replay safety. Current adapter
-rejects production entirely; merely flipping env is insufficient and forbidden.
+До закрытия оставшихся технических/configuration gates и обновления точного пакета rollout
+не запрашивается как готовый к исполнению. Когда gates закрыты, разрешение
+должно прямо назвать `v27-runbook-owner-risk-retention-20261022` и фактический SHA-256
+этого файла, migration inventory из раздела11, intermediate/final web/worker
+из раздела1, backup/drain/write-pause, initial flags OFF и границы smoke.
+Это описание необходимых полей разрешения, а не предоставленное разрешение.
+Если runtime или миграции изменятся, нужен новый кандидат/хеш и затронутая staging-приёмка.
 
-## Containment
+Источники процедур: [Render deploys](https://render.com/docs/deploys),
+[maintenance](https://render.com/docs/maintenance-mode),
+[suspend](https://api-docs.render.com/reference/suspend-service-1),
+[resume](https://api-docs.render.com/reference/resume-service-1),
+[Supabase backups](https://supabase.com/docs/guides/platform/backups).
+CLI-синтаксис проверен по installed Render2.28.0 / Supabase2.117.0 help.
 
-Before PhaseB, retain verified V1/A scope and compatible intermediate web. After
-PhaseB, keep maintenance, stop incompatible workers and use only verified
-intermediate/final artifacts for that schema; prefer reviewed forward correction.
-Do not erase Accounts, consent/audit rows or provider events, repair ledgers, or
-promise destructive rollback. Backup restore requires a separate recovery decision.
+## Дополнение privacy-finalization: только staging, 22 октября 2026
 
-`BILLING_ENABLED=false` blocks new checkout and leaves subscription-derived paid
-access intact. In current code it also disables YooKassa webhook handling. Preserve
-unreconciled provider payments and later verify them server-to-server before
-idempotent processing; never infer payment from browser return or webhook body.
-Provider HTTP subscriptions may be disabled only by the authorized production
-merchant operator; later reconcile missed notifications. Do not revoke paid plans.
-
-Acquisition/Team emergency controls are unimplemented for production and are a
-launch blocker, not an operator instruction to invent flags. Stop new work while
-preserving claimed users, historical reports, paid access and Team data.
-
-## Exit and authorization
-
-Current status: `V27_BLOCKED_RELEASE_GATES`, not `PRODUCTION_READY` and not
-`V27_TECHNICAL_LAUNCH_PACKAGE_READY_BLOCKED_LEGAL`. Technical controls and full
-canonical regression are incomplete in addition to final legal documents.
-Use `release-blockers.json`, final checklist and final readiness report to close
-them. Only after closure regenerate exact hashes and ask the owner for production
-authorization naming that regenerated runbook/manifest, migrations and service
-SHAs with billing initially OFF. No production approval is requested now.
+Retention-миграция 20261022185201 прошла staging-приёмку в PR #9. Она не применена в production и не входит в исторический пакет 47 миграций/17 ожидающих выше. Эти команды не являются разрешением запуска нового расширения. Перед будущим production-развёртыванием потребуется обновлённый канонический пакет и dry-run после отдельного утверждения PR/релиза. Финальные privacy/consent тексты и bundle утверждены владельцем по точным хешам; публикация 20261022193427 применена только на staging после exact dry-run. Staging ledger — 50; production ledger — прежние 30. Исторический production plan выше не включает это расширение и не готов к исполнению без обновления и отдельного разрешения. Production по текущему заданию не менять.

@@ -1,0 +1,136 @@
+{
+  "status": "PREPARATION_ONLY_NOT_AUTHORIZATION",
+  "runtimeCandidate": "27e8006152ae1239e03a3f49e31bd519eac5764c",
+  "workerArtifact": "f474a0b125cce0f2b418a569a8b9a95fff3f203f",
+  "intermediateWeb": "15f36e6ab1ed5229618b34fa3270eca2c47da5ea",
+  "productionProject": "fhvxqeaujjeiflanqsbg",
+  "productionWeb": "srv-dak57did0e5s73b1t0b0",
+  "productionWorker": "srv-dak5rurl550s73a17l60",
+  "phasePackagesRoot": "/Users/alexanderkochnev/Documents/ChatGPT/AI Company Audit/artifacts/v27-production-launch/approved-offer-staging/production-phase-packages",
+  "phases": [
+    {
+      "name": "phase-a",
+      "expectedLedgerBefore": 30,
+      "expectedLedgerAfter": 31,
+      "pendingAfterPreviousPhase": [
+        "20261013000100_account_foundation.sql"
+      ]
+    },
+    {
+      "name": "phase-b",
+      "expectedLedgerBefore": 31,
+      "expectedLedgerAfter": 32,
+      "pendingAfterPreviousPhase": [
+        "20261013000200_account_authorization_cutover.sql"
+      ]
+    },
+    {
+      "name": "final",
+      "expectedLedgerBefore": 32,
+      "expectedLedgerAfter": 47,
+      "pendingAfterPreviousPhase": [
+        "20261015135524_team_diagnostic_foundation.sql",
+        "20261015170255_team_aggregation_report.sql",
+        "20261016075550_team_participant_passwordless.sql",
+        "20261016175038_team_single_email_consent.sql",
+        "20261018071921_plans_entitlements_billing_foundation.sql",
+        "20261018105321_rich_team_ai_report_v2.sql",
+        "20261018171308_team_synthesis_bounded_repair.sql",
+        "20261019073437_team_report_v3_and_pdf.sql",
+        "20261020170720_v24_admin_console_and_plan_audit.sql",
+        "20261020191130_anonymous_free_diagnostic_funnel.sql",
+        "20261021132005_billing_commercial_activation.sql",
+        "20261021164251_yookassa_annual_billing.sql",
+        "20261022130314_commercial_terms_and_full_refunds.sql",
+        "20261022131400_controlled_launch_gates.sql",
+        "20261022133523_publish_advanced_terms_ru_v1.sql"
+      ]
+    }
+  ],
+  "pendingMigrations": [
+    {
+      "file": "20261013000100_account_foundation.sql",
+      "sha256": "eea60518cb1e3860aa9f69b65bb3305f7d60ab1d6a5ee6df98ae18886eba10f9"
+    },
+    {
+      "file": "20261013000200_account_authorization_cutover.sql",
+      "sha256": "785a1b9de7d1ae155a80325fc3fde6838ddfb668aff7d2457b476e229a3ca510"
+    },
+    {
+      "file": "20261015135524_team_diagnostic_foundation.sql",
+      "sha256": "fe8df4214ca85d824314e058447ee652e9c075c306f793dd9c35ddb35c41ae19"
+    },
+    {
+      "file": "20261015170255_team_aggregation_report.sql",
+      "sha256": "aeb275eb161d3b9d3ae0d7882aecef2644ff0979fa8a6edb85ee67c923659b89"
+    },
+    {
+      "file": "20261016075550_team_participant_passwordless.sql",
+      "sha256": "bfb2ace6f36ff202f08c7054211e355a68a1ae980c9eff6fe64a663eaa4a7e85"
+    },
+    {
+      "file": "20261016175038_team_single_email_consent.sql",
+      "sha256": "fcc8b41a0f9b74ae17646eaa0ee8c6347b5d10afb164d9c96da806a116eb79e1"
+    },
+    {
+      "file": "20261018071921_plans_entitlements_billing_foundation.sql",
+      "sha256": "1a3e534b89e7cd33531491315ee6dbd0be056d3b4b18f858aa0288e457a17dfe"
+    },
+    {
+      "file": "20261018105321_rich_team_ai_report_v2.sql",
+      "sha256": "189bd57717c9fe25afb00ad6c2a2b95faf644333f9a169f9d5c289362c471d7d"
+    },
+    {
+      "file": "20261018171308_team_synthesis_bounded_repair.sql",
+      "sha256": "40e4271c92723f010840f7ffdf204bd1b1612fb304e9a3f2485a9a4d59262497"
+    },
+    {
+      "file": "20261019073437_team_report_v3_and_pdf.sql",
+      "sha256": "00f346fe3e768a2ffb2d6575fb3068d4cf5e9bb652c3e720f298cb254efbbcdd"
+    },
+    {
+      "file": "20261020170720_v24_admin_console_and_plan_audit.sql",
+      "sha256": "54d36156707b95e094f528ff3d7da3d34cba1793e33741169afe29cbab7fcf53"
+    },
+    {
+      "file": "20261020191130_anonymous_free_diagnostic_funnel.sql",
+      "sha256": "9a0611e003bcaeefdfa5e1f33ec68495ed0151de1aea9a69b2ef8810dc9eb53e"
+    },
+    {
+      "file": "20261021132005_billing_commercial_activation.sql",
+      "sha256": "2e6eb79c667bd11520c33b91b75ea7d6edeb9c90d59857273da7734c1cee1f1d"
+    },
+    {
+      "file": "20261021164251_yookassa_annual_billing.sql",
+      "sha256": "17fe0fcea30668f91d40095da4324994fe2a1246f0466ddd52b82775d0cadf70"
+    },
+    {
+      "file": "20261022130314_commercial_terms_and_full_refunds.sql",
+      "sha256": "f717909be77ea4438f2dc88a7cbe2c826b625c47eba17dba039b44b24634836e"
+    },
+    {
+      "file": "20261022131400_controlled_launch_gates.sql",
+      "sha256": "68dd27b6e091b716785e6f3f2a10acb061a96997ebfc85745acb112f3b0aaf22"
+    },
+    {
+      "file": "20261022133523_publish_advanced_terms_ru_v1.sql",
+      "sha256": "ae5f937e573d95be28a2810c409f8aa184cd0173f4797b0b345524f6c5b59ed9"
+    }
+  ],
+  "firstProductionMutation": "Separately approved write pause/backup or configuration step. Current task stops before it.",
+  "billingMode": "TEST_ONLY_ADAPTER_NOT_READY_FOR_PRODUCTION_REAL_PAYMENTS",
+  "productionEnabled": false,
+  "productionTouched": false,
+  "privacyFinalizationExtension": {
+    "candidate": "507e494ed0b18b733455cbd66663b2376172a366",
+    "stagingMigration": "20261022185201_operational_retention_and_marketing_withdrawal.sql",
+    "stagingApplied": true,
+    "productionApplied": false,
+    "includedInHistoricalSequence": false,
+    "futureLegalPublicationApproved": true,
+    "nextProductionPlanRequiresRefreshAfterCanonicalApproval": true,
+    "stagingLegalPublicationApplied": true,
+    "stagingLegalPublicationMigration": "20261022193427_publish_approved_privacy_legal_v1.sql",
+    "stagingMigrationCount": 50
+  }
+}

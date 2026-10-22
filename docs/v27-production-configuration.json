@@ -1,0 +1,113 @@
+{
+  "status": "REVIEW_SLOTS_ONLY_DO_NOT_IMPORT_AS_ENV",
+  "scope": "Production values are prepared, not installed. Preserve current Individual provider settings and all existing secrets.",
+  "productionOrigin": "https://audit.iteam.ru",
+  "supabaseProject": "fhvxqeaujjeiflanqsbg",
+  "supabaseOrigin": "https://fhvxqeaujjeiflanqsbg.supabase.co",
+  "newCapabilityDefaults": {
+    "ACQUISITION_ENABLED": "false",
+    "ACQUISITION_START_ENABLED": "false",
+    "TEAM_ENABLED": "false",
+    "TEAM_CREATION_ENABLED": "false",
+    "TEAM_INVITATIONS_ENABLED": "false",
+    "BILLING_ENABLED": "false",
+    "YOOKASSA_REFUNDS_ENABLED": "false"
+  },
+  "databaseCreationDefaults": {
+    "anonymous_start_enabled": false,
+    "team_creation_enabled": false,
+    "team_invitations_enabled": false
+  },
+  "paymentSlots": {
+    "BILLING_PROVIDER": "yookassa",
+    "YOOKASSA_TEST_MODE": "false",
+    "YOOKASSA_SHOP_ID": null,
+    "YOOKASSA_SECRET_KEY": null,
+    "YOOKASSA_VAT_CODE": "1",
+    "YOOKASSA_PAYMENT_MODE": "full_payment",
+    "YOOKASSA_PAYMENT_MODE_CONFIRMED": "false",
+    "YOOKASSA_RECEIPT_CONFIG_CONFIRMED": "false",
+    "YOOKASSA_RECEIPT_SOLUTION": null,
+    "YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE": null,
+    "YOOKASSA_TAX_SYSTEM_CODE": null,
+    "YOOKASSA_REFUND_RECEIPT_MODE": null
+  },
+  "paymentSlotsAreNotSupportedByCurrentTestOnlyAdapter": true,
+  "commercialAuthority": "docs/v26b-commercial-config.json",
+  "commercialVersion": "advanced-terms-ru-v1",
+  "webhook": "https://audit.iteam.ru/api/billing/webhook/yookassa",
+  "webhookEvents": [
+    "payment.succeeded",
+    "payment.canceled"
+  ],
+  "webhookConfigurationPerformed": false,
+  "futureRefundWebhook": "refund.succeeded only after separately reviewed production refund configuration",
+  "callbackReview": [
+    "https://audit.iteam.ru/auth/confirm",
+    "https://audit.iteam.ru/auth/confirm?type=recovery",
+    "https://audit.iteam.ru/ru/free/confirm",
+    "https://audit.iteam.ru/ru/team/join",
+    "https://audit.iteam.ru/ru/team/confirm"
+  ],
+  "authChangePending": {
+    "password_hibp_enabled": true,
+    "redirectAllowlist": "exact production paths only; no broad wildcard"
+  },
+  "secretSlots": {
+    "SUPABASE_SERVICE_ROLE_KEY": {
+      "value": null,
+      "handling": "Protected service configuration only; never in chat, source or evidence",
+      "preserveExistingIfPresent": true
+    },
+    "SUPABASE_PUBLISHABLE_KEY": {
+      "value": null,
+      "handling": "Protected service configuration only; never in chat, source or evidence",
+      "preserveExistingIfPresent": true
+    },
+    "OPENAI_API_KEY": {
+      "value": null,
+      "handling": "Protected service configuration only; never in chat, source or evidence",
+      "preserveExistingIfPresent": true
+    },
+    "AUTH_FLOW_SECRET": {
+      "value": null,
+      "handling": "Protected service configuration only; never in chat, source or evidence",
+      "preserveExistingIfPresent": true
+    },
+    "INTERNAL_WORKER_SECRET": {
+      "value": null,
+      "handling": "Protected service configuration only; never in chat, source or evidence",
+      "preserveExistingIfPresent": true
+    },
+    "RESEND_API_KEY": {
+      "value": null,
+      "handling": "Protected service configuration only; never in chat, source or evidence",
+      "preserveExistingIfPresent": true
+    },
+    "SMTP_PASSWORD": {
+      "value": null,
+      "handling": "Protected service configuration only; never in chat, source or evidence",
+      "preserveExistingIfPresent": true
+    },
+    "YOOKASSA_SHOP_ID": {
+      "value": null,
+      "handling": "Protected service configuration only; never in chat, source or evidence",
+      "preserveExistingIfPresent": true
+    },
+    "YOOKASSA_SECRET_KEY": {
+      "value": null,
+      "handling": "Protected service configuration only; never in chat, source or evidence",
+      "preserveExistingIfPresent": true
+    }
+  },
+  "taxSystemCode": "Omit unless actual selected receipt solution requires it; confirmed merchant/accounting value only. USN subtype is unconfirmed.",
+  "productionEnabled": false,
+  "productionTouched": false,
+  "acceptedRisk": "OWNER_ACCEPTED_RU_DATA_LOCALIZATION_RISK",
+  "localizationIsBlockingV27": false,
+  "fullLegalComplianceAsserted": false,
+  "retentionModel": "docs/v27-retention-model.json",
+  "retentionModelOwnerApproved": true,
+  "legalPackage": "docs/v27-legal-package.json",
+  "newLegalTextsApproved": false
+}
