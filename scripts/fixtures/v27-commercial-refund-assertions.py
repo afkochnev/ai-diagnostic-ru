@@ -8,9 +8,23 @@ assert all(current[t]==h for t,h in prior.items())
 assert sql('select count(*) from public.commercial_legal_documents')=='0'
 sql("update private.billing_configuration set yookassa_enabled=true")
 actor(1,f"select public.billing_start_yookassa_checkout('{accounts[1]}')",'billing_terms_required')
-body='Synthetic SQL fixture only, not an approved public offer. '*5
-sql("insert into public.commercial_legal_documents(version,title,body,approved_at) values('advanced-terms-ru-v1','Synthetic fixture','"+body+"',now())")
+publication27=(ROOT/'supabase/migrations/20261022133523_publish_advanced_terms_ru_v1.sql').read_text()
+body=(ROOT/'docs/legal/advanced-terms-ru-v1.md').read_text()
 terms_hash=hashlib.sha256(body.encode()).hexdigest()
+unpublished27=hashes()
+sql(publication27.rsplit('commit;',1)[0]+'select missing_publication_rollback_probe();commit;','does not exist')
+assert hashes()==unpublished27
+sql(publication27)
+published27=hashes()
+assert all(published27[t]==h for t,h in unpublished27.items() if t not in ('public.commercial_legal_documents','private.commercial_legal_configuration'))
+document27=json.loads(actor(0,"select public.billing_read_commercial_document('advanced-terms-ru-v1')",role='anon'))
+assert document27['body']==body and document27['content_sha256']==terms_hash
+assert json.loads(actor(0,'select public.billing_current_commercial_terms()',role='anon'))==document27
+sql(publication27);assert hashes()==published27
+conflicting_body27=body+'\nConflicting publication must be rejected.\n'
+conflicting27=publication27.replace(body,conflicting_body27).replace(terms_hash,hashlib.sha256(conflicting_body27.encode()).hexdigest())
+sql(conflicting27,'commercial_version_already_published_with_different_content');assert hashes()==published27
+sql("update private.commercial_legal_configuration set active_version=null")
 actor(1,f"select public.billing_start_yookassa_checkout('{accounts[1]}',null,'advanced-terms-ru-v1','{terms_hash}',true)",'billing_terms_required')
 sql("update private.commercial_legal_configuration set active_version='advanced-terms-ru-v1'")
 for version,digest,accepted in [('temporary-ru-v1',terms_hash,'true'),('advanced-terms-ru-v1','a'*64,'true'),('advanced-terms-ru-v1',terms_hash,'false')]:
@@ -26,6 +40,7 @@ actor(0,f"select public.billing_start_yookassa_checkout('{accounts[1]}')",'permi
 sql("update public.commercial_legal_documents set body='changed'",'commercial_evidence_immutable')
 sql('delete from private.billing_checkout_terms','commercial_evidence_immutable')
 passed('V27 additive rollback/preservation; absent/unpublished/stale/unaccepted legal version denied; exact acceptance immutable with no legacy API bypass')
+passed('V27 approved publication matches versioned source bytes; anonymous read, safe replay and conflicting publication rollback preserve historical records')
 ref27=bind(c27,71);event27=yoo(c27,ref27);assert process(event27)['status']=='processed'
 history27=hashes();refund27='29000000-0000-5000-9000-000000000071'
 actor(1,f"select public.billing_request_full_refund('{c27}')",'admin_access_denied')

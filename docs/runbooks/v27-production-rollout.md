@@ -1,9 +1,10 @@
 # V2.7 production rollout reconstruction — BLOCKED
 
 This is an audited preparation document, not permission to execute production
-commands. **STOP: the current candidate has no required commercial legal-version
-gate at checkout (task §75).** Final documents, production feature controls,
-production payment support and full canonical staging regression remain pending.
+commands. **STOP: production mutations remain unauthorized.** Commercial checkout versioning
+and verified full refunds are implemented in the continuation candidate. Final
+privacy documents, production payment support and final staging acceptance remain
+separate gates. The historical baseline below is retained for provenance only.
 The commands below describe the exact audited candidate, not an approved launch.
 Any runtime correction requires a new manifest, CI and affected staging acceptance.
 No production write, email, AI request or payment was executed during V2.7.
@@ -11,18 +12,23 @@ No production write, email, AI request or payment was executed during V2.7.
 ## Owner-authorized continuation, 22 October 2026
 
 The owner approved commercial version `advanced-terms-ru-v1` and full 480 RUB
-refunds requested at `info@iteam.ru`. The full approved offer and complete merchant
-requisites have not yet been located or supplied in this workspace; no legal body
-is invented or published. `docs/v27-commercial-legal-config.json` records only the
-inputs actually supplied. Checkout stays closed until the approved source is
-registered as an immutable document and selected as current.
+refunds requested at `info@iteam.ru`. The owner subsequently supplied the complete
+approved offer and merchant requisites. The exact versioned source is
+`docs/legal/advanced-terms-ru-v1.md`; only the publication-date placeholder is
+filled as 22 October 2026. Its SHA-256 is
+`5e98f8712abd03413598efced5f1e1445701af873e552e32d9797c495191fe94`.
+The approved legal address is 123100, Moscow, Presnenskaya naberezhnaya 12,
+office 10/45; no address from another public document is substituted.
+Publication is additive and rejects any conflicting document under the same
+version. Checkout remains closed wherever the approved immutable document is absent.
 
 The continuation branch implements commercial version/hash acceptance, full-refund
 verification and independent launch controls. These are LOCAL changes, not the
-canonical deployed RC in the table below. The two new migration versions are
-`20261022130314` and `20261022131400`; the current production pending inventory
-is therefore 16, not the historical 14 below. New exact read-only receipts are in
-`artifacts/v27-production-launch/continuation-commercial-legal/`. The earlier
+canonical deployed RC in the table below. The three new migration versions are
+`20261022130314`, `20261022131400` and `20261022133523`; the production pending
+inventory is therefore 17, not the historical 14 below. Publication acceptance
+and exact read-only receipts are in
+`artifacts/v27-production-launch/approved-offer-staging/`. The earlier
 blocked runbook is archived there as `runbook-initial-stop.md`.
 
 Operational control semantics after future acceptance:

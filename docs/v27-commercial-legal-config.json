@@ -1,11 +1,18 @@
 {
   "version": "advanced-terms-ru-v1",
   "versionApproval": "Owner instruction, 2026-10-22",
-  "documentSourceStatus": "AWAITING_APPROVED_FULL_TEXT_AND_REQUISITES",
+  "documentSourceStatus": "OWNER_APPROVED_FULL_TEXT",
   "approvedTextInvented": false,
   "issuer": {
     "legalName": "ООО «АйТим Менеджмент»",
-    "confirmedRequisitesSource": null
+    "confirmedRequisitesSource": "Owner-supplied approved offer, 2026-10-22",
+    "inn": "7703381761",
+    "kpp": "770301001",
+    "ogrn": "1157746514969",
+    "legalAddress": "123100, г. Москва, Пресненская набережная, дом 12, офис 10/45.",
+    "phone": "+7 (499) 110-26-84",
+    "email": "info@iteam.ru",
+    "website": "https://iteam.ru"
   },
   "authoritativePriceConfig": "docs/v26b-commercial-config.json",
   "refundPolicy": {
@@ -19,5 +26,9 @@
   },
   "productionBillingEnabled": false,
   "productionRefundExecuted": false,
-  "publicationRequiresApprovedSource": true
+  "publicationRequiresApprovedSource": true,
+  "approvedSource": "docs/legal/advanced-terms-ru-v1.md",
+  "contentSha256": "5e98f8712abd03413598efced5f1e1445701af873e552e32d9797c495191fe94",
+  "effectiveDate": "2026-10-22",
+  "publicationDateReplacement": "Owner placeholder replaced with staging publication date; wording otherwise unchanged"
 }
