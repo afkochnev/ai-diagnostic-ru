@@ -1,4 +1,6 @@
 import{describe,it,expect,vi}from'vitest';
+// Exercise the historical commercial-OFF contract independently of the proposed active source switch.
+vi.mock('@/server/billing/commercial',async original=>{const m=await original<typeof import('@/server/billing/commercial')>();return {...m,annualOffer:{...m.annualOffer,productionEnabled:false}};});
 vi.mock('server-only',()=>({}));
 import{annualOffer,yookassaRuntimeMode}from'@/server/billing/commercial';
 import{billingConfig}from'@/server/billing/contracts';

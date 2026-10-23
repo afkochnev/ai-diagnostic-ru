@@ -1,6 +1,6 @@
 import{describe,it,expect,vi,beforeEach}from'vitest';
 vi.mock('server-only',()=>({}));vi.mock('@/server/billing/service',()=>({billingRpc:vi.fn()}));
-// Test an explicitly future-approved contract in memory. The real JSON remains productionEnabled=false.
+// Exercise the production-ON contract explicitly in memory; transport remains fake.
 vi.mock('@/server/billing/commercial',async original=>{const m=await original<typeof import('@/server/billing/commercial')>();return {...m,annualOffer:{...m.annualOffer,productionEnabled:true}};});
 import{YooKassaBillingProvider,yookassaConfigured,type YooKassaContext}from'@/server/billing/yookassa';
 import{processYooKassaWebhook,reconcileFullRefund,type YooKassaDependencies}from'@/server/billing/yookassa-service';
