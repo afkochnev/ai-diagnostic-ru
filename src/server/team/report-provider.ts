@@ -1,14 +1,18 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { mainTeamReportInput, qualitativeGroupsSchema, synthesisSchema, teamReportSchema, type TeamReportInput, type TeamSynthesis } from "./report-contracts";
+import {currentControlledTeamAI,controlledTeamModel} from './controlled-ai-transport';
+import {controlledTeamRequired} from '@/server-runtime/team-smoke';
 
 export function teamAIProvider(pipelineVersion = "TEAM-RU-1"): {provider: "mock" | "openai"; model: string} {
+  if(currentControlledTeamAI())return{provider:"openai",model:controlledTeamModel};
   const provider = process.env.TEAM_AI_PROVIDER ?? "mock";
   if (provider !== "mock" && provider !== "openai") throw new Error("team_provider_invalid");
   if (provider === "openai" && !process.env.OPENAI_API_KEY) throw new Error("team_provider_not_configured");
   return { provider, model: provider === "mock" ? pipelineVersion === "TEAM-RU-3" ? "team-mock-v3" : pipelineVersion === "TEAM-RU-2" ? "team-mock-v2" : "team-mock-v1" : process.env.TEAM_AI_MODEL || process.env.OPENAI_MODEL || "gpt-5.6-sol" };
 }
 async function structured<T>(kind: string, input: unknown, schema: z.ZodType<T>, instruction: string): Promise<T> {
+  if(controlledTeamRequired()||currentControlledTeamAI())throw Error('controlled_team_pipeline_required');
   const config = teamAIProvider();
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 60000 });
   const response = await client.responses.create({ model: config.model, store: false,

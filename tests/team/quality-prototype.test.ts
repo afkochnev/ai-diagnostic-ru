@@ -144,7 +144,8 @@ describe("quality prototype mechanics, NOT AI quality acceptance",()=>{
     expect(repetitionSignals([{path:"a",value:"Проверить готовность ресурсов до обещания даты клиенту и записать результат проверки."},{path:"b",value:"Проверить готовность ресурсов до обещания даты клиенту и записать результат проверки."}])).toHaveLength(1);
   });
   it("ordinary requests fail closed in unset/mock/misconfigured environments",()=>{
-    for(const env of [{},{TEAM_AI_PROVIDER:"mock"},{TEAM_AI_PROVIDER:"openai"}])expect(()=>ordinaryTeamReportProvider(env)).toThrow("team_real_provider_unavailable");
+    for(const env of [{},{TEAM_AI_PROVIDER:"mock"}])expect(()=>ordinaryTeamReportProvider(env)).toThrow("team_real_provider_unavailable");
+    expect(ordinaryTeamReportProvider({TEAM_AI_PROVIDER:"openai"})).toBe("openai");
     expect(ordinaryTeamReportProvider({TEAM_AI_PROVIDER:"openai",OPENAI_API_KEY:"synthetic-not-used"})).toBe("openai");
   });
   it("does not treat a generic omission phrase as coverage of required groups",async()=>{

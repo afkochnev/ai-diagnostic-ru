@@ -12,6 +12,7 @@ import {enforceRateLimit} from "@/server/rate-limit";
 import {sealTeamChallenge} from "./passwordless-challenge";
 import {teamRpc} from "./service";
 import {clearTeamEntry,teamEntryContext} from "./entry-context";
+import {controlledTeamRequired} from '@/server-runtime/team-smoke';
 export type TeamPasswordlessState={phase?:"ready"|"waiting"|"expired"|"error"|"wrong";error?:string;authRequestAccepted?:boolean;sentAt?:number;expires?:number;contextExpires?:number};
 function failure(error:unknown):TeamPasswordlessState{
   const code=error instanceof Error?error.message:"";
@@ -53,6 +54,7 @@ async function acceptVerified(){
 }
 export async function sendTeamCodeAction(_:TeamPasswordlessState,form:FormData):Promise<TeamPasswordlessState>{
   try{
+    if(controlledTeamRequired())throw Error('team_context_expired');
     const c=await teamEntryContext(true),policy=await consent(form);
     const identity=await getIdentity();
     if(identity?.user.email && identity.user.email.toLowerCase()!==c.target.email)throw new Error("team_wrong_account");
@@ -76,6 +78,7 @@ export async function sendTeamCodeAction(_:TeamPasswordlessState,form:FormData):
 }
 export async function verifyTeamCodeAction(_:TeamPasswordlessState,form:FormData):Promise<TeamPasswordlessState>{
   try{
+    if(controlledTeamRequired())throw Error('team_context_expired');
     const c=await teamEntryContext(true),code=String(form.get("code")??"").trim();
     if(!c.challenge || !/^[0-9]{6,10}$/.test(code))throw new Error("team_code_invalid");
     if(c.challenge.email!==c.target.email)throw new Error("team_invitation_unavailable");
@@ -92,6 +95,7 @@ export async function verifyTeamCodeAction(_:TeamPasswordlessState,form:FormData
 }
 export async function confirmTeamEmailAction(_:TeamPasswordlessState,form:FormData):Promise<TeamPasswordlessState>{
   try{
+    if(controlledTeamRequired())throw Error('team_context_expired');
     const c=await teamEntryContext(true),hash=String(form.get("token_hash")??"");
     if(!c.challenge || c.challenge.email!==c.target.email)throw new Error("team_context_expired");
     if(!/^[A-Za-z0-9_-]{32,256}$/.test(hash) || form.get("type")!=="email")throw new Error("team_code_invalid");

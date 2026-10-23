@@ -17,6 +17,11 @@ it("uses server openai policy despite a client mock argument, preserving scoped 
   expect(await teamResultAction({},form())).toEqual({status:"requested"});expect(s.rpc).toHaveBeenCalledExactlyOnceWith("request_team_report_v3",{p_team_id:"10000000-0000-4000-8000-000000000001",p_provider:"openai"});
 });
 it("does not create any report in mock mode",async()=>{vi.stubEnv("TEAM_AI_PROVIDER","mock");expect((await teamResultAction({},form())).error).toContain("реального AI");expect(s.rpc).not.toHaveBeenCalled();});
+it("queues the real worker report without copying an OpenAI credential onto web",async()=>{
+  vi.stubEnv("OPENAI_API_KEY","");
+  expect(await teamResultAction({},form())).toEqual({status:"requested"});
+  expect(s.rpc).toHaveBeenCalledExactlyOnceWith("request_team_report_v3",{p_team_id:"10000000-0000-4000-8000-000000000001",p_provider:"openai"});
+});
 it("preserves owner, origin and write authorization before side effects",async()=>{
   s.owner=false;await teamResultAction({},form());expect(s.rpc).not.toHaveBeenCalled();
   s.owner=true;s.allowed=false;await teamResultAction({},form());expect(s.rpc).not.toHaveBeenCalled();
