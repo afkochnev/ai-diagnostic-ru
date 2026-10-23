@@ -4,6 +4,7 @@ import {authConfig} from '@/server/supabase/config';
 import {sealInvitationAuthProof,openInvitationAuthProof} from '@/server/team/invitation-auth-proof';
 import {createTransactionalProvider} from '@/server/consultation/provider';
 import {hash,newSecret} from './context';
+import {requireFreeSmokeAdmission,reserveFreeSmoke} from './smoke';
 import {sessionRpc} from './service';
 import type {emailSchema} from './contracts';
 import type {z} from 'zod';
@@ -11,6 +12,9 @@ export const proofSecret=()=>`anonymous-access/v1/${authConfig().AUTH_FLOW_SECRE
 export function accessProof(envelope:string,id:string){return openInvitationAuthProof(envelope,hash(id),proofSecret());}
 export function accessMessage(url:string){return {subject:'Ваш персональный AI-отчёт — доступ к результатам',text:`Чтобы подтвердить email и получить отчёт, откройте ссылку:\n${url}\n\nСсылка действует 30 минут. Пароль не нужен. Не пересылайте письмо.`,html:`<h1>Получите персональный AI-отчёт</h1><p>Подтвердите email, чтобы сохранить результаты диагностики.</p><p><a href="${url.replaceAll('&','&amp;')}">Открыть мой AI-отчёт</a></p><p>Ссылка действует 30 минут. Пароль не нужен. Не пересылайте письмо.</p>`};}
 export async function requestAccess(id:string,secretHash:string,input:z.infer<typeof emailSchema>){
+ await requireFreeSmokeAdmission(input.email);
+ // Reserve before mutating pending link state: a second attempt cannot invalidate the first link.
+ await reserveFreeSmoke('email');
  const nonce=newSecret();
  const reserved=await sessionRpc<{reserved:boolean;create_user?:boolean;generation?:number}>('email',id,secretHash,{...input,nonce_hash:hash(nonce)});
  if(!reserved.reserved)return;

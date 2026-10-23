@@ -1,0 +1,78 @@
+{
+  "status": "PREPARATION_ONLY_AWAITING_SEPARATE_EXACT_SHA_ROLLOUT_APPROVAL",
+  "baseSHA": "01411581c456d205ea759e409bb6ad4146de4899",
+  "purpose": "Tester-only admission and shared fail-closed caps before the separately authorized Phase 1 production smoke. Render Hobby lacks web-service inbound IP rules.",
+  "defaults": {
+    "FREE_SMOKE_RUN_ID": "unset",
+    "FREE_SMOKE_EXPIRES_AT": "unset",
+    "FREE_SMOKE_ADMISSION_SHA256": "unset",
+    "FREE_SMOKE_EMAIL": "unset",
+    "FREE_SMOKE_DIAGNOSTIC_ID": "unset",
+    "commercialProductionEnabled": false,
+    "migrations": []
+  },
+  "profile": {
+    "FREE_SMOKE_RUN_ID": "fresh UUID, never changed to retry a failed attempt",
+    "FREE_SMOKE_EXPIRES_AT": "future UTC ISO timestamp, at most one hour and within the current UTC day; operational observation window remains 30 minutes",
+    "FREE_SMOKE_ADMISSION_SHA256": "SHA-256 of fresh 256-bit private admission token; raw token never in environment, Git, PR, artifacts or logs",
+    "FREE_SMOKE_EMAIL": "audit_8@iteam.ru, only owner-confirmed recipient",
+    "FREE_SMOKE_DIAGNOSTIC_ID": "exact claimed target ID, only in the protected isolated AI runner",
+    "bindings": {
+      "APP_URL": "https://audit.iteam.ru",
+      "SUPABASE_URL": "https://fhvxqeaujjeiflanqsbg.supabase.co",
+      "NODE_ENV": "production"
+    },
+    "partialInvalidExpiredProfile": "deny controlled starts, email generation and AI calls; never silently fall back to an unrestricted profile",
+    "absence": "all profile fields and target ID absent preserves normal behavior; gates must be OFF before profile removal"
+  },
+  "admission": {
+    "privateEntry": "/ru/free/smoke#admission=<private-token>",
+    "endpoint": "POST /api/acquisition/smoke-admission",
+    "proof": "exact Origin, streamed body limit, constant-time token digest, Secure HttpOnly SameSite=Lax cookie",
+    "boundary": "server-side new anonymous start and access-email actions, including alternate Render ingress; page obscurity is not the boundary",
+    "accountAccess": "does not replace Auth, personally supplied consent, OTP, ownership or RLS",
+    "claim": "existing passwordless confirmation remains usable in the owner browser without copying the admission cookie"
+  },
+  "budgets": {
+    "store": "existing service-role-only public.consume_rate_limit; no migration or privilege grant",
+    "keys": "v27-free:<runUUID>:start|email|ai",
+    "limitEach": 1,
+    "windowSeconds": 86400,
+    "fixedBucket": "profile cannot cross UTC midnight",
+    "failure": "no reservation release after timeout, validation error, provider error or process restart; no automatic new run",
+    "email": "one recipient-bound generateLink plus one Resend HTTP request; provider itself has no retry loop",
+    "ai": "one exact diagnostic, gpt-5.6-sol, OpenAI SDK maxRetries=0, max_output_tokens=16000; no mock substitution",
+    "scopeLimit": "caps apply to these controlled acquisition/Individual entry points. Suspend and drain the ordinary worker before the smoke; no competing general queue consumer or unrelated external action is permitted."
+  },
+  "rollout": [
+    "Review exact candidate source and green application/isolated-sql CI. Separately approve merge/deploy of this new source; original Phase 1 source was pinned to baseSHA.",
+    "Deploy only the approved canonical SHA with all gates and the profile OFF; no DB migrations or privileges.",
+    "Before activation, refresh private per-row HMAC/schema/ledger/Auth/legal/storage baseline, queues and leases; verify both origins and no drift.",
+    "Finish and prove the protected one-off worker manifest on fake HTTP before installing a smoke profile. No production credentials are exported to local files.",
+    "Record exact protected environment preimage and runtime proof. Install the fresh web profile and real email provider only under the explicit execution manifest.",
+    "Use the private admission URL; owner personally consents. Open only acquisition start gates. Close DB/web new-start immediately after the one session exists.",
+    "Owner personally opens the one passwordless email. Bind the claimed diagnostic to the isolated runner; perform target scoring and one AI call. Produce and accept one PDF.",
+    "Close acquisition gates before removing the web profile. Stop/terminalize target retries safely, verify queues/leases, restore ordinary worker and exact environment preimage.",
+    "Compare all pre-existing row HMACs, history/schema/ledger/storage, permitted new target rows and three reservation keys. Preserve smoke records."
+  ],
+  "containment": {
+    "first": "DB anonymous_start_enabled=false, then web ACQUISITION_START_ENABLED=false",
+    "claim": "keep foundation only while resolving the already authorized claim; then ACQUISITION_ENABLED=false",
+    "worker": "stop bounded runner; wait for HTTP/lease settlement; never resume a general worker while target retry could send a second request",
+    "profile": "do not remove/change its run ID while acquisition gates are open. Expiry fails closed. Denied attempts do not authorize a reset.",
+    "sourceRollback": "all gates OFF first, no unresolved external operations, then separately approved prior canonical source; no DB restore or history deletion"
+  },
+  "prohibitions": [
+    "No production mutation by this preparation",
+    "No Team or billing activation",
+    "No YooKassa call",
+    "No new production secret",
+    "No real email/AI in local or CI tests",
+    "No merge or deployment without separate exact-source approval"
+  ],
+  "limitations": [
+    "Local/fake-provider tests are not production acceptance",
+    "Protected one-off runner integration and private per-row HMAC baseline must be proved before activation",
+    "Existing Phase 1 owner authorization is retained: one email, one AI, one PDF. No attempt has been spent."
+  ]
+}
