@@ -12,7 +12,7 @@ The test path accepts only the exact staging app/project pair, or a non-producti
 
 Actual payment creation additionally requires the authoritative `productionEnabled=true` in a separately approved future version, `BILLING_ENABLED=true`, and confirmed production fiscal settings. None of those production activation changes is made now. `YOOKASSA_PRODUCTION_FISCAL_CONFIRMED=true` is independent from the previously accepted TEST receipt settings; copying TEST flags does not confirm a production configuration.
 
-Every production create checks GET `/me` first: exact merchant, `test=false`, enabled store, issuer INN `7703381761` and fiscalization enabled. This GET does not confirm `payment_mode`, measure or USN subtype. The owner approved `payment_mode=full_payment` and `measure=another` as product parameters; this is not accountant approval or confirmation of the actual production fiscal configuration. The helper returns only a safe projection and is also available for a future explicitly authorized read-only merchant preflight. No real merchant request was executed in this phase.
+Every production create checks GET `/me` first: exact merchant, `test=false`, enabled store, issuer INN `7703381761` and fiscalization enabled. This GET does not confirm `payment_mode`, measure or USN subtype. On 2026-10-23 the owner confirmed the actual production shop/receipt solution and `payment_mode=full_payment`, `measure=another`; no independent accountant approval or remote API verification is claimed. The helper returns only a safe projection and is also available for a future explicitly authorized read-only merchant preflight. No real merchant request was executed in this phase.
 
 The application's persisted checkout flag must match its runtime mode before any payment HTTP request. Authenticated GET `/payments/{id}` must match that flag, merchant, bound ID, amount/currency and all metadata before financial processing. A test payment cannot activate a live checkout, and vice versa. Webhooks remain ID hints; a browser return grants no access.
 
@@ -26,17 +26,23 @@ An independent DB reconciliation flag permits verification of existing bound pay
 
 The owner confirmed on 2026-10-23 that `shopId=1504416` is the AI Company Audit **test** shop bound to `https://ai-diagnostic-staging-web.onrender.com`, with receipt-checking mode enabled. This is owner-provided test evidence, not an independent production merchant/fiscal verification. The Online cash register screen from that test shop does not establish what receipt solution a future production shop will use. No TEST settings are copied to production.
 
-## Production inputs still required
+## Owner-confirmed production configuration
 
-Prepared slots are in `docs/v27-production-configuration.json`; they are not an env import and have not been installed. Keep all production creation/refund switches OFF.
+On 2026-10-23 the owner confirmed from the working YooKassa cabinet of ООО «АйТим Менеджмент»: production `shopId=1079713`, API protocol connection, **Receipts from YooKassa**. This supersedes the earlier unconfirmed status. The separate TEST shop remains `1504416`.
 
-1. External production-store setup remains pending: connect/select the actual shop of ООО «АйТим Менеджмент» in YooKassa, obtain its factual production `shopId`, then open **Settings → Online cash register** in that shop and record the connected solution (Receipts from YooKassa or the named external register). No production shop is confirmed. Production `YOOKASSA_SHOP_ID` and `YOOKASSA_SECRET_KEY` remain unset in the prepared configuration; billing remains OFF. Do not reuse TEST credentials or overwrite an existing shop's webhook without verifying its consumers.
-2. Product parameters are owner-approved: `payment_subject=service`, `payment_mode=full_payment`, `measure=another`, `vat_code=1`, price 480 RUB. The API code for “Другое” is `another`; `other` is rejected, including before any HTTP request. These product choices do not establish production fiscal/accountant confirmation. Only after confirming the actual production shop and its receipt solution, determine whether the actual receipt solution requires application-level `tax_system_code`: omit it for Receipts from YooKassa and wherever not required; if a named external register requires it, keep billing blocked until an accountant confirms the exact code. USN subtype is unknown; never derive 2 or 3 from VAT or USN alone. Unknown subtype is not an unconditional implementation blocker.
-3. Refresh the exact production migration inventory and compatibility/backup/containment package against the final canonical candidate. Current production has 30 ledger entries; this 51-file candidate has 21 pending migrations, including the historical timestamp alias, subject to fresh read-only verification.
-4. Obtain separate authorization before changing production Auth, environment, DB, legal registry, feature flags, merchant webhook, app/worker or authoritative `productionEnabled`.
-5. After authorized installation, perform read-only GET `/me` and verify merchant/fiscal configuration with creation still OFF. A bounded real-money payment/refund smoke is a separate action requiring its own approval.
+Prepared slots in `docs/v27-production-configuration.json` now record `YOOKASSA_RECEIPT_SOLUTION=yookassa`, receipt configuration/mode/production fiscal confirmation flags `true`, `payment_subject=service`, `payment_mode=full_payment`, `measure=another`, required measure `true`, `vat_code=1` and 480.00 RUB. These are owner-confirmed settings, not installed production environment values. The authoritative commercial contract still has `productionEnabled=false`; all creation, reconciliation and refund initiation switches stay OFF. No production secret is present or requested.
 
-Use `node --import tsx scripts/billing-production-readiness.ts` for an offline report of prepared slots. It reads no secrets from process.env and performs no network or writes. A locally valid slot report is not evidence that production is configured, deployed or financially accepted.
+For this receipt solution, `YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE=false`; `YOOKASSA_TAX_SYSTEM_CODE` stays unset and is absent from receipt payloads. No USN subtype/code is inferred. The invalid API measure `other` is rejected before HTTP.
+
+Run `node --import tsx scripts/billing-production-readiness.ts` for offline **configuration** readiness: `V27_PRODUCTION_CONFIGURATION_READY` means the agreed non-secret profile is validated while billing and installation remain OFF. The nested runtime report intentionally still shows the missing live secret and disabled commercial/billing switches. No secret is read from process.env, and no network or write occurs.
+
+## Staging acceptance preparation and future rollout
+
+The exact preparation is in `docs/v27-staging-acceptance-plan.json`. It is a plan only. No new staging migration or deploy is executed in this configuration-confirmation step. Staging must retain TEST shop `1504416`, TEST credentials and `YOOKASSA_TEST_MODE=true`; production shop/flags/credentials must never be copied into staging. Real YooKassa calls, new payments/refunds, emails and AI are outside this acceptance plan.
+
+After separately authorized staging acceptance, review/canonicalize PR #10 before any production rollout. Refresh the exact production migration inventory, compatibility/backup/containment package and runtime configuration against that final canonical candidate. The previous read-only inventory has 30 applied entries and 21 pending migrations in the 51-file candidate; it is not a fresh cloud check or permission to apply.
+
+Production Auth, environment, DB, legal registry, feature flags, merchant webhook, app/worker and authoritative `productionEnabled` require separate authorization. After authorized protected installation, perform read-only GET `/me` with creation still OFF. A bounded real-money payment/refund smoke remains a separately approved action. The current `V27_PRODUCTION_CONFIGURATION_READY` status makes no claim that production is installed or financially accepted.
 
 ## Validation
 

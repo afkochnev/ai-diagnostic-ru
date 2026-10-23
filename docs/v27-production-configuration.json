@@ -1,5 +1,5 @@
 {
-  "status": "PREPARED_NOT_INSTALLED_PRODUCTION_DISABLED",
+  "status": "V27_PRODUCTION_CONFIGURATION_READY",
   "scope": "Production values are prepared, not installed. Preserve current Individual provider settings and all existing secrets.",
   "productionOrigin": "https://audit.iteam.ru",
   "supabaseProject": "fhvxqeaujjeiflanqsbg",
@@ -21,22 +21,22 @@
   "paymentSlots": {
     "BILLING_PROVIDER": "yookassa",
     "YOOKASSA_TEST_MODE": "false",
-    "YOOKASSA_SHOP_ID": null,
+    "YOOKASSA_SHOP_ID": "1079713",
     "YOOKASSA_SECRET_KEY": null,
     "YOOKASSA_VAT_CODE": "1",
     "YOOKASSA_PAYMENT_MODE": "full_payment",
-    "YOOKASSA_PAYMENT_MODE_CONFIRMED": "false",
-    "YOOKASSA_RECEIPT_CONFIG_CONFIRMED": "false",
-    "YOOKASSA_RECEIPT_SOLUTION": null,
-    "YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE": null,
+    "YOOKASSA_PAYMENT_MODE_CONFIRMED": "true",
+    "YOOKASSA_RECEIPT_CONFIG_CONFIRMED": "true",
+    "YOOKASSA_RECEIPT_SOLUTION": "yookassa",
+    "YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE": "false",
     "YOOKASSA_TAX_SYSTEM_CODE": null,
     "YOOKASSA_REFUND_RECEIPT_MODE": null,
-    "YOOKASSA_PRODUCTION_CONFIRMED": "false",
-    "YOOKASSA_PRODUCTION_FISCAL_CONFIRMED": "false",
+    "YOOKASSA_PRODUCTION_CONFIRMED": "true",
+    "YOOKASSA_PRODUCTION_FISCAL_CONFIRMED": "true",
     "BILLING_ENABLED": "false",
     "YOOKASSA_RECONCILIATION_ENABLED": "false",
     "YOOKASSA_RECEIPT_MEASURE": "another",
-    "YOOKASSA_RECEIPT_REQUIRES_MEASURE": null,
+    "YOOKASSA_RECEIPT_REQUIRES_MEASURE": "true",
     "YOOKASSA_TAX_SYSTEM_CODE_CONFIRMED": "false"
   },
   "paymentSlotsAreNotSupportedByCurrentTestOnlyAdapter": false,
@@ -96,18 +96,13 @@
       "handling": "Protected service configuration only; never in chat, source or evidence",
       "preserveExistingIfPresent": true
     },
-    "YOOKASSA_SHOP_ID": {
-      "value": null,
-      "handling": "Protected service configuration only; never in chat, source or evidence",
-      "preserveExistingIfPresent": true
-    },
     "YOOKASSA_SECRET_KEY": {
       "value": null,
       "handling": "Protected service configuration only; never in chat, source or evidence",
       "preserveExistingIfPresent": true
     }
   },
-  "taxSystemCode": "OMIT if the actual confirmed receipt solution does not require application-level tax_system_code (including Receipts from YooKassa). If an external register requires it, keep production billing blocked until the exact accounting-confirmed code is supplied. USN subtype is unconfirmed; never infer 2 or 3.",
+  "taxSystemCode": "OMIT: the owner confirmed Receipts from YooKassa in the actual production shop. The application must not send tax_system_code for this configuration. USN subtype is not inferred.",
   "productionEnabled": false,
   "productionTouched": false,
   "acceptedRisk": "OWNER_ACCEPTED_RU_DATA_LOCALIZATION_RISK",
@@ -132,11 +127,11 @@
     "neverConvertReferencedOffer": true
   },
   "productionReadinessPending": [
-    "External production-shop setup is pending: connect/select the actual iTeam shop, obtain its factual shopId and identify its connected receipt solution in Settings → Online cash register. Do not infer production settings from the confirmed test shop. Determine tax_system_code necessity only after those facts; product full_payment/another remain owner-approved.",
-    "Authorize exact canonical code/migration/configuration rollout after refreshed preflight and backup",
-    "Publish approved legal versions and install protected production configuration only in separately authorized rollout",
-    "Separate explicit owner change to authoritative productionEnabled before real creation; currently false",
-    "Read-only GET /me verification with production keys and a bounded real-money smoke require separate authorization; not performed"
+    "Review PR #10 and execute the separately prepared staging acceptance plan before canonicalization.",
+    "Authorize exact canonical code/migration/configuration rollout after refreshed production preflight and backup.",
+    "Publish approved legal versions and install protected production configuration, including a live key, only in a separately authorized rollout.",
+    "Separate explicit owner change to authoritative productionEnabled and billing flags before real creation; all currently remain false.",
+    "Read-only GET /me verification with protected production credentials and any bounded real-money smoke are future separately authorized steps; not performed."
   ],
   "ownerApprovedProductConfiguration": {
     "payment_subject": "service",
@@ -148,28 +143,22 @@
     "vat_included": false,
     "payment_mode": "full_payment",
     "measure": "another",
-    "scope": "Owner-approved product parameters only; not confirmation of actual merchant fiscal setup or accountant approval.",
-    "productionFiscalConfirmation": false
+    "scope": "Owner confirmed product parameters and the actual production receipt configuration in the working YooKassa cabinet; no independent accounting or remote API verification is claimed.",
+    "productionFiscalConfirmation": true
   },
   "merchantConfirmation": {
-    "productionShopIdConfirmed": false,
-    "actualReceiptSolution": null,
-    "receiptSolutionConfirmed": false,
-    "requiredOwnerInputs": [
-      "Connect or select the actual production shop of ООО «АйТим Менеджмент» in YooKassa and supply its factual production shopId.",
-      "In that production shop, open Settings → Online cash register and identify the actual receipt solution: Receipts from YooKassa or the named external register."
-    ],
-    "secretHandling": "No live secret requested, recorded or installed in this phase.",
-    "productionShopId": null,
-    "status": "BLOCKED_PENDING_EXTERNAL_PRODUCTION_SHOP_AND_RECEIPT_SETUP",
-    "externalSetupSteps": [
-      "Connect/select the actual production shop of ООО «АйТим Менеджмент».",
-      "Obtain its actual production shopId.",
-      "Open Settings → Online cash register in that production shop.",
-      "Record the connected receipt solution: Receipts from YooKassa or named external register.",
-      "Only then determine whether application-level tax_system_code is required; obtain the exact accounting-confirmed code only if required."
-    ],
-    "productionReceiptEvidence": "The test-shop receipt-checking screen does not identify or confirm the production receipt solution."
+    "productionShopId": "1079713",
+    "productionShopIdConfirmed": true,
+    "connectionMethod": "API protocol",
+    "actualReceiptSolution": "yookassa",
+    "receiptSolutionConfirmed": true,
+    "status": "OWNER_CONFIRMED_PRODUCTION_CONFIGURATION",
+    "source": "Direct owner confirmation 2026-10-23 from the working YooKassa cabinet of ООО «АйТим Менеджмент»",
+    "requiredOwnerInputs": [],
+    "secretHandling": "The production secret is not requested, recorded or installed. It must only be installed through protected service configuration after separate authorization.",
+    "remoteVerificationPerformed": false,
+    "accountantApprovalClaimed": false,
+    "productionReceiptEvidence": "Owner confirmed Receipts from YooKassa in the actual production shop, independently of the test-shop screenshots."
   },
   "stagingTestMerchantConfirmation": {
     "shopId": "1504416",
@@ -179,5 +168,6 @@
     "source": "Direct owner confirmation 2026-10-23 based on YooKassa cabinet screenshots",
     "productionShopConfirmed": false,
     "productionReceiptSolutionConfirmed": false
-  }
+  },
+  "deploymentState": "PREPARED_NOT_INSTALLED_PRODUCTION_DISABLED"
 }
