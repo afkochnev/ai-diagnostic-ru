@@ -1,4 +1,5 @@
 'use server';
+import {yookassaVerificationConfigured} from './yookassa';
 import {createYooKassaPayment,reconcileYooKassaCheckout} from './yookassa-service';
 import {headers} from 'next/headers';
 import {redirect} from 'next/navigation';
@@ -33,9 +34,9 @@ export async function simulatePayment(form:FormData){
 }
 
 export async function checkYooKassaPayment(form:FormData){
- const identity=await guard(),id=z.uuid().parse(form.get('checkout'));
+ if(!yookassaVerificationConfigured()||(await headers()).get('origin')!==authConfig().APP_URL)throw Error('billing_unavailable');
+ const identity=await requireIdentity(),id=z.uuid().parse(form.get('checkout'));
  const c=await readCheckout(id);await requireAccountWrite(c.account_id,identity.user.id);
- if(billingConfig().provider!=='yookassa')throw Error('billing_unavailable');
  await enforceRateLimit(`billing:reconcile:${identity.user.id}`,12,60);
  try{await reconcileYooKassaCheckout(id);}catch{redirect(`/ru/billing/return?checkout=${id}&verificationError=1`);}
  redirect(`/ru/billing/return?checkout=${id}`);

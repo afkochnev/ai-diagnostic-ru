@@ -132,5 +132,17 @@
     "stagingLegalPublicationApplied": true,
     "stagingLegalPublicationMigration": "20261022193427_publish_approved_privacy_legal_v1.sql",
     "stagingMigrationCount": 50
+  },
+  "canonicalPrivacyMainSHA": "9823b3f7b619b22137c0c9626714b627e36207b3",
+  "canonicalPrivacyStagingWebWorkerSHA": "9823b3f7b619b22137c0c9626714b627e36207b3",
+  "productionCapabilityExtension": {
+    "status": "LOCAL_MOCK_PASS_AWAITING_PRODUCTION_CONFIGURATION",
+    "migration": "20261022195738_yookassa_production_mode_readiness.sql",
+    "stagingApplied": false,
+    "productionApplied": false,
+    "sourceContractProductionEnabled": false,
+    "productionBillingEnabled": false,
+    "rolloutRunbook": "docs/runbooks/v27-yookassa-production-readiness.md",
+    "historicalSequenceAboveNotExecutableWithoutRefresh": true
   }
 }

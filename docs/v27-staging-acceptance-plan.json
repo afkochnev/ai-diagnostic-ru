@@ -1,0 +1,38 @@
+{
+  "status": "PREPARED_FOR_STAGING_ACCEPTANCE_NOT_EXECUTED",
+  "scope": "PR #10 production-capable code using the existing TEST staging configuration only",
+  "currentCanonicalSHA": "9823b3f7b619b22137c0c9626714b627e36207b3",
+  "candidate": "Exact reviewed PR #10 head and successful CI, to be pinned in the execution record before any action",
+  "staging": {
+    "origin": "https://ai-diagnostic-staging-web.onrender.com",
+    "supabaseProject": "vflgxgdwlftlyjslyrmo",
+    "testShopId": "1504416",
+    "providerTestMode": true,
+    "expectedPriorLedger": 50,
+    "newMigration": "20261022195738_yookassa_production_mode_readiness.sql",
+    "migrationSha256": "147446cad9fe850aac09f0335fda3d332f84ce9b9b21fa0fc41e29fac85b1507",
+    "historicalTimestampAlias": "Map only the ephemeral package from 20261016175038 to applied 20261016181419 after exact source/ledger verification; never rewrite source/history."
+  },
+  "steps": [
+    "Pin the reviewed head, green application/isolated-sql CI and all migration hashes; verify staging origin/project/worker identities.",
+    "Capture fresh staging data/schema/ledger, queues and protected configuration fingerprints; confirm TEST shop/mode and mock email/AI without exposing secrets.",
+    "Refresh exact staging dry-run: only the new readiness migration may be pending; stop on drift.",
+    "Only after staging-execution authorization, apply that exact migration and deploy the pinned reviewed SHA to staging web and worker, preserving environment and all existing data.",
+    "Verify migration defaults and private grants, health/legal/billing/return routes, TEST/live separation and existing Admin Billing projections; do not initiate a provider call or create a new payment/refund.",
+    "Use the CI fake-HTTP and networkless SQL evidence for annual activation/renewal/refund concurrency and receipt payload semantics; do not call that live provider acceptance.",
+    "Capture after fingerprints and compare all pre-existing records, legal/consent history, schemas and queues. Stop on unexpected data or configuration changes.",
+    "Publish an acceptance record with exact SHA/migration/deploys and remaining rollout gates. PR merge, production deployment and any real-money smoke still require separate authorization."
+  ],
+  "expectedAcceptanceScope": "STAGING_FUNCTIONAL_PASS_MOCK_EXTERNALS; no real sandbox/production financial E2E is implied",
+  "productionMutationsAllowed": false,
+  "productionBillingEnabled": false,
+  "environmentChangesAllowed": false,
+  "productionValuesMayBeCopiedToStaging": false,
+  "realYooKassaCallsAllowed": false,
+  "newPaymentsAllowed": false,
+  "refundsAllowed": false,
+  "realEmailsAllowed": false,
+  "realAIAllowed": false,
+  "newPrivilegeGrantsAllowed": false,
+  "executed": false
+}

@@ -1,5 +1,5 @@
 {
-  "status": "REVIEW_SLOTS_ONLY_DO_NOT_IMPORT_AS_ENV",
+  "status": "V27_PRODUCTION_CONFIGURATION_READY",
   "scope": "Production values are prepared, not installed. Preserve current Individual provider settings and all existing secrets.",
   "productionOrigin": "https://audit.iteam.ru",
   "supabaseProject": "fhvxqeaujjeiflanqsbg",
@@ -21,18 +21,25 @@
   "paymentSlots": {
     "BILLING_PROVIDER": "yookassa",
     "YOOKASSA_TEST_MODE": "false",
-    "YOOKASSA_SHOP_ID": null,
+    "YOOKASSA_SHOP_ID": "1079713",
     "YOOKASSA_SECRET_KEY": null,
     "YOOKASSA_VAT_CODE": "1",
     "YOOKASSA_PAYMENT_MODE": "full_payment",
-    "YOOKASSA_PAYMENT_MODE_CONFIRMED": "false",
-    "YOOKASSA_RECEIPT_CONFIG_CONFIRMED": "false",
-    "YOOKASSA_RECEIPT_SOLUTION": null,
-    "YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE": null,
+    "YOOKASSA_PAYMENT_MODE_CONFIRMED": "true",
+    "YOOKASSA_RECEIPT_CONFIG_CONFIRMED": "true",
+    "YOOKASSA_RECEIPT_SOLUTION": "yookassa",
+    "YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE": "false",
     "YOOKASSA_TAX_SYSTEM_CODE": null,
-    "YOOKASSA_REFUND_RECEIPT_MODE": null
+    "YOOKASSA_REFUND_RECEIPT_MODE": null,
+    "YOOKASSA_PRODUCTION_CONFIRMED": "true",
+    "YOOKASSA_PRODUCTION_FISCAL_CONFIRMED": "true",
+    "BILLING_ENABLED": "false",
+    "YOOKASSA_RECONCILIATION_ENABLED": "false",
+    "YOOKASSA_RECEIPT_MEASURE": "another",
+    "YOOKASSA_RECEIPT_REQUIRES_MEASURE": "true",
+    "YOOKASSA_TAX_SYSTEM_CODE_CONFIRMED": "false"
   },
-  "paymentSlotsAreNotSupportedByCurrentTestOnlyAdapter": true,
+  "paymentSlotsAreNotSupportedByCurrentTestOnlyAdapter": false,
   "commercialAuthority": "docs/v26b-commercial-config.json",
   "commercialVersion": "advanced-terms-ru-v1",
   "webhook": "https://audit.iteam.ru/api/billing/webhook/yookassa",
@@ -89,18 +96,13 @@
       "handling": "Protected service configuration only; never in chat, source or evidence",
       "preserveExistingIfPresent": true
     },
-    "YOOKASSA_SHOP_ID": {
-      "value": null,
-      "handling": "Protected service configuration only; never in chat, source or evidence",
-      "preserveExistingIfPresent": true
-    },
     "YOOKASSA_SECRET_KEY": {
       "value": null,
       "handling": "Protected service configuration only; never in chat, source or evidence",
       "preserveExistingIfPresent": true
     }
   },
-  "taxSystemCode": "Omit unless actual selected receipt solution requires it; confirmed merchant/accounting value only. USN subtype is unconfirmed.",
+  "taxSystemCode": "OMIT: the owner confirmed Receipts from YooKassa in the actual production shop. The application must not send tax_system_code for this configuration. USN subtype is not inferred.",
   "productionEnabled": false,
   "productionTouched": false,
   "acceptedRisk": "OWNER_ACCEPTED_RU_DATA_LOCALIZATION_RISK",
@@ -109,5 +111,63 @@
   "retentionModel": "docs/v27-retention-model.json",
   "retentionModelOwnerApproved": true,
   "legalPackage": "docs/v27-legal-package.json",
-  "newLegalTextsApproved": false
+  "newLegalTextsApproved": true,
+  "privacyLegalStagingGate": "V27_PRIVACY_LEGAL_STAGING_PASS",
+  "canonicalMainSHA": "9823b3f7b619b22137c0c9626714b627e36207b3",
+  "productionCapableAdapterImplemented": true,
+  "productionCapableAdapterVerificationScope": "Local fake HTTP and networkless SQL only; production configuration not installed or remotely verified",
+  "databaseBillingSlots": {
+    "installationDefaults": {
+      "yookassa_enabled": false,
+      "yookassa_test_mode": true,
+      "yookassa_live_approved": false,
+      "yookassa_reconciliation_enabled": false
+    },
+    "futureProductionModeRequires": "Separately authorized merchant + test_mode=false + live_approved=true + unreferenced live offer + explicit creation/reconciliation flags; no SQL executed now.",
+    "neverConvertReferencedOffer": true
+  },
+  "productionReadinessPending": [
+    "Review PR #10 and execute the separately prepared staging acceptance plan before canonicalization.",
+    "Authorize exact canonical code/migration/configuration rollout after refreshed production preflight and backup.",
+    "Publish approved legal versions and install protected production configuration, including a live key, only in a separately authorized rollout.",
+    "Separate explicit owner change to authoritative productionEnabled and billing flags before real creation; all currently remain false.",
+    "Read-only GET /me verification with protected production credentials and any bounded real-money smoke are future separately authorized steps; not performed."
+  ],
+  "ownerApprovedProductConfiguration": {
+    "payment_subject": "service",
+    "description": "Доступ Advanced к AI Company Audit на 1 год",
+    "price": 480,
+    "amount_minor": 48000,
+    "currency": "RUB",
+    "vat_code": 1,
+    "vat_included": false,
+    "payment_mode": "full_payment",
+    "measure": "another",
+    "scope": "Owner confirmed product parameters and the actual production receipt configuration in the working YooKassa cabinet; no independent accounting or remote API verification is claimed.",
+    "productionFiscalConfirmation": true
+  },
+  "merchantConfirmation": {
+    "productionShopId": "1079713",
+    "productionShopIdConfirmed": true,
+    "connectionMethod": "API protocol",
+    "actualReceiptSolution": "yookassa",
+    "receiptSolutionConfirmed": true,
+    "status": "OWNER_CONFIRMED_PRODUCTION_CONFIGURATION",
+    "source": "Direct owner confirmation 2026-10-23 from the working YooKassa cabinet of ООО «АйТим Менеджмент»",
+    "requiredOwnerInputs": [],
+    "secretHandling": "The production secret is not requested, recorded or installed. It must only be installed through protected service configuration after separate authorization.",
+    "remoteVerificationPerformed": false,
+    "accountantApprovalClaimed": false,
+    "productionReceiptEvidence": "Owner confirmed Receipts from YooKassa in the actual production shop, independently of the test-shop screenshots."
+  },
+  "stagingTestMerchantConfirmation": {
+    "shopId": "1504416",
+    "environment": "STAGING_TEST",
+    "origin": "https://ai-diagnostic-staging-web.onrender.com",
+    "receiptCheckingModeEnabled": true,
+    "source": "Direct owner confirmation 2026-10-23 based on YooKassa cabinet screenshots",
+    "productionShopConfirmed": false,
+    "productionReceiptSolutionConfirmed": false
+  },
+  "deploymentState": "PREPARED_NOT_INSTALLED_PRODUCTION_DISABLED"
 }

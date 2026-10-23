@@ -1,10 +1,10 @@
 import 'server-only';
 import {z} from 'zod';
 import type {BillingProvider} from './provider';
-import {annualOffer,billingEnvironmentAllowed,receiptSettings} from './commercial';
+import {annualOffer,yookassaRuntimeMode,receiptSettings} from './commercial';
 import {verifiedEventSchema,type VerifiedBillingEvent} from './contracts';
 const paymentId=z.string().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
-export const yookassaContextSchema=z.object({id:z.uuid(),account_id:z.uuid(),company_id:z.uuid().nullable(),offer_id:z.uuid(),offer_key:z.literal(annualOffer.key),amount_minor:z.literal(annualOffer.amount_minor),currency:z.literal(annualOffer.currency),merchant_ref:z.string().regex(/^\d{1,20}$/),provider_test_mode:z.literal(true),provider_payment_ref:z.string(),created_at:z.string(),status:z.string()});
+export const yookassaContextSchema=z.object({id:z.uuid(),account_id:z.uuid(),company_id:z.uuid().nullable(),offer_id:z.uuid(),offer_key:z.literal(annualOffer.key),amount_minor:z.literal(annualOffer.amount_minor),currency:z.literal(annualOffer.currency),merchant_ref:z.string().regex(/^\d{1,20}$/),provider_test_mode:z.boolean(),provider_payment_ref:z.string(),created_at:z.string(),status:z.string()});
 export type YooKassaContext=z.infer<typeof yookassaContextSchema>;
 const paymentSchema=z.object({id:paymentId,status:z.enum(['pending','waiting_for_capture','succeeded','canceled']),paid:z.boolean(),test:z.boolean(),receipt_registration:z.enum(['pending','succeeded','canceled']).optional(),amount:z.object({value:z.string().regex(/^\d+\.\d{2}$/),currency:z.string()}),refunded_amount:z.object({value:z.string().regex(/^\d+\.\d{2}$/),currency:z.string()}).optional(),recipient:z.object({account_id:z.string()}),metadata:z.object({checkout_id:z.uuid(),account_id:z.uuid(),offer_id:z.uuid()}),created_at:z.iso.datetime({offset:true}),captured_at:z.iso.datetime({offset:true}).optional(),cancellation_details:z.object({reason:z.string(),party:z.string()}).optional(),confirmation:z.object({type:z.string(),confirmation_url:z.string().optional()}).optional()});
 type Payment=z.infer<typeof paymentSchema>;
@@ -16,10 +16,10 @@ export class YooKassaError extends Error {
  constructor(readonly code:string,readonly retryable=false){super(code);}
 }
 export function yookassaConfigured(env:Record<string,string|undefined>=process.env){
- return env.BILLING_ENABLED==='true'&&yookassaVerificationConfigured(env);
+ return env.BILLING_ENABLED==='true'&&yookassaVerificationConfigured(env)&&(yookassaRuntimeMode(env)==='test'||annualOffer.productionEnabled===true);
 }
 export function yookassaVerificationConfigured(env:Record<string,string|undefined>=process.env){
- return billingEnvironmentAllowed(env)&&annualOffer.productionEnabled===false&&env.YOOKASSA_RECONCILIATION_ENABLED!=='false'&&env.BILLING_PROVIDER==='yookassa'&&env.YOOKASSA_TEST_MODE==='true'&&/^\d{1,20}$/.test(env.YOOKASSA_SHOP_ID??'')&&/^test_[A-Za-z0-9_-]{8,}$/.test(env.YOOKASSA_SECRET_KEY??'');
+ return yookassaRuntimeMode(env)!==null&&env.YOOKASSA_RECONCILIATION_ENABLED!=='false';
 }
 export function parseYooKassaNotification(body:string){
  if(Buffer.byteLength(body)>16384)throw new YooKassaError('billing_invalid_notification');
@@ -31,6 +31,11 @@ export class YooKassaBillingProvider implements BillingProvider<YooKassaContext>
   if(!(mode==='verification'?yookassaVerificationConfigured(env):yookassaConfigured(env)))throw new YooKassaError('billing_unavailable');
  }
  assertCheckoutReady(){if(!yookassaConfigured(this.env))throw new YooKassaError('billing_unavailable');receiptSettings(this.env);}
+ private context(value:YooKassaContext){
+  const c=yookassaContextSchema.parse(value),mode=yookassaRuntimeMode(this.env);
+  if(mode===null||c.provider_test_mode!==(mode==='test')||c.merchant_ref!==this.env.YOOKASSA_SHOP_ID)throw new YooKassaError('billing_verification_mismatch');
+  return c;
+ }
  private async requestData(path:string,method:'GET'|'POST',body?:unknown,idempotency?:string):Promise<unknown>{
   // No configurable API host, no redirects, no provider response or credential in error/log output.
   let response:Response;
@@ -46,14 +51,24 @@ export class YooKassaBillingProvider implements BillingProvider<YooKassaContext>
   if(!parsed.success)throw new YooKassaError('billing_provider_invalid',true);return parsed.data;
  }
  private validate(payment:Payment,c:YooKassaContext){
-  if(payment.recipient.account_id!==this.env.YOOKASSA_SHOP_ID||payment.recipient.account_id!==c.merchant_ref||payment.test!==c.provider_test_mode||!payment.test||payment.amount.value!==annualOffer.receiptItem.amount.value||payment.amount.currency!==c.currency||payment.metadata.checkout_id!==c.id||payment.metadata.account_id!==c.account_id||payment.metadata.offer_id!==c.offer_id)throw new YooKassaError('billing_verification_mismatch');
+  if(payment.recipient.account_id!==this.env.YOOKASSA_SHOP_ID||payment.recipient.account_id!==c.merchant_ref||payment.test!==c.provider_test_mode||payment.test!==(yookassaRuntimeMode(this.env)==='test')||payment.amount.value!==annualOffer.receiptItem.amount.value||payment.amount.currency!==c.currency||payment.metadata.checkout_id!==c.id||payment.metadata.account_id!==c.account_id||payment.metadata.offer_id!==c.offer_id)throw new YooKassaError('billing_verification_mismatch');
   if(Date.parse(payment.created_at)<Date.parse(c.created_at)-1000||Date.parse(payment.created_at)>Date.now()+300000)throw new YooKassaError('billing_verification_mismatch');
  }
+ // Explicit read-only configuration preflight; never creates a payment or infers fiscal parameters.
+ async inspectMerchantConfiguration(){
+  const schema=z.object({account_id:z.string(),status:z.enum(['enabled','disabled']),test:z.boolean(),itn:z.string().optional(),fiscalization:z.object({enabled:z.boolean(),provider:z.string()}).optional()});
+  const parsed=schema.safeParse(await this.requestData('me','GET'));
+  if(!parsed.success)throw new YooKassaError('billing_merchant_unconfirmed');
+  const m=parsed.data,mode=yookassaRuntimeMode(this.env);
+  if(m.account_id!==this.env.YOOKASSA_SHOP_ID||m.test!==(mode==='test')||m.status!=='enabled'||(mode==='production'&&(m.itn!=='7703381761'||m.fiscalization?.enabled!==true)))throw new YooKassaError('billing_merchant_unconfirmed');
+  return {merchantMatches:true,test:m.test,enabled:true,fiscalizationEnabled:m.fiscalization?.enabled===true};
+ }
  async createCheckout(c:YooKassaContext,email?:string){
-  this.assertCheckoutReady();const receiptEmail=z.email().parse(email);c=yookassaContextSchema.parse(c);
+  this.assertCheckoutReady();const receiptEmail=z.email().parse(email);c=this.context(c);
   // A timeout is retried only with this persisted key, within YooKassa's idempotency window.
   if(Date.now()-Date.parse(c.created_at)>23*60*60*1000)throw new YooKassaError('billing_checkout_reconciliation_required');
   const settings=receiptSettings(this.env);
+  if(yookassaRuntimeMode(this.env)==='production')await this.inspectMerchantConfiguration();
   const receipt={customer:{email:receiptEmail},items:[{...annualOffer.receiptItem,payment_mode:settings.payment_mode,...(settings.measure?{measure:settings.measure}:{})}],...(settings.tax_system_code===undefined?{}:{tax_system_code:settings.tax_system_code})};
   const p=await this.request('payments','POST',{amount:annualOffer.receiptItem.amount,capture:true,confirmation:{type:'redirect',return_url:`${this.env.APP_URL}/ru/billing/return?checkout=${c.id}`},description:annualOffer.receiptItem.description,save_payment_method:false,metadata:{checkout_id:c.id,account_id:c.account_id,offer_id:c.offer_id},receipt},c.id);
   this.validate(p,c);
@@ -67,11 +82,11 @@ export class YooKassaBillingProvider implements BillingProvider<YooKassaContext>
   return (await this.retrieveVerifiedPaymentDetails(id,c)).event;
  }
  async retrieveVerifiedPaymentDetails(id:string,c:YooKassaContext){
-  paymentId.parse(id);c=yookassaContextSchema.parse(c);
+  paymentId.parse(id);c=this.context(c);
   if(id!==c.provider_payment_ref)throw new YooKassaError('billing_verification_mismatch');
   const p=await this.request('payments/'+id,'GET');
   if(p.id!==id)throw new YooKassaError('billing_verification_mismatch');this.validate(p,c);
-  // Refund entitlement policy remains undecided; never grant a fresh year from a refunded payment.
+  // A refunded payment cannot grant another year; verified full refunds use their own reconciliation path.
   if(p.refunded_amount&&(p.refunded_amount.value!=='0.00'||p.refunded_amount.currency!==c.currency))throw new YooKassaError('billing_refund_reconciliation_required');
   if(p.status==='pending'||p.status==='waiting_for_capture')return {event:null,receiptState:p.receipt_registration??null};
   if((p.status==='succeeded'&&!p.paid)||(p.status==='canceled'&&p.paid))throw new YooKassaError('billing_verification_mismatch');
@@ -91,7 +106,7 @@ export class YooKassaBillingProvider implements BillingProvider<YooKassaContext>
   if(r.payment_id!==c.provider_payment_ref||r.amount.value!=='480.00'||r.amount.currency!=='RUB'||Date.parse(r.created_at)<Date.parse(c.created_at)-1000||Date.parse(r.created_at)>Date.now()+300000)throw new YooKassaError('billing_refund_mismatch');
  }
  async verifyFullRefund(r:YooKassaRefund,c:YooKassaContext){
-  c=yookassaContextSchema.parse(c);r=refundSchema.parse(r);this.validateRefund(r,c);
+  c=this.context(c);r=refundSchema.parse(r);this.validateRefund(r,c);
   const p=await this.request('payments/'+paymentId.parse(c.provider_payment_ref),'GET');
   this.validate(p,c);
   if(p.id!==c.provider_payment_ref||p.status!=='succeeded'||!p.paid||!p.captured_at||Date.parse(p.captured_at)<Date.parse(c.created_at)-1000||Date.parse(p.captured_at)>Date.now()+300000)throw new YooKassaError('billing_refund_mismatch');
@@ -101,7 +116,7 @@ export class YooKassaBillingProvider implements BillingProvider<YooKassaContext>
  }
  async createFullRefund(request:FullRefundRequest,c:YooKassaContext){
   if(this.env.YOOKASSA_REFUNDS_ENABLED!=='true')throw new YooKassaError('billing_refunds_disabled');
-  c=yookassaContextSchema.parse(c);z.uuid().parse(request.id);
+  c=this.context(c);z.uuid().parse(request.id);
   if(request.provider_refund_ref)return this.retrieveRefund(request.provider_refund_ref);
   if(request.status!=='requested'||!Number.isFinite(Date.parse(request.created_at))||Date.now()-Date.parse(request.created_at)>23*3600000||Date.parse(request.created_at)>Date.now()+300000)throw new YooKassaError('billing_refund_reconciliation_required');
   receiptSettings(this.env);
