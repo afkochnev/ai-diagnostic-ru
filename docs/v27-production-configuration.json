@@ -132,7 +132,7 @@
     "neverConvertReferencedOffer": true
   },
   "productionReadinessPending": [
-    "Obtain only factual owner confirmations A/B: actual iTeam production shop ID and connected receipt solution. full_payment and another are owner-approved product settings, not accountant/fiscal confirmation; require an accounting-confirmed tax_system_code only if the actual receipt solution needs it.",
+    "External production-shop setup is pending: connect/select the actual iTeam shop, obtain its factual shopId and identify its connected receipt solution in Settings → Online cash register. Do not infer production settings from the confirmed test shop. Determine tax_system_code necessity only after those facts; product full_payment/another remain owner-approved.",
     "Authorize exact canonical code/migration/configuration rollout after refreshed preflight and backup",
     "Publish approved legal versions and install protected production configuration only in separately authorized rollout",
     "Separate explicit owner change to authoritative productionEnabled before real creation; currently false",
@@ -152,14 +152,32 @@
     "productionFiscalConfirmation": false
   },
   "merchantConfirmation": {
-    "candidateShopId": "1079713",
     "productionShopIdConfirmed": false,
     "actualReceiptSolution": null,
     "receiptSolutionConfirmed": false,
     "requiredOwnerInputs": [
-      "A. Confirm whether 1079713 is the actual iTeam production shop: YES/NO.",
-      "B. Confirm the receipt solution in that shop: Receipts from YooKassa or external register (name)."
+      "Connect or select the actual production shop of ООО «АйТим Менеджмент» in YooKassa and supply its factual production shopId.",
+      "In that production shop, open Settings → Online cash register and identify the actual receipt solution: Receipts from YooKassa or the named external register."
     ],
-    "secretHandling": "No live secret requested, recorded or installed in this phase."
+    "secretHandling": "No live secret requested, recorded or installed in this phase.",
+    "productionShopId": null,
+    "status": "BLOCKED_PENDING_EXTERNAL_PRODUCTION_SHOP_AND_RECEIPT_SETUP",
+    "externalSetupSteps": [
+      "Connect/select the actual production shop of ООО «АйТим Менеджмент».",
+      "Obtain its actual production shopId.",
+      "Open Settings → Online cash register in that production shop.",
+      "Record the connected receipt solution: Receipts from YooKassa or named external register.",
+      "Only then determine whether application-level tax_system_code is required; obtain the exact accounting-confirmed code only if required."
+    ],
+    "productionReceiptEvidence": "The test-shop receipt-checking screen does not identify or confirm the production receipt solution."
+  },
+  "stagingTestMerchantConfirmation": {
+    "shopId": "1504416",
+    "environment": "STAGING_TEST",
+    "origin": "https://ai-diagnostic-staging-web.onrender.com",
+    "receiptCheckingModeEnabled": true,
+    "source": "Direct owner confirmation 2026-10-23 based on YooKassa cabinet screenshots",
+    "productionShopConfirmed": false,
+    "productionReceiptSolutionConfirmed": false
   }
 }
