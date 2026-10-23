@@ -23,7 +23,7 @@
       "NODE_ENV": "production"
     },
     "partialInvalidExpiredProfile": "deny controlled starts, email generation and AI calls; never silently fall back to an unrestricted profile",
-    "absence": "all four profile fields absent preserves normal behavior; gates must be OFF before profile removal"
+    "absence": "all profile fields and target ID absent preserves normal behavior; gates must be OFF before profile removal"
   },
   "admission": {
     "privateEntry": "/ru/free/smoke#admission=<private-token>",

@@ -6,7 +6,7 @@ export const freeSmokeCookie='aca-controlled-free';
 const fields=['FREE_SMOKE_RUN_ID','FREE_SMOKE_EXPIRES_AT','FREE_SMOKE_ADMISSION_SHA256','FREE_SMOKE_EMAIL'] as const;
 /** Disabled by default. A partially installed profile fails closed. No secret is returned. */
 export function freeSmokeConfig(env:Env=process.env,now=Date.now()){
- if(fields.every(k=>env[k]===undefined))return null;
+ if(fields.every(k=>env[k]===undefined)&&env.FREE_SMOKE_DIAGNOSTIC_ID===undefined)return null;
  const run=env.FREE_SMOKE_RUN_ID,expires=Date.parse(env.FREE_SMOKE_EXPIRES_AT??''),digest=env.FREE_SMOKE_ADMISSION_SHA256,email=env.FREE_SMOKE_EMAIL;
  if(env.APP_URL!=='https://audit.iteam.ru'||env.SUPABASE_URL!=='https://fhvxqeaujjeiflanqsbg.supabase.co'||env.NODE_ENV!=='production'
  ||!run||!uuid.test(run)||!digest||!/^[a-f0-9]{64}$/.test(digest)||!email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email!==email.trim().toLowerCase()
