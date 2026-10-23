@@ -1,4 +1,6 @@
-import{describe,it,expect}from'vitest';
+import{describe,it,expect,vi}from'vitest';
+// Exercise the historical commercial-OFF contract independently of the proposed active source switch.
+vi.mock('@/server/billing/commercial',async original=>{const m=await original<typeof import('@/server/billing/commercial')>();return {...m,annualOffer:{...m.annualOffer,productionEnabled:false}};});
 import{productionBillingReadiness}from'@/server/billing/readiness';
 describe('offline production configuration readiness',()=>{
  it('reports a disabled incomplete configuration without leaking supplied values or doing network work',()=>{const r=productionBillingReadiness({BILLING_ENABLED:'false',YOOKASSA_SECRET_KEY:'sensitive-value-never-print'});expect(r.adapterSupportsProduction).toBe(true);expect(r.creationSwitchOn).toBe(false);expect(r.externalCalls).toBe(0);expect(r.blockers).toContain('PRODUCTION_COMMERCIAL_ENABLEMENT_NOT_APPROVED');expect(r.blockers).toContain('PRODUCTION_FISCAL_CONFIGURATION_UNCONFIRMED');expect(JSON.stringify(r)).not.toContain('sensitive-value');});
