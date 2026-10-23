@@ -8,9 +8,13 @@ import { generateTeamReportV3, synthesizeTeamTextsV3, repairV3Fields } from "./r
 import { qualitativeCoverage, validateCoreQuality } from "./report-v3-contracts";
 import { validateAndRepairReport } from "./report-privacy";
 import {launchEnvironment} from '@/server-runtime/launch-gates';
-export type TeamJob = { id: string; kind: "team_aggregate" | "team_ai_report"; lease_token: string; attempts: number; pipeline_version?: string | null };
+import {controlledTeamRequired} from '@/server-runtime/team-smoke';
+import {currentControlledTeamClaim} from './controlled-ai-transport';
+export type TeamJob = { id: string; kind: "team_aggregate" | "team_ai_report"; lease_token: string; attempts: number; pipeline_version?: string | null; controlled_run_id?:string|null };
 type Rpc = (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
 export async function processTeamJob(job: TeamJob, rpc: Rpc) {
+  const controlled=currentControlledTeamClaim();
+  if((controlledTeamRequired()||job.controlled_run_id)&&(!controlled||controlled.job_id!==job.id||controlled.lease_token!==job.lease_token||controlled.kind!==job.kind||controlled.run_id!==job.controlled_run_id))throw new Error('controlled_team_claim_required');
   const counts=emptyTeamCallCounts();
   let v3=false, rich=false, localPass=false, storingSynthesis=false, publishing=false, reportLocalPass=false;
   let corpus: PrivacyCorpus | null=null;
@@ -22,7 +26,8 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
   };
   try {
     if (job.kind === "team_aggregate") return await call("process_team_aggregate");
-    const prepared = await call("prepare_team_report_job") as { status: string; pipeline_version?: string; qualitative_groups?: unknown; qualitative_input?: unknown; report_input?: unknown; synthesis?: unknown; provider_mode?: string };
+    const prepared = await call("prepare_team_report_job") as { status: string; pipeline_version?: string; qualitative_groups?: unknown; qualitative_input?: unknown; report_input?: unknown; synthesis?: unknown; provider_mode?: string; controlled_run_id?:string|null };
+    if(controlled&&(prepared.controlled_run_id!==controlled.run_id||prepared.pipeline_version!=="TEAM-RU-3"||prepared.provider_mode!=="openai"))throw new Error('controlled_team_claim_required');
     if (prepared.status !== "generating") return prepared.status;
     v3=prepared.pipeline_version==="TEAM-RU-3";
     rich = v3 || prepared.pipeline_version === "TEAM-RU-2";
@@ -69,7 +74,8 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
     const deterministic=["team_privacy_rejected","team_schema_rejected","team_numeric_integrity","team_qualitative_insufficient","team_quality_rejected","team_provider_mismatch"].find(code=>message.includes(code));
     const retryable = !deterministic && (!rich || attempted===0) && /timeout|aborted|429|5\d\d|network|fetch failed|econnreset|team_aggregate_pending/i.test(message);
     const code = deterministic ?? (message==="team_aggregate_pending" ? message : retryable ? "team_provider_retryable" : "team_processing_failed");
-    await rpc("fail_team_job", { ...identity, p_error_code: code, p_retryable: retryable });
+    const failed=await rpc("fail_team_job", { ...identity, p_error_code: code, p_retryable: controlled?false:retryable });
+    if(failed.error)throw new Error("team_failure_persist_unconfirmed");
     return "failed";
   } finally {
     corpus=null;
@@ -80,6 +86,9 @@ export async function runTeamJobs() {
   // Creation/invitation kill switches do not stop processing existing work.
   // Production still requires an explicit TEAM_ENABLED=true on the exact pair.
   if (!launchEnvironment('team')) return 0;
+  // Production admission belongs to the isolated exact-target runner. It must
+  // never be consumed by this global loop, including during a delayed stop.
+  if(controlledTeamRequired())return 0;
   const db = createAdminClient();
   const rpc: Rpc = async (name,args) => { const r = await db.rpc(name,args); return { data: r.data, error: r.error }; };
   const { data, error } = await rpc("claim_team_jobs_v3", { p_limit: 1, p_lease_seconds: 600 });

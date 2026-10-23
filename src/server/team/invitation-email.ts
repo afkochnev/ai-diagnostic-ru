@@ -1,7 +1,42 @@
-import { createTransactionalProvider } from "@/server/consultation/provider";
-export function getTeamInvitationProvider() {
+import { z } from 'zod';
+import { createTransactionalProvider,type ConsultationProvider,type ConsultationNotification } from "@/server/consultation/provider";
+import {ConsultationDeliveryError,consultationResendConfig} from '@/server/consultation/config';
+import {controlledTeamRequired,assertControlledTeamWindow,reserveControlledTeamEffect,completeControlledTeamEffect,assertControlledTeamEffectWindow,controlledTeamMillisecondsRemaining,type ControlledTeamContext} from '@/server-runtime/team-smoke';
+type ControlledInvitation={context:ControlledTeamContext;participantId:string;invitationHash:string;recipient:string};
+class ControlledTeamInvitationProvider implements ConsultationProvider {
+ readonly name='resend';
+ constructor(private readonly binding:ControlledInvitation){}
+ async send(message:ConsultationNotification){
+  const {context,participantId,invitationHash,recipient}=this.binding;
+  assertControlledTeamWindow(context);
+  if(!z.email().safeParse(message.to).success||message.to!==recipient||message.idempotencyKey!==`team-invitation/${participantId}/${invitationHash}`)throw new ConsultationDeliveryError('team_message_invalid',false);
+  const {key,from}=consultationResendConfig();
+  const effect=await reserveControlledTeamEffect(context,'invitation_email',{participantId});
+  if(!effect||effect.recipient_email!==recipient||effect.invitation_hash!==invitationHash)throw new ConsultationDeliveryError('team_message_invalid',false);
+  let outcome:'unknown'|'failed'='unknown';
+  try{
+   assertControlledTeamEffectWindow(effect);
+   // Fixed host/path, no redirects, no SDK/retry layer. Reservation survives any
+   // uncertain outcome, restart or repeated action; the caller never resends.
+   const response=await fetch('https://api.resend.com/emails',{method:'POST',redirect:'error',cache:'no-store',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json','Idempotency-Key':message.idempotencyKey},body:JSON.stringify({from,to:[effect.recipient_email],subject:message.subject,text:message.text,...(message.html?{html:message.html}:{})}),signal:AbortSignal.timeout(Math.max(1,Math.floor(Math.min(15000,controlledTeamMillisecondsRemaining(effect)))))});
+   if(!response.ok){outcome='failed';throw Error('team_delivery_failed');}
+   const receipt=await response.json().catch(()=>null) as {id?:unknown}|null;
+   if(typeof receipt?.id!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(receipt.id))throw Error('team_delivery_unknown');
+   await completeControlledTeamEffect(effect,'succeeded',receipt.id);
+   return {providerMessageId:receipt.id};
+  }catch{
+   await completeControlledTeamEffect(effect,outcome).catch(()=>{});
+   throw new ConsultationDeliveryError('team_delivery_unconfirmed',false);
+  }
+ }
+}
+export function getTeamInvitationProvider(controlled?:ControlledInvitation) {
   const mode=process.env.TEAM_INVITATION_EMAIL_PROVIDER ?? process.env.EMAIL_PROVIDER ?? "resend";
   if(mode!=="mock" && mode!=="resend") throw new Error("team_email_provider_invalid");
+  if(controlledTeamRequired()){
+   if(mode!=='resend'||!controlled)throw Error('controlled_team_unavailable');
+   return new ControlledTeamInvitationProvider(controlled);
+  }
   return createTransactionalProvider(mode);
 }
 const escape=(value:string)=>value.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);

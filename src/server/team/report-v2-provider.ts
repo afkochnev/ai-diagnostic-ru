@@ -5,11 +5,14 @@ import { z } from "zod";
 import { teamAIProvider } from "./report-provider";
 import { mainTeamReportInputV2, parseQualitativeInputV2, teamReportV2Schema, teamSynthesisV2Schema, TEAM_REPORT_V2, type TeamReportInputV2, type TeamSynthesisV2, type QualitativeInputV2 } from "./report-v2-contracts";
 import { repairResponseSchema, type RepairField } from "./synthesis-repair";
+import {controlledTeamRequired} from '@/server-runtime/team-smoke';
+import {currentControlledTeamAI} from './controlled-ai-transport';
 
 export type TeamCallCounts = { synthesis_call_count: number; repair_call_count: number; report_call_count: number };
 export const emptyTeamCallCounts = (): TeamCallCounts => ({synthesis_call_count:0,repair_call_count:0,report_call_count:0});
 
 async function structuredV2<T>(kind: "synthesis" | "report" | "repair" | "report_repair", input: unknown, schema: z.ZodType<T>, counts?: TeamCallCounts) {
+  if(controlledTeamRequired()||currentControlledTeamAI())throw Error('controlled_team_pipeline_required');
   const config = teamAIProvider(TEAM_REPORT_V2);
   const prompt = readFileSync(join(process.cwd(), kind === "synthesis" ? "TEAM_SYNTHESIS_PROMPT_RU_2.md" : kind === "repair" ? "TEAM_SYNTHESIS_REPAIR_PROMPT_RU_2.md" : kind === "report_repair" ? "TEAM_REPORT_REPAIR_PROMPT_RU_2.md" : "TEAM_REPORT_PROMPT_RU_2.md"), "utf8");
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 180000 });

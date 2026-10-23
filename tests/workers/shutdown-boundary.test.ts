@@ -1,0 +1,11 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const f=vi.hoisted(()=>({rpc:vi.fn(),score:vi.fn(),ai:vi.fn(),consultation:vi.fn(),team:vi.fn()}));
+vi.mock('@/server-runtime/supabase/admin',()=>({createAdminClient:()=>({rpc:f.rpc})}));
+vi.mock('@/server/scoring/worker',()=>({runScoringJob:f.score}));vi.mock('@/server/ai/worker',()=>({runAIJob:f.ai}));
+vi.mock('@/server/consultation/worker',()=>({runPendingConsultationNotifications:f.consultation}));vi.mock('@/server/team/worker',()=>({runTeamJobs:f.team}));
+import {runWorkerOnce,runProductionWorker} from '@/server/worker/runner';
+beforeEach(()=>{vi.clearAllMocks();f.rpc.mockImplementation(async(name:string)=>({data:name==='claim_scoring_jobs'?[{job_id:'s'}]:[{job_id:'a'}],error:null}));f.score.mockResolvedValue(undefined);f.ai.mockResolvedValue(undefined);f.consultation.mockResolvedValue(undefined);f.team.mockResolvedValue(0);});
+it('SIGTERM during scoring finishes owned work but starts no AI/consultation/Team claim',async()=>{const state={stop:false};f.score.mockImplementation(async()=>{state.stop=true;});expect(await runWorkerOnce(state)).toEqual({scoring:1,ai:0});expect(f.rpc).toHaveBeenCalledOnce();expect(f.ai).not.toHaveBeenCalled();expect(f.consultation).not.toHaveBeenCalled();expect(f.team).not.toHaveBeenCalled();});
+it('SIGTERM during claimed AI starts no consultation or Team claim',async()=>{const state={stop:false};f.ai.mockImplementation(async()=>{state.stop=true;});expect(await runWorkerOnce(state)).toEqual({scoring:1,ai:1});expect(f.rpc).toHaveBeenCalledTimes(2);expect(f.consultation).not.toHaveBeenCalled();expect(f.team).not.toHaveBeenCalled();});
+it('SIGTERM during consultation does not reach Team',async()=>{const state={stop:false};f.consultation.mockImplementation(async()=>{state.stop=true;});await runWorkerOnce(state);expect(f.team).not.toHaveBeenCalled();});
+it('an aborted signal stops before any claim, even before stop flag propagation',async()=>{const c=new AbortController();c.abort();await runProductionWorker({stop:false,signal:c.signal});expect(f.rpc).not.toHaveBeenCalled();});

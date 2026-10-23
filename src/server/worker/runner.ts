@@ -30,24 +30,40 @@ async function claim(name: string, args: Record<string, unknown>) {
   return (result.data ?? []) as Array<Record<string, unknown>>;
 }
 
-export async function runWorkerOnce() {
+export type WorkerSignal = { stop: boolean; signal?: AbortSignal };
+export async function runWorkerOnce(state?: WorkerSignal) {
   const config = workerConfig();
+  let scoringCount=0,aiCount=0;
+  const stopped=()=>state?.stop===true||state?.signal?.aborted===true;
+  const result=()=>({scoring:scoringCount,ai:aiCount});
+  if(stopped())return result();
   const scoring = await claim("claim_scoring_jobs", { p_limit: 1, p_max_attempts: config.scoringMaxAttempts, p_lease_seconds: config.leaseSeconds });
+  scoringCount=scoring.length;
   for (const job of scoring) await runScoringJob(job as unknown as ClaimedScoringJob);
 
+  if(stopped())return result();
   const ai = await claim("claim_ai_report_jobs", { p_limit: config.aiConcurrency, p_max_attempts: config.aiMaxAttempts, p_lease_seconds: config.leaseSeconds });
+  aiCount=ai.length;
   await Promise.all(ai.map((job) => runAIJob(job as unknown as ClaimedAIJob)));
 
+  if(stopped())return result();
   await runPendingConsultationNotifications(1);
   // A Team outage cannot stop the established individual/consultation loop.
+  if(stopped())return result();
   try { await runTeamJobs(); } catch { console.error("[team-worker] unavailable"); }
-  return { scoring: scoring.length, ai: ai.length };
+  return result();
 }
 
-export async function runProductionWorker(signal?: { stop: boolean }) {
+export async function runProductionWorker(signal?: WorkerSignal) {
   const state = signal ?? { stop: false };
   while (!state.stop) {
-    await runWorkerOnce();
-    if (!state.stop) await new Promise((resolve) => setTimeout(resolve, workerConfig().pollIntervalMs));
+    await runWorkerOnce(state);
+    if (!state.stop&&!state.signal?.aborted) await new Promise<void>((resolve) => {
+      const done=()=>{clearTimeout(timer);state.signal?.removeEventListener("abort",done);resolve();};
+      const timer=setTimeout(done,workerConfig().pollIntervalMs);
+      state.signal?.addEventListener("abort",done,{once:true});
+      if(state.signal?.aborted)done();
+    });
+    if(state.signal?.aborted)state.stop=true;
   }
 }

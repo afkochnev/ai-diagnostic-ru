@@ -8,6 +8,7 @@ import { renderTeamPdf, type TeamPdfInput } from "./pdf-render";
 import { teamReportV2Schema } from "./report-v2-contracts";
 import {TEAM_PDF_TEMPLATE_VERSION} from "@/shared/analytics/team-report-presentation";
 import type { DispersionProfile } from "@/shared/analytics/dispersion";
+import {controlledTeamRequired,controlledTeamContext,reserveControlledTeamEffect,assertControlledTeamEffectWindow,completeControlledTeamEffect} from '@/server-runtime/team-smoke';
 export const teamPdfTemplateVersion=TEAM_PDF_TEMPLATE_VERSION;
 const sourceSchema=z.object({report_id:z.uuid(),version:z.number().int().positive(),pipeline:z.enum(["TEAM-RU-2","TEAM-RU-3"]),model:z.string(),completed_at:z.iso.datetime({offset:true}),company_name:z.string(),team_title:z.string(),participant_count:z.number().int().min(3),overall:z.object({mean:z.number(),maturity:z.string(),stddev_pop:z.number().nonnegative().optional()}),blocks:z.array(z.object({title:z.string(),mean:z.number(),position:z.number().int().positive().optional(),stddev_pop:z.number().nonnegative().optional()})).length(8),content:teamReportV2Schema});
 const display=(n:number)=>n.toLocaleString("ru-RU",{maximumFractionDigits:1});
@@ -54,12 +55,30 @@ const locks=new Map<string,Promise<{status:"ready";fileName:string}>>();
 async function prepare(reportId:string,userId:string) {
   const source=await authorizedSource(reportId,userId),fileName=teamPdfFileName(source.company_name,source.version);
   if((await existing(reportId,source.version))?.content_base64) return {status:"ready" as const,fileName};
+  let effect:Awaited<ReturnType<typeof reserveControlledTeamEffect>>=null;
+  if(controlledTeamRequired()){
+    const client=await authenticatedAccountClient(userId) as unknown as SupabaseClient;
+    const {data:report,error}=await client.from('team_ai_reports').select('team_diagnostic_id').eq('id',reportId).eq('version',source.version).single();
+    if(error||!report?.team_diagnostic_id)throw Error('team_pdf_access_denied');
+    const context=await controlledTeamContext({teamId:report.team_diagnostic_id,ownerUserId:userId});
+    effect=await reserveControlledTeamEffect(context,'pdf',{reportId});
+  }
+  let writingArtifact=false;
+  try{
+  assertControlledTeamEffectWindow(effect);
   const input:TeamPdfInput={companyName:source.company_name,teamTitle:source.team_title,completedAt:source.completed_at,participantCount:source.participant_count,index:display(source.overall.mean),maturity:source.overall.maturity,blocks:source.blocks.map(b=>({title:b.title,score:display(b.mean)})),content:source.content,mock:source.model.startsWith("team-mock-"),profile:await renderingProfile(reportId,userId,source)};
   const bytes=await renderTeamPdf(input),checksum=crypto.createHash("sha256").update(bytes).digest("hex");
   await authorizedSource(reportId,userId);
+  assertControlledTeamEffectWindow(effect);
+  writingArtifact=true;
   const {error}=await db().from("team_report_artifacts").upsert({team_report_id:reportId,team_report_version:source.version,format:"pdf",template_version:teamPdfTemplateVersion,status:"ready",storage_path:`team-reports/${reportId}/${teamPdfTemplateVersion}.pdf`,content_base64:bytes.toString("base64"),checksum},{onConflict:"team_report_id,format,template_version",ignoreDuplicates:true});
   if(error || !(await existing(reportId,source.version))?.content_base64) throw new Error("team_pdf_failed");
+  await completeControlledTeamEffect(effect,'succeeded',checksum);
   return {status:"ready" as const,fileName};
+  }catch(error){
+    await completeControlledTeamEffect(effect,writingArtifact?'unknown':'failed').catch(()=>{});
+    throw error;
+  }
 }
 export async function prepareTeamPdf(reportId:string,userId:string) {
   await authorizedSource(reportId,userId);

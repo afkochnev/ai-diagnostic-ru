@@ -22,6 +22,7 @@ import { ordinaryTeamReportProvider } from "./ordinary-provider";
 import { singleEmailCredential } from "./single-email";
 import { openInvitationAuthProof } from "./invitation-auth-proof";
 import { requireEntitlement } from "@/server/entitlements";
+import {controlledTeamContext,controlledTeamRequired} from '@/server-runtime/team-smoke';
 const cookieName = "team-invitation";
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
 async function origin() {
@@ -56,6 +57,7 @@ export async function createTeamAction(_: TeamActionState, form: FormData): Prom
     const input = teamCreation.parse({ companyId: value(form,"companyId"), title: value(form,"title") });
     companyId = input.companyId;
     const company = await requireCompanyWrite(companyId, identity.user.id);
+    await controlledTeamContext({companyId,ownerUserId:identity.user.id});
     await requireEntitlement(company.account_id, "team_diagnostics");
     await enforceRateLimit(`team-create:${identity.user.id}`, 20, 86400);
     id = await teamRpc<string>("create_team_diagnostic", { p_company_id: companyId, p_title: input.title });
@@ -71,6 +73,7 @@ export async function inviteTeamAction(_: TeamActionState, form: FormData): Prom
     const record = await ownerTeam(input.teamId);
     if (!record) throw new Error("team_not_found");
     const owningCompany = await requireCompanyWrite(record.team.company_id, identity.user.id);
+    await controlledTeamContext({teamId:input.teamId,ownerUserId:identity.user.id});
     await requireEntitlement(owningCompany.account_id, "team_diagnostics");
     const company=await invitationCompany(record.team.company_id);
     await enforceRateLimit(`team-invite:${identity.user.id}`, 100, 86400);
@@ -86,7 +89,8 @@ async function deliverInvitation(participantId: string, email: string, title: st
   const invitationUrl = `${authConfig().APP_URL}/ru/team/join#invitation=${token}&context=${details}`;
   let emailStatus: TeamActionState["emailStatus"] = "failed";
   try {
-    const provider = getTeamInvitationProvider();
+    const controlled=await controlledTeamContext({participantId,invitationHash:hash});
+    const provider = getTeamInvitationProvider(controlled?{context:controlled,participantId,invitationHash:hash,recipient:email}:undefined);
     let emailedUrl=invitationUrl;
     if(provider.name!=="mock"){
       const credential=await singleEmailCredential(hash);
@@ -100,10 +104,13 @@ async function deliverInvitation(participantId: string, email: string, title: st
     return {emailStatus,recipient:email,participantId,provider:provider.name,providerMessageId:receipt.providerMessageId,...(emailStatus==="mock"?{invitationUrl}:{})};
   } catch { /* Keep link available and explicitly report email delivery failure. */ }
   console.info("[team-email]",{event:"invitation_delivery",providerAccepted:false,correlation:hash.slice(0,12)});
-  return { invitationUrl, emailStatus,recipient:email,participantId };
+  // A controlled failure never exposes a fallback link that could start an OTP
+  // email or encourage a second credential/send after an uncertain first attempt.
+  return { ...(!controlledTeamRequired()?{invitationUrl}:{}), emailStatus,recipient:email,participantId };
 }
 export async function renewTeamInvitationAction(_: TeamActionState, form: FormData): Promise<TeamActionState> {
   try {
+    if(controlledTeamRequired())throw Error('controlled_team_unavailable');
     if(!teamInvitationsEnabled())throw Error('team_invitations_paused');
     await origin(); const identity = await requireIdentity();
     const participantId = z.uuid().parse(value(form,"participantId")), teamId = z.uuid().parse(value(form,"teamId"));
@@ -129,6 +136,7 @@ export async function prepareTeamInvitationAction(_: TeamActionState, form: Form
     await origin();
     const token = invitationToken.parse(value(form,"token"));
     const details=value(form,"context"),hash=createHash("sha256").update(token).digest("hex");
+    await controlledTeamContext({invitationHash:hash});
     if(details && !openInvitationDetails(details,hash,authConfig().AUTH_FLOW_SECRET))throw new Error("team_invitation_unavailable");
     const proof=value(form,"auth");
     if(proof && !openInvitationAuthProof(proof,hash,authConfig().AUTH_FLOW_SECRET))throw new Error("team_auth_link_expired");
@@ -159,6 +167,7 @@ export async function saveTeamResponseAction(previous: TeamActionState, form: Fo
     const raw = value(form,"answers");
     if (raw.length > 1000000) throw new Error("team_invalid_answers");
     const input = teamSave.parse({ participantId: value(form,"participantId"), revision: value(form,"revision"), answers: JSON.parse(raw), submit: value(form,"intent") === "submit" });
+    await controlledTeamContext({participantId:input.participantId});
     return await teamRpc<{ revision: number; status: string }>("save_team_response", { p_participant_id: input.participantId, p_expected_revision: input.revision, p_answers: input.answers, p_submit: input.submit });
   } catch (error) { return { revision: previous.revision, status: previous.status, ...failure(error) }; }
 }
@@ -170,6 +179,7 @@ export async function teamResultAction(_: TeamActionState, form: FormData): Prom
     const record = await ownerTeam(teamId);
     if (!record) throw new Error("team_not_found");
     await requireCompanyWrite(record.team.company_id, identity.user.id);
+    await controlledTeamContext({teamId,ownerUserId:identity.user.id});
     await enforceRateLimit(`team-results:${identity.user.id}`,60,3600);
     const intent = z.enum(["refresh","report","close"]).parse(value(form,"intent"));
     await teamRpc(intent === "report" ? "request_team_report_v3" : intent === "close" ? "close_team_diagnostic" : "refresh_team_results", { p_team_id: teamId, ...(intent === "report" ? {p_provider:ordinaryTeamReportProvider()} : {}) });

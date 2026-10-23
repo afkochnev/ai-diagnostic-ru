@@ -1,7 +1,8 @@
 import { runProductionWorker } from "../src/server/worker/runner";
 
-const state = { stop: false };
-const stop = () => { state.stop = true; };
+const controller=new AbortController();
+const state = { stop: false,signal:controller.signal };
+const stop = () => { state.stop = true;controller.abort(); };
 process.once("SIGTERM", stop);
 process.once("SIGINT", stop);
 
