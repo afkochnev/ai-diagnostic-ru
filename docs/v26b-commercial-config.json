@@ -13,7 +13,7 @@
   "vat": "none",
   "vat_included": false,
   "vat_code": 1,
-  "productionEnabled": false,
+  "productionEnabled": true,
   "display": {
     "price": "480 ₽",
     "optionalClarification": "Без НДС",
