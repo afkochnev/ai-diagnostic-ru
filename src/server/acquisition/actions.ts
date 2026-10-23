@@ -10,6 +10,7 @@ import {guardOrigin,cookieContext,setContext,newSecret,hash,clearAnonymous,limit
 import {sessionRpc,claimRpc,ownSession,type ClaimResult,type Choices} from './service';
 import {emailSchema,shortProfileSchema,safeAttribution,acquisitionCookie} from './contracts';
 import {requestAccess,accessProof} from './email';
+import {reserveFreeSmoke} from './smoke';
 import {acquisitionStartEnabled} from '@/server-runtime/launch-gates';
 export type AcquisitionState={error?:string;sent?:boolean};
 const message=(e:unknown)=>e instanceof Error && e.message.includes('conflict')?'Данные изменились в другой вкладке. Обновите страницу.':e instanceof Error && e.message.includes('consent')?'Условия обновились. Подтвердите действующее согласие.':e instanceof Error && e.message.includes('advanced_required')?'В тарифе Free можно работать с одной компанией. Выберите существующую компанию или подключите Advanced.':e instanceof Error && e.message.includes('expired')?'Срок хранения диагностики истёк. Начните новую диагностику.':'Не удалось продолжить. Ваши сохранённые ответы остаются доступными до окончания срока хранения.';
@@ -22,6 +23,7 @@ export async function startAnonymous(_:AcquisitionState,form:FormData):Promise<A
   if(form.get('consent')!=='on')return {error:'Подтвердите согласие на обработку данных.'};
   const policy=await registrationPolicy();
   if(form.get('consent_version')!==policy.versions.data_processing)return {error:'Условия обновились. Обновите страницу и подтвердите согласие.'};
+  await reserveFreeSmoke('start');
   let visit;try{visit=await cookieContext(visitCookie);}catch{await ipLimit();const secret=newSecret();visit={id:randomUUID(),secret,hash:hash(secret)};await sessionRpc('visit_direct',visit.id,visit.hash,safeAttribution(Object.fromEntries(['utm_source','utm_medium','utm_campaign','utm_content','referrer_host','landing_variant'].map(k=>[k,form.get(k)]))));await setContext(visitCookie,visit.id,secret);}
   await limit('start',visit.id,15,3600);const secret=newSecret();
   let started:{id:string};
