@@ -6,7 +6,7 @@
   "expectedScope": "STAGING_FUNCTIONAL_PASS_MOCK_EXTERNALS",
   "migration": {
     "file": "20261024144714_controlled_team_w2_continuation.sql",
-    "sha256": "3522a3fc9e3f56817e081558ada877431092daa16055e973084dbec25d61208c",
+    "sha256": "305d9c94b6dba052685d255229191d4d14bfebe1d653b18a8060bb17f3acd0b1",
     "expectedDryRunPending": ["20261024144714_controlled_team_w2_continuation.sql"],
     "stopOnAnyDrift": true,
     "defaultWindowRows": 0,

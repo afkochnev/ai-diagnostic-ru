@@ -46,6 +46,7 @@ create function private.controlled_team_w2_quiescent() returns void language plp
 end $$;
 create function private.configure_controlled_team_w2(p_window_id uuid,p_root_run_id uuid,p_expected_free_subscription_id uuid,p_approved_plan_hash text) returns jsonb language plpgsql set search_path='' as $$declare r private.controlled_team_runs;begin
  if current_user<>'postgres' then raise exception 'controlled_team_operator_required';end if;
+ if current_setting('transaction_isolation')<>'read committed' then raise exception 'controlled_team_operator_isolation_required';end if;
  perform 1 from private.controlled_team_policy where singleton for update;
  select * into r from private.controlled_team_runs where id=p_root_run_id for update;
  perform private.controlled_team_w2_quiescent();
@@ -68,6 +69,7 @@ create function private.configure_controlled_team_w2(p_window_id uuid,p_root_run
 end $$;
 create function private.arm_controlled_team_w2(p_window_id uuid,p_approved_plan_hash text) returns jsonb language plpgsql set search_path='' as $$declare w private.controlled_team_windows;t timestamptz:=clock_timestamp();begin
  if current_user<>'postgres' then raise exception 'controlled_team_operator_required';end if;
+ if current_setting('transaction_isolation')<>'read committed' then raise exception 'controlled_team_operator_isolation_required';end if;
  perform 1 from private.controlled_team_policy where singleton for update;
  select * into w from private.controlled_team_windows where id=p_window_id for update;
  perform private.controlled_team_w2_quiescent();
@@ -84,7 +86,7 @@ do $$declare d text;needle text;begin
  d:=pg_get_functiondef('private.configure_controlled_team_run(uuid,uuid,uuid,uuid,text[],timestamptz,uuid)'::regprocedure);
  needle:='if current_user<>''postgres'' then raise exception ''controlled_team_operator_required'';end if;';
  if position(needle in d)=0 then raise exception 'controlled_team_w2_source_drift';end if;
- d:=replace(d,needle,needle||'if exists(select 1 from private.controlled_team_windows) then raise exception ''controlled_team_w2_dedicated_path_required'';end if;');
+ d:=replace(d,needle,needle||'if current_setting(''transaction_isolation'')<>''read committed'' then raise exception ''controlled_team_operator_isolation_required'';end if;if exists(select 1 from private.controlled_team_windows) then raise exception ''controlled_team_w2_dedicated_path_required'';end if;');
  needle:='perform 1 from private.controlled_team_policy where singleton for update;';
  if position(needle in d)=0 then raise exception 'controlled_team_w2_source_drift';end if;
  execute replace(d,needle,needle||'if exists(select 1 from private.controlled_team_windows) then raise exception ''controlled_team_w2_dedicated_path_required'';end if;');

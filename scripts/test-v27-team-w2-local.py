@@ -95,6 +95,12 @@ try:
  assert sql("select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='private' and(p.proname like '%w2%' or p.proname='require_controlled_team_window') and(has_function_privilege('authenticated',p.oid,'EXECUTE') or has_function_privilege('service_role',p.oid,'EXECUTE') or has_function_privilege('anon',p.oid,'EXECUTE'))")=='0'
  ok('private W2/operator/hash-finalizer helpers lack API grants; authenticated cannot use service-only access')
  window=sql('select gen_random_uuid()');plan='a'*64
+ operator_calls=[f"select private.configure_controlled_team_run(gen_random_uuid(),'{account}','{company}','{owner}',{emails},clock_timestamp()+interval '45 minutes','{restored}')",f"select private.configure_controlled_team_w2('{window}','{run}','{restored}','{plan}')",f"select private.arm_controlled_team_w2('{window}','{plan}')"]
+ for isolation in ['repeatable read','serializable']:
+  for command in operator_calls:
+   pre=rows();sql('begin isolation level '+isolation+';'+command+';commit;','controlled_team_operator_isolation_required');assert rows()==pre
+ ok('finite legacy/W2 prepare/arm operator APIs reject repeatable-read and serializable before mutation; full state remains exact')
+
  sql(f"select private.configure_controlled_team_w2('{window}','{run}','{subscription}','{plan}')",'controlled_team_w2_target_changed')
  sql(f"select private.configure_controlled_team_w2('{window}','{run}','{restored}','{plan}')")
  assert sql(f"select armed_at is null and expires_at is null and status='prepared' from private.controlled_team_windows where id='{window}'")=='t'
@@ -113,7 +119,7 @@ try:
  probe('update private.launch_controls set team_creation_enabled=true',f"select private.arm_controlled_team_w2('{window}','{plan}')",role='postgres',error='controlled_team_not_quiescent')
  p0=participants[0]
  probe(f"update auth.users set raw_user_meta_data='{{}}' where id='{p0['uid']}'",f"select private.arm_controlled_team_w2('{window}','{plan}')",role='postgres',error='controlled_team_w2_unavailable')
- sql(f"select private.arm_controlled_team_w2('{window}','{plan}')")
+ race(f"select private.arm_controlled_team_w2('{window}','{plan}')",role='postgres')
  sql(f"select private.arm_controlled_team_w2('{window}','{plan}')",'controlled_team_w2_unavailable')
  sql(f"update private.controlled_team_windows set expires_at=expires_at+interval '1 minute' where id='{window}'",'controlled_team_window_immutable')
  expired_setup=f"alter table private.controlled_team_windows disable trigger controlled_team_window_immutable;update private.controlled_team_windows set armed_at=armed_at-interval '2 hours',expires_at=expires_at-interval '2 hours',personal_deadline_at=personal_deadline_at-interval '2 hours' where id='{window}'"

@@ -29,8 +29,9 @@ provider/admin intervention stops compensation.
 The W2 row is also a permanent one-shot tombstone: the legacy run configurator
 and selected-policy UPDATE/DELETE cannot select a fresh budget root in prepared,
 active or stopped/restored states. The configurator rechecks after taking the
-shared policy lock, so a race cannot bypass the tombstone. Any future independent
-controlled run needs a separately reviewed mechanism.
+shared policy lock. These three finite operator configuration/arm APIs require
+READ COMMITTED; older snapshot isolation is refused before mutation. Any future
+independent controlled run needs a separately reviewed mechanism.
 
 ## Existing invitation access
 
