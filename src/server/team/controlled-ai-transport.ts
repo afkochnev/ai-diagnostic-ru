@@ -14,6 +14,7 @@ export type ControlledTeamClaim = {
   job_id: string; kind: "team_aggregate" | "team_ai_report"; lease_token: string;
   lease_expires_at: string; deadline_at: string | null; server_now: string;
   pipeline_version: string; provider_mode: string | null; attempts: number;
+  window_id?: string | null; approved_plan_hash?: string | null;
 };
 type ResponseBody = { status: string; model: string; id: string; output_text: string; usage: { input_tokens: number; output_tokens: number } };
 type SafeMetadata = { model?: string; input_tokens?: number; output_tokens?: number; response_id?: string; http_status: number; elapsed_ms: number; request_bytes: number };
@@ -26,6 +27,7 @@ export function validateControlledClaim(value: unknown): ControlledTeamClaim {
   const c = value as ControlledTeamClaim;
   if (!c || ![c.run_id, c.team_id, c.job_id, c.lease_token].every(id => typeof id === "string" && uuid.test(id)) || !/^[a-f0-9]{64}$/.test(c.source_fingerprint) || !["team_aggregate", "team_ai_report"].includes(c.kind) || c.attempts !== 1 || !Number.isFinite(Date.parse(c.server_now)) || !Number.isFinite(Date.parse(c.lease_expires_at))) fail();
   if (c.kind === "team_ai_report" && (!c.report_id || !uuid.test(c.report_id) || c.pipeline_version !== "TEAM-RU-3" || c.provider_mode !== "openai" || !c.deadline_at)) fail();
+  if (c.window_id != null && (!uuid.test(c.window_id) || !/^[a-f0-9]{64}$/.test(c.approved_plan_hash ?? ""))) fail();
   return c;
 }
 
@@ -80,10 +82,11 @@ export class ControlledTeamAITransport {
     if (stage !== "model_get" && (!body || body.model !== controlledTeamModel || body.store !== false || body.max_output_tokens !== controlledTeamStageTokens[stage] || body.service_tier !== "default" || (body.text as { format?: { type?: string; strict?: boolean } } | undefined)?.format?.type !== "json_schema" || (body.text as { format?: { strict?: boolean } }).format?.strict !== true || Object.keys(body).some(key => !["model", "store", "max_output_tokens", "input", "text", "service_tier"].includes(key)))) fail();
     this.stages.add(stage); // Never release an uncertain local reservation.
     const reserveStarted = this.monotonic();
-    const r = await this.options.rpc("reserve_controlled_team_ai_call", { p_run_id: this.claim.run_id, p_job_id: this.claim.job_id, p_lease_token: this.claim.lease_token, p_stage: stage, p_request_bytes: bytes, p_max_output_tokens: controlledTeamStageTokens[stage] });
+    const r = await this.options.rpc(this.claim.window_id ? "reserve_controlled_team_window_ai_call" : "reserve_controlled_team_ai_call", { p_run_id: this.claim.run_id, ...(this.claim.window_id ? { p_window_id: this.claim.window_id } : {}), p_job_id: this.claim.job_id, p_lease_token: this.claim.lease_token, p_stage: stage, p_request_bytes: bytes, p_max_output_tokens: controlledTeamStageTokens[stage] });
     if (r.error) fail();
     const reservation = r.data as ControlledTeamClaim & { reservation_id: string; stage: ControlledTeamStage; model: string };
     if (!reservation || !uuid.test(reservation.reservation_id) || reservation.stage !== stage || reservation.model !== controlledTeamModel || ["run_id", "team_id", "report_id", "source_fingerprint"].some(key => reservation[key as keyof ControlledTeamClaim] !== this.claim[key as keyof ControlledTeamClaim])) fail();
+    if ((reservation.window_id ?? null) !== (this.claim.window_id ?? null) || (this.claim.window_id && reservation.approved_plan_hash !== this.claim.approved_plan_hash)) fail();
     this.reservedStages.add(stage);
     this.deadline = Math.min(this.deadline, this.serverDeadline(reservation, this.monotonic() - reserveStarted));
     const timeout = Math.min(stage === "model_get" ? 20000 : 180000, this.remaining() - 10000);

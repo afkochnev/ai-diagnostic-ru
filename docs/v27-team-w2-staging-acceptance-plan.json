@@ -1,0 +1,49 @@
+{
+  "version": "v27-team-w2-staging-acceptance-v1",
+  "status": "PREPARED_NOT_AUTHORIZED_OR_EXECUTED",
+  "sourceBaseSHA": "f91306d25655b7e9b3dd67c632cd0531450493ae",
+  "candidate": "Exact PR head must be pinned in owner approval and readiness artifacts; never resolve a moving branch at deployment time.",
+  "expectedScope": "STAGING_FUNCTIONAL_PASS_MOCK_EXTERNALS",
+  "migration": {
+    "file": "20261024144714_controlled_team_w2_continuation.sql",
+    "sha256": "305d9c94b6dba052685d255229191d4d14bfebe1d653b18a8060bb17f3acd0b1",
+    "expectedDryRunPending": ["20261024144714_controlled_team_w2_continuation.sql"],
+    "stopOnAnyDrift": true,
+    "defaultWindowRows": 0,
+    "launchFlagsChanged": false,
+    "historicalRowsUpdated": false
+  },
+  "prerequisites": [
+    "Separate owner authorization for this exact staging head and migration only.",
+    "Required application and isolated-sql CI green on that exact head.",
+    "Fresh full staging row/schema/ledger/consent/legal/queue/lease/storage fingerprints, environment preimage and backup evidence.",
+    "All acquisition/Team/billing gates remain OFF; no unrelated eligible or leased jobs.",
+    "Exact migration dry-run set and checked-in migration hashes agree."
+  ],
+  "permittedAfterFutureApproval": [
+    "Apply only the one exact pending migration after a matching dry-run.",
+    "Deploy only the accepted exact head to staging web and worker, preserving environment and secrets.",
+    "Read-only health/legal/privacy/closed-Team routes and Admin projection checks.",
+    "Run W2 financial-free behavior evidence in disposable networkless SQL and fake HTTP, not against live provider endpoints.",
+    "Compare all pre-existing rows/consent/legal records and original root/effect/Team/UID bindings; reconcile only additive schema columns, empty new guard tables and one ledger entry.",
+    "Verify exact web/worker commits, closed gates, no unexpected queue/lease/storage items and unchanged staging TEST merchant configuration."
+  ],
+  "forbidden": [
+    "production mutations or production environment reads containing secrets",
+    "merge or moving-head deployment",
+    "arming/configuring any real controlled window",
+    "real Auth credential issuance or personal Auth verification",
+    "real email, AI, YooKassa, payment or refund calls",
+    "environment/secrets/callback changes",
+    "operational privilege or membership grants",
+    "resetting prior reservations, creating a replacement Team/invitation or editing historical consent/legal records"
+  ],
+  "futureExecution": {
+    "authorizedByThisPlan": false,
+    "productionGuardRolloutRequiresSeparateApproval": true,
+    "W2WindowAndAdditional3Credentials3EmailsRequireSeparateApproval": true,
+    "AIAndPDFLifetimeBudgetsRemainRootShared": true,
+    "billingRemainsOFF": true,
+    "phase3Authorized": false
+  }
+}

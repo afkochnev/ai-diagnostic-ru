@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createTransactionalProvider,type ConsultationProvider,type ConsultationNotification } from "@/server/consultation/provider";
 import {ConsultationDeliveryError,consultationResendConfig} from '@/server/consultation/config';
-import {controlledTeamRequired,assertControlledTeamWindow,reserveControlledTeamEffect,completeControlledTeamEffect,assertControlledTeamEffectWindow,controlledTeamMillisecondsRemaining,type ControlledTeamContext} from '@/server-runtime/team-smoke';
+import {controlledTeamRequired,assertControlledTeamWindow,reserveControlledTeamEffect,reserveControlledTeamW2Access,completeControlledTeamEffect,assertControlledTeamEffectWindow,controlledTeamMillisecondsRemaining,type ControlledTeamContext,type ControlledTeamW2Access} from '@/server-runtime/team-smoke';
 type ControlledInvitation={context:ControlledTeamContext;participantId:string;invitationHash:string;recipient:string};
 class ControlledTeamInvitationProvider implements ConsultationProvider {
  readonly name='resend';
@@ -34,10 +34,34 @@ export function getTeamInvitationProvider(controlled?:ControlledInvitation) {
   const mode=process.env.TEAM_INVITATION_EMAIL_PROVIDER ?? process.env.EMAIL_PROVIDER ?? "resend";
   if(mode!=="mock" && mode!=="resend") throw new Error("team_email_provider_invalid");
   if(controlledTeamRequired()){
-   if(mode!=='resend'||!controlled)throw Error('controlled_team_unavailable');
+   if(mode!=='resend'||!controlled||controlled.context.window_id)throw Error('controlled_team_unavailable');
    return new ControlledTeamInvitationProvider(controlled);
   }
   return createTransactionalProvider(mode);
+}
+
+/** Dedicated continuation email; generic invitation/renewal paths stay closed.
+ * No credential or message body is returned as an owner/evidence response. */
+export async function sendControlledTeamW2AccessEmail(context:ControlledTeamContext,credential:ControlledTeamW2Access,url:string){
+ assertControlledTeamWindow(context);
+ if(!context.window_id||credential.window_id!==context.window_id||credential.run_id!==context.run_id||credential.team_id!==context.team_id||credential.participant_id!==context.participant_id||(process.env.TEAM_INVITATION_EMAIL_PROVIDER??process.env.EMAIL_PROVIDER??'resend')!=='resend')throw Error('controlled_team_unavailable');
+ const parsed=new URL(url);
+ if(parsed.origin!=='https://audit.iteam.ru'||parsed.pathname!=='/ru/team/join'||parsed.search||parsed.username||parsed.password||!/^#access=[A-Za-z0-9_-]{1,3072}$/.test(parsed.hash))throw Error('controlled_team_unavailable');
+ const {key,from}=consultationResendConfig();
+ const effect=await reserveControlledTeamW2Access(context,credential.participant_id,'access_email');
+ if(effect.user_id!==credential.user_id||effect.recipient_email!==credential.recipient_email||effect.invitation_hash!==credential.invitation_hash)throw Error('controlled_team_unavailable');
+ let dispatched=false;
+ try{
+  assertControlledTeamEffectWindow(effect);dispatched=true;
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',redirect:'error',cache:'no-store',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json','Idempotency-Key':`team-w2-access/${context.run_id}/${context.window_id}/${effect.participant_id}`},body:JSON.stringify({from,to:[effect.recipient_email],subject:'Продолжение командной диагностики AI Company Audit',text:`Откройте вашу анкету командной диагностики: ${url}\n\nПароль не нужен. После вашего согласия откроется анкета. Ссылка действует не более 30 минут и до окончания текущего периода доступа. Организатор видит статус прохождения и агрегированные результаты, но не ваши индивидуальные ответы. Не пересылайте это письмо.`}),signal:AbortSignal.timeout(Math.max(1,Math.floor(Math.min(15000,controlledTeamMillisecondsRemaining(effect)))))});
+  if(!response.ok)throw Error('team_delivery_unconfirmed');
+  const result=await response.json().catch(()=>null) as {id?:unknown}|null;
+  if(typeof result?.id!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(result.id))throw Error('team_delivery_unconfirmed');
+  await completeControlledTeamEffect(effect,'succeeded',result.id);
+ }catch{
+  await completeControlledTeamEffect(effect,dispatched?'unknown':'failed').catch(()=>{});
+  throw Error('controlled_team_access_unconfirmed');
+ }
 }
 const escape=(value:string)=>value.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
 export function teamInvitationMessage(input:{company:string;team:string;inviter:string;url:string;singleEmail?:boolean}) {

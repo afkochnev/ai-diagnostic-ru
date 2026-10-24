@@ -4,10 +4,11 @@ import { cookies } from "next/headers";
 import { authConfig } from "./config";
 import type { Database } from "@/types/database.generated";
 
-export async function createAuthClient() {
+export async function createAuthClient(fetchOverride?:typeof fetch) {
   const config = authConfig();
   const jar = await cookies();
   return createServerClient<Database>(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY, {
+    ...(fetchOverride?{global:{fetch:fetchOverride}}:{}),
     cookieOptions: { httpOnly: true, sameSite: "lax", secure: config.secure, path: "/" },
     cookies: {
       getAll: () => jar.getAll(),
