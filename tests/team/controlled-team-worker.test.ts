@@ -28,6 +28,27 @@ function fixture(){
  const fetch=vi.fn<typeof globalThis.fetch>(async input=>new Response(JSON.stringify(String(input).includes('/models/')?{id:controlledTeamModel}:{id:'resp_safe',model:controlledTeamModel,status:'completed',usage:{input_tokens:1,output_tokens:100},output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(stage==='synthesis'?synthesis:report)}]}]}),{status:200,headers:{'content-type':'application/json'}}));
  return{rpc,fetch,spent,evidence,qualitative,report};
 }
+const windowId=id(50),planSHA256='f'.repeat(64);
+const windowManifest={...manifest,version:2,continuationWindowId:windowId,planSHA256};
+const windowEnv={...env,TEAM_CREATION_ENABLED:'false',TEAM_INVITATIONS_ENABLED:'false'};
+function windowFixture(){
+ const f=fixture(),windowClaim={...claim,window_id:windowId,approved_plan_hash:planSHA256};
+ const rpc=vi.fn<ControlledTeamRpc>(async(name,args)=>{
+  if(name==='claim_controlled_team_window_job')return{data:windowClaim,error:null};
+  if(name==='reserve_controlled_team_window_ai_call'){
+   const result=await f.rpc('reserve_controlled_team_ai_call',args);
+   return result.error?result:{...result,data:{...(result.data as object),window_id:windowId,approved_plan_hash:planSHA256}};
+  }
+  if(name==='stop_controlled_team_window')return{data:{status:'stopped'},error:null};
+  if(name==='prepare_team_report_job'){
+   const result=await f.rpc(name,args);
+   return{...result,data:{...(result.data as object),controlled_window_id:windowId}};
+  }
+  if(['claim_controlled_team_job','reserve_controlled_team_ai_call','stop_controlled_team_run'].includes(name))throw Error('legacy root operation refused');
+  return f.rpc(name,args);
+ });
+ return{...f,rpc,windowClaim};
+}
 beforeEach(()=>{vi.spyOn(console,'info').mockImplementation(()=>{});});
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 describe('one-shot controlled Team worker',()=>{
@@ -88,5 +109,64 @@ describe('one-shot controlled Team worker',()=>{
   expect(f.fetch).toHaveBeenCalledTimes(3);
   expect(f.rpc.mock.calls.map(call => call[0])).not.toContain('publish_team_report');
   expect(f.rpc.mock.calls.filter(call => call[0] === 'fail_team_job')).toHaveLength(1);
+ });
+});
+
+describe('W2 exact manifest and shared-budget worker',()=>{
+ it('binds root/window/approved plan on claim and every AI reservation, with the unchanged pipeline',async()=>{
+  const f=windowFixture();
+  const result=await runControlledTeamOnce(windowManifest,{...f,env:windowEnv,apiKey:'synthetic-only',monotonic:()=>0});
+  expect(result).toMatchObject({status:'CONTROLLED_TEAM_COMPLETED',runId:claim.run_id,continuationWindowId:windowId,audit:{modelHTTPStarted:1,responsesHTTPStarted:2}});
+  expect(f.rpc.mock.calls[0]).toEqual(['claim_controlled_team_window_job',{p_run_id:claim.run_id,p_window_id:windowId,p_kind:claim.kind,p_source_fingerprint:claim.source_fingerprint,p_report_id:claim.report_id}]);
+  for(const [name,args]of f.rpc.mock.calls.filter(([name])=>name==='reserve_controlled_team_window_ai_call')){
+   expect(name).toBe('reserve_controlled_team_window_ai_call');expect(args).toMatchObject({p_run_id:claim.run_id,p_window_id:windowId,p_job_id:claim.job_id,p_lease_token:claim.lease_token});
+  }
+  expect(f.fetch).toHaveBeenCalledTimes(3);
+ });
+ it.each([{window_id:id(99)},{approved_plan_hash:'b'.repeat(64)},{window_id:null}])('does not process or fail a mismatched window/plan claim %j',async delta=>{
+  const f=windowFixture(),rpc=vi.fn<ControlledTeamRpc>(async(name,args)=>name==='claim_controlled_team_window_job'?{data:{...f.windowClaim,...delta},error:null}:f.rpc(name,args));
+  const result=await runControlledTeamOnce(windowManifest,{...f,rpc,env:windowEnv,apiKey:'synthetic-only',monotonic:()=>0});
+  expect(result.status).toBe('CONTROLLED_TEAM_STOP_HOLD');expect(f.fetch).not.toHaveBeenCalled();
+  expect(rpc.mock.calls.map(([name])=>name)).not.toContain('fail_team_job');
+  expect(rpc.mock.calls.at(-1)).toEqual(['stop_controlled_team_window',{p_run_id:claim.run_id,p_window_id:windowId,p_reason:'controlled_worker_stopped'}]);
+ });
+ it('burnt root stage reservation denies a restarted W2 without a second HTTP and never stops/reopens root',async()=>{
+  const f=windowFixture();f.spent.add('model_get');
+  const result=await runControlledTeamOnce(windowManifest,{...f,env:windowEnv,apiKey:'synthetic-only',monotonic:()=>0});
+  expect(result.status).toBe('CONTROLLED_TEAM_STOP_CONTAINED');expect(f.fetch).not.toHaveBeenCalled();
+  expect(f.rpc.mock.calls.map(([name])=>name)).not.toContain('stop_controlled_team_run');
+  expect(f.rpc.mock.calls.filter(([name])=>name==='stop_controlled_team_window')).toHaveLength(1);
+ });
+ it('rejects a stale v1 manifest trying to claim a W2-bound job',async()=>{
+  const f=fixture(),rpc:ControlledTeamRpc=async(name,args)=>name==='claim_controlled_team_job'?{data:{...claim,window_id:windowId,approved_plan_hash:planSHA256},error:null}:f.rpc(name,args);
+  const result=await runControlledTeamOnce(manifest,{...f,rpc,env,apiKey:'synthetic-only',monotonic:()=>0});
+  expect(result.status).toBe('CONTROLLED_TEAM_STOP_HOLD');expect(f.fetch).not.toHaveBeenCalled();expect(f.rpc.mock.calls.map(([name])=>name)).not.toContain('fail_team_job');
+ });
+ it('window or approved-plan mismatch in an AI reservation prevents the HTTP dispatch',async()=>{
+  for(const delta of [{window_id:id(99)},{approved_plan_hash:'b'.repeat(64)},{window_id:undefined}]){
+   const f=windowFixture(),rpc:ControlledTeamRpc=async(name,args)=>{
+    const result=await f.rpc(name,args);
+    return name==='reserve_controlled_team_window_ai_call'?{...result,data:{...(result.data as object),...delta}}:result;
+   };
+   const result=await runControlledTeamOnce(windowManifest,{...f,rpc,env:windowEnv,apiKey:'synthetic-only',monotonic:()=>0});
+   expect(result.status).toBe('CONTROLLED_TEAM_STOP_CONTAINED');expect(f.fetch).not.toHaveBeenCalled();
+  }
+ });
+ it('requires generic Team gates OFF and a strict versioned manifest before any RPC',async()=>{
+  const f=windowFixture();
+  for(const value of [{...manifest,continuationWindowId:windowId},{...windowManifest,version:1},{...windowManifest,planSHA256:undefined},{...windowManifest,extra:'ignored?'}]){
+   await expect(runControlledTeamOnce(value,{...f,env:windowEnv,apiKey:'synthetic-only'})).rejects.toThrow();
+  }
+  for(const key of ['TEAM_CREATION_ENABLED','TEAM_INVITATIONS_ENABLED'])await expect(runControlledTeamOnce(windowManifest,{...f,env:{...windowEnv,[key]:'true'},apiKey:'synthetic-only'})).rejects.toThrow();
+  expect(f.rpc).not.toHaveBeenCalled();expect(f.fetch).not.toHaveBeenCalled();
+ });
+ it('a foreign prepared window is refused before synthesis or report Responses',async()=>{
+  const f=windowFixture(),rpc:ControlledTeamRpc=async(name,args)=>{
+   const result=await f.rpc(name,args);
+   return name==='prepare_team_report_job'?{...result,data:{...(result.data as object),controlled_window_id:id(99)}}:result;
+  };
+  const result=await runControlledTeamOnce(windowManifest,{...f,rpc,env:windowEnv,apiKey:'synthetic-only',monotonic:()=>0});
+  expect(result.status).toBe('CONTROLLED_TEAM_STOP_CONTAINED');expect(f.fetch).toHaveBeenCalledOnce();
+  expect(f.rpc.mock.calls.map(([name])=>name)).not.toContain('publish_team_report');
  });
 });

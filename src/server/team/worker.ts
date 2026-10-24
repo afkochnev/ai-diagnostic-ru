@@ -10,11 +10,11 @@ import { validateAndRepairReport } from "./report-privacy";
 import {launchEnvironment} from '@/server-runtime/launch-gates';
 import {controlledTeamRequired} from '@/server-runtime/team-smoke';
 import {currentControlledTeamClaim} from './controlled-ai-transport';
-export type TeamJob = { id: string; kind: "team_aggregate" | "team_ai_report"; lease_token: string; attempts: number; pipeline_version?: string | null; controlled_run_id?:string|null };
+export type TeamJob = { id: string; kind: "team_aggregate" | "team_ai_report"; lease_token: string; attempts: number; pipeline_version?: string | null; controlled_run_id?:string|null; controlled_window_id?:string|null };
 type Rpc = (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
 export async function processTeamJob(job: TeamJob, rpc: Rpc) {
   const controlled=currentControlledTeamClaim();
-  if((controlledTeamRequired()||job.controlled_run_id)&&(!controlled||controlled.job_id!==job.id||controlled.lease_token!==job.lease_token||controlled.kind!==job.kind||controlled.run_id!==job.controlled_run_id))throw new Error('controlled_team_claim_required');
+  if((controlledTeamRequired()||job.controlled_run_id||job.controlled_window_id)&&(!controlled||controlled.job_id!==job.id||controlled.lease_token!==job.lease_token||controlled.kind!==job.kind||controlled.run_id!==job.controlled_run_id||(controlled.window_id??null)!==(job.controlled_window_id??null)))throw new Error('controlled_team_claim_required');
   const counts=emptyTeamCallCounts();
   let v3=false, rich=false, localPass=false, storingSynthesis=false, publishing=false, reportLocalPass=false;
   let corpus: PrivacyCorpus | null=null;
@@ -26,8 +26,8 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
   };
   try {
     if (job.kind === "team_aggregate") return await call("process_team_aggregate");
-    const prepared = await call("prepare_team_report_job") as { status: string; pipeline_version?: string; qualitative_groups?: unknown; qualitative_input?: unknown; report_input?: unknown; synthesis?: unknown; provider_mode?: string; controlled_run_id?:string|null };
-    if(controlled&&(prepared.controlled_run_id!==controlled.run_id||prepared.pipeline_version!=="TEAM-RU-3"||prepared.provider_mode!=="openai"))throw new Error('controlled_team_claim_required');
+    const prepared = await call("prepare_team_report_job") as { status: string; pipeline_version?: string; qualitative_groups?: unknown; qualitative_input?: unknown; report_input?: unknown; synthesis?: unknown; provider_mode?: string; controlled_run_id?:string|null; controlled_window_id?:string|null };
+    if(controlled&&(prepared.controlled_run_id!==controlled.run_id||(prepared.controlled_window_id??null)!==(controlled.window_id??null)||prepared.pipeline_version!=="TEAM-RU-3"||prepared.provider_mode!=="openai"))throw new Error('controlled_team_claim_required');
     if (prepared.status !== "generating") return prepared.status;
     v3=prepared.pipeline_version==="TEAM-RU-3";
     rich = v3 || prepared.pipeline_version === "TEAM-RU-2";
