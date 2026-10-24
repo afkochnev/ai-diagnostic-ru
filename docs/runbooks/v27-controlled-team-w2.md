@@ -1,5 +1,10 @@
 # Controlled Team continuation W2
 
+The subsequent protective change is specified in
+[W2 Auth evidence and finite operator integration](v27-team-w2-auth-evidence.md).
+Its durable wire trace is mandatory for W2 issuance and verification; earlier
+hash-only completion is insufficient. Local/mock acceptance authorizes no rollout.
+
 This guard is implementation only. It does not open a window, deploy a service,
 change environment values, grant Advanced, or authorize another external call.
 Acquisition, Team and billing remain OFF. No merge or production rollout is

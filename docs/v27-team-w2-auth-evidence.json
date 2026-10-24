@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "scope": "AUTH_EVIDENCE_AND_FINITE_W2_OPERATOR_IMPLEMENTATION",
+  "executionAuthorization": "NOT_GRANTED",
+  "productionMutationsAuthorized": false,
+  "stagingMutationsAuthorized": false,
+  "mergeAuthorized": false,
+  "realEmailAuthorized": false,
+  "realAIRequestsAuthorized": false,
+  "realYooKassaRequestsAuthorized": false,
+  "rootRunId": "e3623f1d-2da0-4dfe-b600-d747f529c5fc",
+  "teamId": "8383647f-10d9-45f9-8c76-f22cf357074b",
+  "accountId": "af1b67c8-5c92-4300-92e2-d666ca75c3cd",
+  "newWindowAllocated": false,
+  "historicalEffectsPolicy": "PRESERVE_ALL_SIX_SPENT_ORIGINAL_EFFECTS",
+  "lifetimeBudgetPolicy": "NO_RESET_NO_NEW_ROOT_NO_RETRY_AFTER_UNKNOWN",
+  "featureGates": "OFF",
+  "authCredentialEvidence": {
+    "algorithm": "HMAC-SHA256",
+    "key": "EXACT_EXISTING_SERVICE_AUTHORIZATION_HEADER_TRANSIENT_ONLY",
+    "credentialDomain": "aca-w2-auth-evidence-v1\ncredential",
+    "challengeDomain": "aca-w2-auth-evidence-v1\nchallenge",
+    "newSecret": false,
+    "rawCredentialRPCArgument": false,
+    "unkeyedCredentialDigest": false,
+    "rawAuthResponseLogging": false,
+    "actualWireTimeoutMilliseconds": 15000,
+    "traceRPCTimeoutMilliseconds": 5000,
+    "transportRetries": 0,
+    "implicitClockSkewWaiverSeconds": 0,
+    "futureReadOnlyHeaderCapabilityRequired": true
+  },
+  "preservation": {
+    "algorithm": "EXISTING_AUTHORIZATION_KEYED_PER_ROW_PER_CELL_HMAC",
+    "fixedSourceTables": 116,
+    "singleSnapshot": true,
+    "unknownChange": "HOLD",
+    "authTimestampWaiver": false,
+    "rewriteHistoricalConsents": false,
+    "oldSnapshotRetrospectivelyCertified": false,
+    "futureAcceptedBaselineBridgeRequired": true
+  },
+  "futureGates": [
+    "EXACT_NEW_PR_HEAD_AND_MIGRATION_STAGING_ACCEPTANCE_APPROVAL",
+    "GREEN_APPLICATION_AND_ISOLATED_SQL_CI",
+    "EXACT_DRY_RUN_NO_UNEXPECTED_DRIFT",
+    "READ_ONLY_AUTH_HEADER_CAPABILITY",
+    "SEPARATE_CANONICAL_MERGE_AND_PRODUCTION_GUARD_ROLLOUT",
+    "FRESH_OWNER_APPROVED_W2_PLAN_AND_POST_HUMAN_BASELINE",
+    "SEPARATE_REAL_EFFECT_EXECUTION_AUTHORIZATION"
+  ]
+}

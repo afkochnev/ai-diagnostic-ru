@@ -7,6 +7,7 @@ import {controlledTeamContext,reserveControlledTeamW2Access,completeControlledTe
 import {sealControlledTeamW2Proof} from './team-w2-proof';
 import {controlledTeamAuthFetch} from '@/server/team/controlled-auth-transport';
 import {sendControlledTeamW2AccessEmail} from '@/server/team/invitation-email';
+import {createAuthWireEvidence} from './team-auth-evidence';
 
 /** This function consumes the two NEW W2 durable slots for one exact pending
  * identity. Re-entry after any reserved dispatch fails; it cannot reset R's
@@ -20,7 +21,8 @@ export async function recoverControlledTeamAccess(input:{windowId:string;partici
  let dispatched=false,completed=false;
  try{
   assertControlledTeamEffectWindow(effect);
-  const admin=createAdminClient(controlledTeamAuthFetch(effect,effect.invitation_hash));
+  const evidence=createAuthWireEvidence({runId:context.run_id,windowId,participantId,userId:effect.user_id,operation:'issue',reservationId:effect.reservation_id,planHash:context.approved_plan_hash??''});
+  const admin=createAdminClient(controlledTeamAuthFetch(effect,effect.invitation_hash,globalThis.fetch,evidence));
   dispatched=true;
   const {data,error}=await admin.auth.admin.generateLink({type:'magiclink',email:effect.recipient_email,options:{redirectTo:`${config.APP_URL}/ru/team/join`}});
   if(error||data?.user?.id!==effect.user_id||data.user.email?.toLowerCase()!==effect.recipient_email||data.properties?.verification_type!=='magiclink'||!z.string().regex(/^[A-Za-z0-9_-]{32,256}$/).safeParse(data.properties.hashed_token).success)throw Error('controlled_team_access_unconfirmed');
