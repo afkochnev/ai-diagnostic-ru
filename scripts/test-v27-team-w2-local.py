@@ -98,6 +98,14 @@ try:
  sql(f"select private.configure_controlled_team_w2('{window}','{run}','{subscription}','{plan}')",'controlled_team_w2_target_changed')
  sql(f"select private.configure_controlled_team_w2('{window}','{run}','{restored}','{plan}')")
  assert sql(f"select armed_at is null and expires_at is null and status='prepared' from private.controlled_team_windows where id='{window}'")=='t'
+ def assert_root_budget_frozen(stage):
+  pre=rows()
+  sql(f"select private.configure_controlled_team_run(gen_random_uuid(),'{account}','{company}','{owner}',{emails},clock_timestamp()+interval '45 minutes','{restored}')",'controlled_team_w2_dedicated_path_required')
+  sql(f"update private.controlled_team_policy set run_id='{run}' where singleton",'controlled_team_policy_immutable')
+  sql('delete from private.controlled_team_policy where singleton','controlled_team_policy_immutable')
+  assert rows()==pre,stage
+ assert_root_budget_frozen('prepared')
+
  service(f"select public.controlled_team_context('{company}',null,null,null)",'controlled_team_unavailable')
  auth(f"select public.admin_assign_account_plan('{account}','advanced','Denied unarmed','free')",admin,'controlled_team_unavailable')
  sql(f"update private.controlled_team_runs set status='active' where id='{run}'",'controlled_team_root_immutable')
@@ -112,6 +120,7 @@ try:
  personal_setup=f"alter table private.controlled_team_windows disable trigger controlled_team_window_immutable;update private.controlled_team_windows set armed_at=armed_at-interval '25 minutes',expires_at=expires_at-interval '25 minutes',personal_deadline_at=personal_deadline_at-interval '25 minutes' where id='{window}'"
  probe(expired_setup,f"select public.controlled_team_context('{company}',null,null,null)",error='controlled_team_unavailable')
  grant=json.loads(auth(f"select public.admin_assign_account_plan('{account}','advanced','W2 exact CAS','free')",admin))
+ assert_root_budget_frozen('active_advanced')
  for source_kind in ['manual','provider']:
   intervention=f"update private.account_subscriptions set status='ended',effective_until=clock_timestamp() where id='{grant['subscription_id']}';insert into private.account_subscriptions(account_id,plan_id,status,source,effective_from) select '{account}',id,'active','{source_kind}',clock_timestamp() from public.plans where key='advanced'"
   probe(intervention,f"select public.admin_assign_account_plan('{account}','free','Denied intervening plan','advanced')",admin,'authenticated','controlled_team_subscription_changed')
@@ -211,6 +220,7 @@ try:
  assert json.loads(auth(f"select public.admin_assign_account_plan('{account}','free','W2 duplicate','advanced')",admin))['status']=='unchanged'
  assert sql(f"select count(*) from private.admin_plan_changes where account_id='{account}'")=='4'
  assert sql(f"select private.effective_account_plan('{account}')")=='free'
+ assert_root_budget_frozen('stopped_restored')
  assert sql(f"select to_jsonb(x) from private.controlled_team_runs x where id='{run}'")==root_pre
  assert sql(f"select jsonb_agg(to_jsonb(x)-'window_id' order by id) from private.controlled_team_effects x where run_id='{run}' and window_id is null")==effects_pre
  assert sql(f"select count(*) from private.controlled_team_effects where run_id='{run}' and effect in('reauth_link','access_email')")=='6'
@@ -227,6 +237,7 @@ try:
    elif table=='private.account_subscriptions' and row.get('id')==restored:allowed={'status','effective_until','updated_at'}
    assert any(all(v.get(k)==x for k,x in row.items() if k not in allowed) for v in after_smoke[table]),(table,row.get('id'),allowed)
  ok('every pre-existing local row preserved outside finite exact UID/participant/redemption/finalization/new-grant field allowlist; old roles/memberships/consent/legal remain exact')
+ ok('legacy new-root configuration and policy reselection denied with full exact state in prepared, activeAdvanced and stoppedRestored W2; tombstone prevents independent budget')
  ok('expiry, personal deadline, cohort drift, intervention CAS, late report cutoff, finite queued cancellation, PDF insertion/once/template, immutable history adverse probes')
  ok('strict root+window claims and jobs; original AI stages/bytes/tokens/budgets; ambiguity stopsW2; ownlease terminal only; exact CAS compensation; all historical root/effects full exact')
  print(json.dumps({'status':'PASS','checks':checks,'count':len(checks),'preExistingTables':len(historical),'preExistingRows':sum(len(v) for v in historical.values()),'realProviderCalls':0,'productionTouched':False,'stagingTouched':False}),flush=True)

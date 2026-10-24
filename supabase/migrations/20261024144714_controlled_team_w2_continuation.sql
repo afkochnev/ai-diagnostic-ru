@@ -78,6 +78,23 @@ create function private.arm_controlled_team_w2(p_window_id uuid,p_approved_plan_
  update private.controlled_team_windows set status='active',armed_at=t,expires_at=t+interval '60 minutes',personal_deadline_at=t+interval '20 minutes' where id=w.id;
  return jsonb_build_object('window_id',w.id,'run_id',w.root_run_id,'status','active','server_now',t,'expires_at',t+interval '60 minutes','personal_deadline_at',t+interval '20 minutes');
 end $$;
+-- The continuation is a one-shot tombstone: the legacy operator cannot select
+-- an independent R2 budget, including after W2 stops and compensation completes.
+do $$declare d text;needle text;begin
+ d:=pg_get_functiondef('private.configure_controlled_team_run(uuid,uuid,uuid,uuid,text[],timestamptz,uuid)'::regprocedure);
+ needle:='if current_user<>''postgres'' then raise exception ''controlled_team_operator_required'';end if;';
+ if position(needle in d)=0 then raise exception 'controlled_team_w2_source_drift';end if;
+ d:=replace(d,needle,needle||'if exists(select 1 from private.controlled_team_windows) then raise exception ''controlled_team_w2_dedicated_path_required'';end if;');
+ needle:='perform 1 from private.controlled_team_policy where singleton for update;';
+ if position(needle in d)=0 then raise exception 'controlled_team_w2_source_drift';end if;
+ execute replace(d,needle,needle||'if exists(select 1 from private.controlled_team_windows) then raise exception ''controlled_team_w2_dedicated_path_required'';end if;');
+end $$;
+create function private.controlled_team_policy_frozen() returns trigger language plpgsql set search_path='' as $$begin
+ if exists(select 1 from private.controlled_team_windows) then raise exception 'controlled_team_policy_immutable';end if;
+ if tg_op='DELETE' then return old;end if;return new;
+end $$;
+revoke all on function private.controlled_team_policy_frozen() from public,anon,authenticated,service_role;
+create trigger controlled_team_policy_frozen before update or delete on private.controlled_team_policy for each row execute function private.controlled_team_policy_frozen();
 -- Immutable original R is historical evidence after W2 preparation, including all old flags/pointers.
 create function private.controlled_team_root_frozen() returns trigger language plpgsql set search_path='' as $$begin
  if exists(select 1 from private.controlled_team_windows where root_run_id=old.id) then raise exception 'controlled_team_root_immutable';end if;

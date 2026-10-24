@@ -26,6 +26,12 @@ exact subscription compare-and-set. Compensation appends a new Free subscription
 and audit; it never restarts or backdates the earlier subscriptions. Unexpected
 provider/admin intervention stops compensation.
 
+The W2 row is also a permanent one-shot tombstone: the legacy run configurator
+and selected-policy UPDATE/DELETE cannot select a fresh budget root in prepared,
+active or stopped/restored states. The configurator rechecks after taking the
+shared policy lock, so a race cannot bypass the tombstone. Any future independent
+controlled run needs a separately reviewed mechanism.
+
 ## Existing invitation access
 
 The original three Auth issuance and three email receipts remain spent. Generic
