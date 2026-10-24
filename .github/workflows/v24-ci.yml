@@ -33,6 +33,11 @@ jobs:
       - run: npm run build
       - name: Verify actual Docker build context and authoritative commercial contract
         run: docker build --target build --tag ai-diagnostic-web-build:ci .
+      - name: Verify controlled entry points are present and Node-loadable without network
+        run: >-
+          docker run --rm --network none --entrypoint node ai-diagnostic-web-build:ci
+          --import tsx -e
+          "const f=require('node:fs');for(const p of ['scripts/controlled-team-worker.ts','scripts/controlled-team-w2-access.ts'])if(!f.lstatSync(p).isFile())throw Error('controlled_entrypoint_missing');if(f.existsSync('scripts/test-v27-team-w2-local.py'))throw Error('operator_test_in_runtime');Promise.all([import('./src/server/team/controlled-runner.ts'),import('./src/server-runtime/team-w2-access.ts')]).catch(()=>process.exit(1));"
   sql:
     name: isolated-sql
     runs-on: ubuntu-latest

@@ -15,7 +15,7 @@ export function TeamPasswordless({policy,view}:{policy:TeamEntryPolicy;view:Team
   useEffect(()=>{const tick=()=>setNow(Date.now());const timer=window.setInterval(tick,1000);return()=>window.clearInterval(timer);},[]);
   const contextExpires=sent.contextExpires??view.expires;
   const expired=view.phase==="expired" || sent.phase==="expired" || Boolean(now && contextExpires && now>=contextExpires);
-  if(expired)return <p role="alert">{sent.error??(view.singleEmail?"Срок ссылки для входа истёк. Попросите организатора отправить новое приглашение.":"Срок текущей сессии приглашения истёк. Откройте письмо-приглашение снова.")}</p>;
+  if(expired)return <p role="alert">{sent.error??(view.continuation?'Ссылка недоступна или срок доступа истёк. Обратитесь к организатору.':view.singleEmail?"Срок ссылки для входа истёк. Попросите организатора отправить новое приглашение.":"Срок текущей сессии приглашения истёк. Откройте письмо-приглашение снова.")}</p>;
   const wrong=view.wrongAccount || sent.phase==="wrong";
   if(wrong)return <div className="space-y-4"><p>Это приглашение предназначено для другого адреса: {view.maskedEmail}.</p><form action={switchAccount}><button className={button} disabled={switching}>Выйти и продолжить с адресом приглашения</button></form>{switched.error && <p role="alert">{switched.error}</p>}</div>;
   const accepted=sent.phase?sent.phase==="waiting" && sent.authRequestAccepted===true:view.phase==="waiting";

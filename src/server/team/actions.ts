@@ -136,7 +136,8 @@ export async function prepareTeamInvitationAction(_: TeamActionState, form: Form
     await origin();
     const token = invitationToken.parse(value(form,"token"));
     const details=value(form,"context"),hash=createHash("sha256").update(token).digest("hex");
-    await controlledTeamContext({invitationHash:hash});
+    const controlled=await controlledTeamContext({invitationHash:hash});
+    if(controlled?.window_id)throw Error('team_auth_link_expired');
     if(details && !openInvitationDetails(details,hash,authConfig().AUTH_FLOW_SECRET))throw new Error("team_invitation_unavailable");
     const proof=value(form,"auth");
     if(proof && !openInvitationAuthProof(proof,hash,authConfig().AUTH_FLOW_SECRET))throw new Error("team_auth_link_expired");
@@ -144,6 +145,7 @@ export async function prepareTeamInvitationAction(_: TeamActionState, form: Form
     (await cookies()).set("team-invitation-details",details,{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru",maxAge:1800});
     (await cookies()).set("team-email-challenge","",{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru/team",maxAge:0});
     (await cookies()).set("team-invitation-auth",proof,{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru/team",maxAge:proof?1800:0});
+    (await cookies()).set('team-w2-access','',{httpOnly:true,sameSite:'lax',secure:authConfig().secure,path:'/ru/team',maxAge:0});
     return { status: "prepared" };
   } catch (error) { return failure(error); }
 }

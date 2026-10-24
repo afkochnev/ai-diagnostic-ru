@@ -3,9 +3,12 @@ import type { ControlledTeamRpc } from "./controlled-ai-transport";
 const origin = "https://fhvxqeaujjeiflanqsbg.supabase.co";
 const allowed = new Set([
   "claim_controlled_team_job",
+  "claim_controlled_team_window_job",
   "reserve_controlled_team_ai_call",
+  "reserve_controlled_team_window_ai_call",
   "complete_controlled_team_effect",
   "stop_controlled_team_run",
+  "stop_controlled_team_window",
   "process_team_aggregate",
   "prepare_team_report_job",
   "get_team_synthesis_privacy_corpus",
@@ -17,6 +20,7 @@ const cleanup = new Set([
   "complete_controlled_team_effect",
   "fail_team_job",
   "stop_controlled_team_run",
+  "stop_controlled_team_window",
 ]);
 
 /** Node-only exact RPC transport: no SDK polling/retry, no REST table writes. */

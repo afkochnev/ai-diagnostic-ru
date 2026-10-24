@@ -27,6 +27,10 @@ describe('controlled Team web boundary',()=>{
   s.rpc.mockResolvedValueOnce({data:{...context(),expires_at:new Date().toISOString()},error:null});
   await expect(controlledTeamContext({teamId:id})).rejects.toThrow('controlled_team_unavailable');
  });
+ it('accepts the actual additive SQL v1 shape with explicitly null W2 fields',async()=>{
+  s.rpc.mockResolvedValueOnce({data:{...context(),window_id:null,continuation_window_id:null,personal_deadline_at:null,approved_plan_hash:null},error:null});
+  await expect(controlledTeamContext({teamId:id})).resolves.toMatchObject({run_id:id,window_id:null,approved_plan_hash:null});
+ });
  it('a consumed reservation cannot issue any external dispatch',async()=>{
   const ctx=await bound();
   s.rpc.mockResolvedValueOnce({data:null,error:{message:'already spent'}});

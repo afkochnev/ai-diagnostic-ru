@@ -1,5 +1,4 @@
 import { performance } from "node:perf_hooks";
-import { z } from "zod";
 import { controlledTeamRequired } from "@/server-runtime/team-smoke";
 import {
   ControlledTeamAITransport,
@@ -11,16 +10,8 @@ import {
   type ControlledTeamRpc,
 } from "./controlled-ai-transport";
 import { processTeamJob } from "./worker";
-
-const manifestSchema = z.strictObject({
-  runId: z.uuid(),
-  teamId: z.uuid(),
-  sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  kind: z.enum(["team_aggregate", "team_ai_report"]),
-  reportId: z.uuid().nullable(),
-  expectedSHA: z.string().regex(/^[a-f0-9]{40}$/),
-});
-export type ControlledTeamManifest = z.infer<typeof manifestSchema>;
+import { controlledManifestWindow, parseControlledTeamManifest } from "./controlled-manifest";
+export type { ControlledTeamManifest } from "./controlled-manifest";
 
 const allowed = new Set([
   "process_team_aggregate",
@@ -41,7 +32,8 @@ type Ports = {
 
 /** One exact claim, no polling or fallback to the ordinary global worker. */
 export async function runControlledTeamOnce(value: unknown, ports: Ports) {
-  const manifest = manifestSchema.parse(value);
+  const manifest = parseControlledTeamManifest(value);
+  const windowId = controlledManifestWindow(manifest);
   const clock = ports.monotonic ?? (() => performance.now());
   const requiredOff = [
     "ACQUISITION_ENABLED",
@@ -49,6 +41,7 @@ export async function runControlledTeamOnce(value: unknown, ports: Ports) {
     "BILLING_ENABLED",
     "YOOKASSA_REFUNDS_ENABLED",
     "YOOKASSA_RECONCILIATION_ENABLED",
+    ...(windowId ? ["TEAM_CREATION_ENABLED", "TEAM_INVITATIONS_ENABLED"] : []),
   ];
   const invalidAIConfig = manifest.kind === "team_ai_report" && (
     !manifest.reportId ||
@@ -73,8 +66,9 @@ export async function runControlledTeamOnce(value: unknown, ports: Ports) {
   const beforeClaim = clock();
   try {
     if (ports.signal?.aborted) throw Error("controlled_team_stopped");
-    const result = await ports.rpc("claim_controlled_team_job", {
+    const result = await ports.rpc(windowId ? "claim_controlled_team_window_job" : "claim_controlled_team_job", {
       p_run_id: manifest.runId,
+      ...(windowId ? { p_window_id: windowId } : {}),
       p_kind: manifest.kind,
       p_source_fingerprint: manifest.sourceFingerprint,
       p_report_id: manifest.reportId,
@@ -87,6 +81,8 @@ export async function runControlledTeamOnce(value: unknown, ports: Ports) {
       candidate.source_fingerprint !== manifest.sourceFingerprint ||
       candidate.report_id !== manifest.reportId ||
       candidate.kind !== manifest.kind
+      || (candidate.window_id ?? null) !== windowId
+      || ("version" in manifest && candidate.approved_plan_hash !== manifest.planSHA256)
     ) throw Error("controlled_team_claim_required");
 
     // Only a fully matched claim may be failed by this runner on a later error.
@@ -142,6 +138,7 @@ export async function runControlledTeamOnce(value: unknown, ports: Ports) {
       attempts: claim.attempts,
       pipeline_version: claim.pipeline_version,
       controlled_run_id: claim.run_id,
+      controlled_window_id: claim.window_id ?? null,
     };
     const process = () => withControlledTeamClaim(owned, () => processTeamJob(job, rpc));
     const outcome = transport
@@ -152,6 +149,7 @@ export async function runControlledTeamOnce(value: unknown, ports: Ports) {
       status: "CONTROLLED_TEAM_COMPLETED" as const,
       kind: manifest.kind,
       runId: manifest.runId,
+      continuationWindowId: windowId,
       teamId: manifest.teamId,
       reportId: manifest.reportId,
       sourceFingerprint: manifest.sourceFingerprint,
@@ -176,8 +174,9 @@ export async function runControlledTeamOnce(value: unknown, ports: Ports) {
     }
     let runStopped = false;
     try {
-      const result = await ports.rpc("stop_controlled_team_run", {
+      const result = await ports.rpc(windowId ? "stop_controlled_team_window" : "stop_controlled_team_run", {
         p_run_id: manifest.runId,
+        ...(windowId ? { p_window_id: windowId } : {}),
         p_reason: "controlled_worker_stopped",
       });
       runStopped = !result.error &&
@@ -191,6 +190,7 @@ export async function runControlledTeamOnce(value: unknown, ports: Ports) {
         : "CONTROLLED_TEAM_STOP_HOLD" as const,
       kind: manifest.kind,
       runId: manifest.runId,
+      continuationWindowId: windowId,
       teamId: manifest.teamId,
       reportId: manifest.reportId,
       audit: transport?.safeAudit() ?? null,

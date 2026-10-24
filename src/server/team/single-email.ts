@@ -12,6 +12,8 @@ const targetSchema=z.object({email:z.email(),display_name:z.string().min(1).max(
 // credential nor Supabase's admin result may cross an owner action response.
 export async function singleEmailCredential(invitationHash:string){
  const context=await controlledTeamContext({invitationHash});
+ // W2 never goes through the legacy nonce reservation / invitation issuance.
+ if(context?.window_id)throw Error('controlled_team_unavailable');
  const effect=context?await reserveControlledTeamEffect(context,'auth_link',{participantId:context.participant_id??undefined}):null;
  const admin=createAdminClient(),nonce=randomBytes(32).toString("hex");
  let authRequestStarted=false;

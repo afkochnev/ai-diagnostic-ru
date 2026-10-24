@@ -12,11 +12,13 @@ output
 *.tsbuildinfo
 Prompt.docx
 README*.md
-# Only the two production entry points belong in the runtime script directory.
-# Operator helpers, private credential-entry tools and test runners stay in Git.
+# Runtime workers and the two reviewed controlled entry points only.
+# Offline operators, manifests, credential-entry tools and tests stay in Git.
 scripts/**
 !scripts/worker.ts
 !scripts/consultation-worker.ts
+!scripts/controlled-team-worker.ts
+!scripts/controlled-team-w2-access.ts
 tests
 supabase
 # Keep operator documentation out; this non-secret JSON is a runtime contract.
