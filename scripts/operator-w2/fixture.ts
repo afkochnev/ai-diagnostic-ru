@@ -1,5 +1,6 @@
 import {constants,closeSync,fstatSync,lstatSync,openSync,readSync,realpathSync} from 'node:fs';
 import {dirname,isAbsolute,resolve} from 'node:path';
+import {tmpdir} from 'node:os';
 import {createHash,createHmac} from 'node:crypto';
 import {FIXED,PARTICIPANTS,assertData,need} from './contract';
 const DOMAIN='AI-COMPANY-AUDIT/V27/W2/UNUSED-FIXTURE-ASSIGNMENT/V1\0';
@@ -29,13 +30,13 @@ function parseBytes(bytes:Uint8Array,binding:Binding,mode:'PRODUCTION'|'LOCAL_MO
 }
 /** No invocation at import. Future production use reads only this existing
  * immutable private file: no recreation, reassignment, chmod or used-marker reset. */
-function protectedFixtureBytes(path:string):Buffer{
- let fd:number|undefined;try{need(isAbsolute(path)&&path.startsWith('/private/tmp/')&&resolve(path)===path&&realpathSync(path)===path,'fixture_private_path');const uid=process.getuid?.();let parent=dirname(path);while(parent!=='/private/tmp'){const s=lstatSync(parent);need(s.isDirectory()&&!s.isSymbolicLink()&&(s.mode&0o777)===0o700&&(uid===undefined||s.uid===uid),'fixture_private_ancestor');parent=dirname(parent);need(parent.startsWith('/private/tmp'),'fixture_ancestor_escape');}const st=lstatSync(path);need(st.isFile()&&!st.isSymbolicLink()&&st.nlink===1&&(st.mode&0o777)===0o600&&(uid===undefined||st.uid===uid)&&st.size>0&&st.size<=131072,'fixture_private_file');fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);const opened=fstatSync(fd);need(opened.dev===st.dev&&opened.ino===st.ino&&opened.size===st.size,'fixture_file_race');const bytes=Buffer.alloc(st.size);let offset=0;while(offset<bytes.length){const n=readSync(fd,bytes,offset,bytes.length-offset,null);need(n>0,'fixture_short_read');offset+=n;}const extra=Buffer.alloc(1);need(readSync(fd,extra,0,1,null)===0&&fstatSync(fd).size===st.size,'fixture_growing_file');return bytes;}catch{throw Error('w2_operator_private_fixture_HOLD');}finally{if(fd!==undefined)closeSync(fd);}
+function protectedFixtureBytes(path:string,base='/private/tmp'):Buffer{
+ let fd:number|undefined;try{need(isAbsolute(base)&&base!=='/'&&resolve(base)===base&&realpathSync(base)===base&&isAbsolute(path)&&path.startsWith(base+'/')&&resolve(path)===path&&realpathSync(path)===path,'fixture_private_path');const uid=process.getuid?.();let parent=dirname(path);while(parent!==base){const s=lstatSync(parent);need(s.isDirectory()&&!s.isSymbolicLink()&&(s.mode&0o777)===0o700&&(uid===undefined||s.uid===uid),'fixture_private_ancestor');parent=dirname(parent);need(parent===base||parent.startsWith(base+'/'),'fixture_ancestor_escape');}const st=lstatSync(path);need(st.isFile()&&!st.isSymbolicLink()&&st.nlink===1&&(st.mode&0o777)===0o600&&(uid===undefined||st.uid===uid)&&st.size>0&&st.size<=131072,'fixture_private_file');fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);const opened=fstatSync(fd);need(opened.dev===st.dev&&opened.ino===st.ino&&opened.size===st.size,'fixture_file_race');const bytes=Buffer.alloc(st.size);let offset=0;while(offset<bytes.length){const n=readSync(fd,bytes,offset,bytes.length-offset,null);need(n>0,'fixture_short_read');offset+=n;}const extra=Buffer.alloc(1);need(readSync(fd,extra,0,1,null)===0&&fstatSync(fd).size===st.size,'fixture_growing_file');return bytes;}catch{throw Error('w2_operator_private_fixture_HOLD');}finally{if(fd!==undefined)closeSync(fd);}
 }
 export function loadCommittedFixture(path:string):CommittedFixture{try{return parseBytes(protectedFixtureBytes(path),FROZEN_FIXTURE,'PRODUCTION');}catch{throw Error('w2_operator_private_fixture_HOLD');}}
 /** Test-only explicit local path/binding. Its handle remains LOCAL_MOCK and can
  * never satisfy a production operator's fixture-mode check. */
-export function loadLocalMockFixture(path:string,binding:Binding):CommittedFixture{try{return parseBytes(protectedFixtureBytes(path),binding,'LOCAL_MOCK');}catch{throw Error('w2_operator_private_fixture_HOLD');}}
+export function loadLocalMockFixture(path:string,binding:Binding):CommittedFixture{try{return parseBytes(protectedFixtureBytes(path,realpathSync(tmpdir())),binding,'LOCAL_MOCK');}catch{throw Error('w2_operator_private_fixture_HOLD');}}
 /** Explicit local/mock constructor cannot produce a production fixture handle. */
 export function createLocalMockFixture(bytes:Uint8Array,binding:Binding):CommittedFixture{return parseBytes(bytes,binding,'LOCAL_MOCK');}
 /** Byte-exact PostgreSQL jsonb serialization for the finite answer domain:
