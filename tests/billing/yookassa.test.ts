@@ -12,7 +12,7 @@ let transport=vi.fn();
 function provider(e:Record<string,string|undefined>=env){return new YooKassaBillingProvider(e,transport);}
 beforeEach(()=>{transport=vi.fn(async()=>Response.json(payment()));});
 describe('YooKassa adapter with injected fake HTTP only',()=>{
- it('uses the authoritative no-VAT one-year non-recurring offer',()=>{expect(annualOffer).toMatchObject({price:480,amount_minor:48000,currency:'RUB',term:'1_year',vat_code:1,productionEnabled:false,auto_renewal:false,recurring:false});});
+ it('uses the authoritative no-VAT one-year non-recurring offer',()=>{expect(annualOffer).toMatchObject({price:480,amount_minor:48000,currency:'RUB',term:'1_year',vat_code:1,productionEnabled:true,auto_renewal:false,recurring:false});});
  it.each([{BILLING_ENABLED:'false'},{BILLING_PROVIDER:'mock'},{APP_URL:'https://audit.iteam.ru'},{APP_URL:'https://ai-diagnostic-staging-web.onrender.com.evil'},{YOOKASSA_TEST_MODE:'false'},{YOOKASSA_SECRET_KEY:'live_synthetic'},{YOOKASSA_SHOP_ID:'invalid'},{NODE_ENV:'production'}])('fails closed for unsafe runtime %#',patch=>{expect(yookassaConfigured({...env,...patch})).toBe(false);expect(()=>provider({...env,...patch})).toThrow('billing_unavailable');});
  it('does not make a request while payment mode is unconfirmed',async()=>{await expect(provider({...env,YOOKASSA_PAYMENT_MODE_CONFIRMED:undefined}).createCheckout(context,'owner@example.test')).rejects.toThrow('billing_receipt_unconfirmed');expect(transport).not.toHaveBeenCalled();});
  it.each(['', 'invented', 'full_prepayment', 'partial_payment'])('rejects invalid payment mode %s',mode=>expect(()=>receiptSettings({...env,YOOKASSA_PAYMENT_MODE:mode})).toThrow());

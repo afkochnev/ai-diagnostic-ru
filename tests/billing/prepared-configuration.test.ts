@@ -1,4 +1,6 @@
 import{describe,it,expect,vi}from'vitest';
+// Exercise the historical commercial-OFF contract independently of the proposed active source switch.
+vi.mock('@/server/billing/commercial',async original=>{const m=await original<typeof import('@/server/billing/commercial')>();return {...m,annualOffer:{...m.annualOffer,productionEnabled:false}};});
 import prepared from '../../docs/v27-production-configuration.json';
 import{preparedProductionConfigurationReadiness}from'@/server/billing/prepared-configuration';
 import{productionBillingReadiness}from'@/server/billing/readiness';
