@@ -12,13 +12,19 @@ output
 *.tsbuildinfo
 Prompt.docx
 README*.md
-# Runtime workers and the two reviewed controlled entry points only.
+# Runtime workers and reviewed controlled entry points only.
 # Offline operators, manifests, credential-entry tools and tests stay in Git.
 scripts/**
 !scripts/worker.ts
 !scripts/consultation-worker.ts
 !scripts/controlled-team-worker.ts
 !scripts/controlled-team-w2-access.ts
+!scripts/controlled-team-evidence-readonly.ts
+# Pure read-only preservation contract dependencies; no operator transports.
+!scripts/operator-w2/
+!scripts/operator-w2/preservation.ts
+!scripts/operator-w2/contract.ts
+!scripts/operator-w2/capture-queries.ts
 tests
 supabase
 # Keep operator documentation out; this non-secret JSON is a runtime contract.
