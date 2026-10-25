@@ -17,5 +17,6 @@ try:
    time.sleep(1)
   else:raise RuntimeError('local database unavailable')
   run('python3',script,'--container',name,*(['--with-v26b'] if label=='v26' else ['--with-v27'] if label=='v26b' else []))
+  if label=='v27-team-auth-evidence':run('python3',script,'--container',name,'--with-evidence-key')
 finally:
  for name in owned:subprocess.run(['docker','rm','--force',name],check=False)

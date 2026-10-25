@@ -1,36 +1,43 @@
 #!/usr/bin/env python3
 """Auth wire evidence SQL contracts in disposable networkless PostgreSQL. No cloud credentials/providers."""
-import argparse,subprocess,json,secrets,hashlib,hmac,datetime,concurrent.futures,re,os,time
+import argparse,subprocess,json,secrets,hashlib,hmac,datetime,concurrent.futures,re,os,time,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-p=argparse.ArgumentParser();p.add_argument('--container',required=True);p.add_argument('--capture-output');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--container',required=True);p.add_argument('--capture-output');p.add_argument('--with-evidence-key',action='store_true');p.add_argument('--evidence-dir');p.add_argument('--native-integration-only',action='store_true');a=p.parse_args();assert not a.native_integration_only or a.with_evidence_key
 i=json.loads(subprocess.check_output(['docker','inspect',a.container]))[0]
 assert a.container in ('ai-diagnostic-v27-team-auth-evidence-local','ai-diagnostic-v27-team-auth-evidence-ci') and i['Config']['Labels'].get('codex.task')=='v27-team-auth-evidence' and i['Config']['Image']=='postgres:17-alpine' and i['HostConfig']['NetworkMode']=='none' and not any(i['NetworkSettings']['Ports'].values())
 db='v27_auth_wire_'+secrets.token_hex(5);checks=[];capture_timings=[]
 def sql(q,error=None,database=None):
  started=time.monotonic()
  r=subprocess.run(['docker','exec','-i',a.container,'psql','-XqAt','-v','ON_ERROR_STOP=1','-U','postgres','-d',database or db],input=q,text=True,capture_output=True)
- if 'select public.capture_controlled_team_w2_preservation()' in q:
+ if 'select '+CAPTURE_CALL in q:
   elapsed=round(time.monotonic()-started,3);capture_timings.append({'elapsedSeconds':elapsed,'exitCode':r.returncode});print(json.dumps({'localCaptureTiming':capture_timings[-1]}),flush=True)
  if error:assert r.returncode and error in r.stderr,(error,r.stderr[:2500])
  elif r.returncode:raise AssertionError(r.stderr[:4000])
  return r.stdout.strip()
 def lit(x):return "'"+json.dumps(x,ensure_ascii=False).replace("'","''")+"'::jsonb"
 HEADER='Bearer local-existing-service-role-'+('k'*40)
-def actor(q,user=None,role='service_role',error=None):return sql('begin;set local request.headers='+lit({'authorization':HEADER}).removesuffix('::jsonb')+';set local request.jwt.claims='+lit({'role':role,'sub':user,'aal':'aal1','session_id':user}).removesuffix('::jsonb')+';set local role '+role+';'+q+';commit;',error)
+MAC_KEY=HEADER.encode();EVIDENCE_HEADER=None;APP_SHA='b'*40
+CONTEXT={'domain':'aca-w2-evidence-key','version':1,'rootRunId':'e3623f1d-2da0-4dfe-b600-d747f529c5fc','approvedPlanSHA256':'a'*64,'canonicalAppSHA':APP_SHA}
+CAPTURE_CALL='public.capture_controlled_team_w2_preservation()'
+def request_headers():return {'authorization':HEADER,**({'x-aca-w2-evidence-key':EVIDENCE_HEADER} if EVIDENCE_HEADER is not None else {})}
+
+def actor(q,user=None,role='service_role',error=None):return sql('begin;set local request.headers='+lit(request_headers()).removesuffix('::jsonb')+';set local request.jwt.claims='+lit({'role':role,'sub':user,'aal':'aal1','session_id':user}).removesuffix('::jsonb')+';set local role '+role+';'+q+';commit;',error)
 def auth(q,user,error=None):return actor(q,user,'authenticated',error)
 def service(q,error=None):return actor(q,error=error)
 def probe(setup,q,user=None,role='service_role',error=None):
  claims=lit({'role':role,'sub':user,'aal':'aal1','session_id':user}).removesuffix('::jsonb')
- return sql('begin;'+setup+';set local request.headers='+lit({'authorization':HEADER}).removesuffix('::jsonb')+';set local request.jwt.claims='+claims+';set local role '+role+';'+q+';rollback;',error)
+ return sql('begin;'+setup+';set local request.headers='+lit(request_headers()).removesuffix('::jsonb')+';set local request.jwt.claims='+claims+';set local role '+role+';'+q+';rollback;',error)
 def race(q,user=None,role='service_role'):
  claims=lit({'role':role,'sub':user,'aal':'aal1','session_id':user}).removesuffix('::jsonb')
- body='begin;set local request.headers='+lit({'authorization':HEADER}).removesuffix('::jsonb')+';set local request.jwt.claims='+claims+';set local role '+role+';'+q+';commit;'
+ body='begin;set local request.headers='+lit(request_headers()).removesuffix('::jsonb')+';set local request.jwt.claims='+claims+';set local role '+role+';'+q+';commit;'
  def call(_):return subprocess.run(['docker','exec','-i',a.container,'psql','-XqAt','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],input=body,text=True,capture_output=True)
  with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(call,range(2)))
  assert sum(x.returncode==0 for x in results)==1,[x.stderr for x in results]
  return next(x.stdout.strip() for x in results if x.returncode==0)
 def ok(t):checks.append(t);print('PASS '+t,flush=True)
+def function_catalog():
+ return json.loads(sql("select jsonb_build_object('schemaFunctions',coalesce(jsonb_agg(jsonb_build_object('schema',n.nspname,'name',p.proname,'args',pg_get_function_identity_arguments(p.oid),'acl',p.proacl::text,'proconfig',p.proconfig,'prosecdef',p.prosecdef,'definition_hash',encode(sha256(convert_to(pg_get_functiondef(p.oid),'UTF8')),'hex')) order by n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)),'[]'::jsonb),'functionSecurity',coalesce(jsonb_agg(jsonb_build_object('schema',n.nspname,'name',p.proname,'args',pg_get_function_identity_arguments(p.oid),'owner',pg_get_userbyid(p.proowner),'prosecdef',p.prosecdef,'provolatile',p.provolatile,'proleakproof',p.proleakproof,'proparallel',p.proparallel,'proconfig',p.proconfig,'acl',p.proacl::text,'definition_sha256',encode(sha256(convert_to(pg_get_functiondef(p.oid),'UTF8')),'hex')) order by n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)),'[]'::jsonb)) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in('public','private') and p.proname in('controlled_team_auth_mac','controlled_team_preservation_hmac','check_controlled_team_auth_evidence_key','capture_controlled_team_w2_preservation','check_controlled_team_auth_header_capability','inspect_controlled_team_auth_header_channels','controlled_team_evidence_mac')"))
 def rows():
  return json.loads(sql("create temporary table h(k text,v jsonb);do $$declare t record;v jsonb;begin for t in select schemaname,tablename from pg_tables where schemaname in('public','private','auth','storage','supabase_migrations') loop execute format('select coalesce(jsonb_agg(to_jsonb(x)),''[]''::jsonb) from %I.%I x',t.schemaname,t.tablename) into v;insert into h values(t.schemaname||'.'||t.tablename,v);end loop;end;$$;select jsonb_object_agg(k,v) from h;"))
 try:
@@ -117,7 +124,7 @@ try:
  assert sql("select relrowsecurity from pg_class where oid='private.controlled_team_auth_wire'::regclass")=='t'
  ok('RLS and private no-grants; exactly constrained service RPC boundary')
  window=sql('select gen_random_uuid()');plan='a'*64
- def mac(message):return hmac.new(HEADER.encode(),message.encode(),hashlib.sha256).hexdigest()
+ def mac(message):return hmac.new(MAC_KEY,message.encode(),hashlib.sha256).hexdigest()
  def args(p,op,res,challenge=None,window_override=window):
   challenge=challenge or secrets.token_hex(32);msg='aca-w2-auth-evidence-v1\nchallenge\n'+run+'\n'+(window_override or '-')+'\n'+p['pid']+'\n'+p['uid']+'\n'+op+'\n'+(res or '-')+'\n'+challenge
   values=[run,window_override,p['pid'],p['uid'],op,res,challenge,mac(msg)]
@@ -187,10 +194,91 @@ try:
  assert sql('select count(*) from private.controlled_team_windows')=='0' and sql('select count(*) from private.controlled_team_auth_wire')=='0' and sql('select count(*) from private.controlled_team_verifications')=='0'
  assert sql("select count(*) from private.controlled_team_effects where run_id='"+run+"'")=='6'
  ok('diagnostic denies API roles and every real/foreign/null/issue/verify/window/reservation scope; old Authorization admission remains exact and all six effects/window0/wire0/verification0/full rows are preserved')
+ if a.with_evidence_key:
+  channel=next((ROOT/'supabase/migrations').glob('*_controlled_team_header_channel_diagnostic.sql'));sql(channel.read_text())
+  migration=next((ROOT/'supabase/migrations').glob('*_controlled_team_explicit_evidence_key.sql'));migration_source=migration.read_text()
+  before_key_rows=rows();before_key_functions=functions();before_key_catalog=function_catalog()
+  sql(migration_source.rsplit('commit;',1)[0]+'select missing_explicit_evidence_rollback_probe();commit;','does not exist')
+  assert rows()==before_key_rows and functions()==before_key_functions
+  sql(migration_source);assert rows()==before_key_rows
+  final_key_functions=functions()
+  allowed_changed={'controlled_team_auth_mac','controlled_team_preservation_hmac','check_controlled_team_auth_evidence_key','capture_controlled_team_w2_preservation','check_controlled_team_auth_header_capability','inspect_controlled_team_auth_header_channels'}
+  assert [x for x in before_key_functions if x['name'] not in allowed_changed]==[x for x in final_key_functions if x['name'] not in allowed_changed|{'controlled_team_evidence_mac'}]
+  for removed in ['public.check_controlled_team_auth_header_capability(uuid,uuid,uuid,uuid,text,uuid,text,text,text)','public.inspect_controlled_team_auth_header_channels(uuid,uuid,uuid,uuid,text,uuid,text,text)','public.capture_controlled_team_w2_preservation()']:
+   assert sql("select to_regprocedure('"+removed+"')")==''
+  for sig in ['private.controlled_team_evidence_mac(text)','private.controlled_team_auth_mac(text)','private.controlled_team_preservation_hmac(text,jsonb)']:
+   for role in ['anon','authenticated','service_role']:assert sql("select has_function_privilege('"+role+"','"+sig+"','EXECUTE')")=='f'
+  capture_sig='public.capture_controlled_team_w2_preservation(uuid,text,text)'
+  for role in ['anon','authenticated','service_role']:assert sql("select has_function_privilege('"+role+"','"+capture_sig+"','EXECUTE')")==('t' if role=='service_role' else 'f')
+  MAC_KEY=hmac.new(('local-evidence-secret-'+'s'*40).encode(),'\n'.join([CONTEXT['domain'],str(CONTEXT['version']),CONTEXT['rootRunId'],CONTEXT['approvedPlanSHA256'],CONTEXT['canonicalAppSHA']]).encode(),hashlib.sha256).digest()
+  EVIDENCE_HEADER='aca-w2-v1.'+MAC_KEY.hex();assert len(MAC_KEY)==32
+  CAPTURE_CALL="public.capture_controlled_team_w2_preservation('"+run+"','"+plan+"','"+APP_SHA+"')"
+  args_now=args(participants[0],'capability',None,window_override=None)
+  valid_cap=json.loads(service('select public.check_controlled_team_auth_evidence_key('+args_now+')'));assert valid_cap['matched'] is True
+  def header_cap(headers,mac_override=None):
+   call_args=args_now if mac_override is None else args_now.rsplit(',',1)[0]+",'"+mac_override+"'"
+   return json.loads(probe('set transaction read only',"set local request.headers="+lit(headers).removesuffix('::jsonb')+';select public.check_controlled_team_auth_evidence_key('+call_args+')'))
+  assert header_cap({'authorization':'Bearer rewritten','apikey':'rewritten','x-aca-w2-evidence-key':EVIDENCE_HEADER})['matched'] is True
+  assert header_cap({'x-aca-w2-evidence-key':EVIDENCE_HEADER})['matched'] is True
+  for malformed in [None,False,123,{},[],EVIDENCE_HEADER+' ',EVIDENCE_HEADER+'\n',' '+EVIDENCE_HEADER,EVIDENCE_HEADER.upper(),'aca-w2-v1.'+'z'*64,'aca-w2-v1.'+'a'*63,'aca-w2-v1.'+'a'*65,EVIDENCE_HEADER.replace('v1.','v2.'),'']:
+   assert header_cap({'authorization':HEADER,'apikey':EVIDENCE_HEADER,'x-aca-w2-evidence-key':malformed})['matched'] is False
+  assert header_cap({'authorization':HEADER,'apikey':EVIDENCE_HEADER})['matched'] is False
+  wrong_ascii=hmac.new(MAC_KEY.hex().encode(),('aca-w2-auth-evidence-v1\nchallenge\n'+run+'\n-\n'+participants[0]['pid']+'\n'+participants[0]['uid']+'\ncapability\n-\n'+args_now.split(',')[-2].strip("'")).encode(),hashlib.sha256).hexdigest()
+  assert header_cap({'x-aca-w2-evidence-key':EVIDENCE_HEADER},wrong_ascii)['matched'] is False
+  assert rows()==before_key_rows
+  ok('final transactional migration preserves all old rows/other functions; drops both diagnostic APIs and argless capture; private no-grants; independent context-derived32byte HMAC and strict custom-only key channel')
+  empty_setup="set local session_replication_role=replica;update private.controlled_team_policy set run_id=null;delete from private.controlled_team_runs;delete from private.controlled_team_windows;delete from private.controlled_team_effects;delete from private.controlled_team_verifications;delete from private.controlled_team_auth_wire;set local session_replication_role=origin;update private.launch_controls set anonymous_start_enabled=true,team_creation_enabled=false,team_invitations_enabled=false;"
+  fixed={'pid':'0ae17418-e97a-46c7-9000-c13580f72506','uid':'b7cc06c7-056c-4fd8-b445-eeaf187cec7c'}
+  fixed_args=args(fixed,'capability',None,window_override=None)
+  unconfigured=json.loads(probe(empty_setup,'select public.check_controlled_team_auth_evidence_key('+fixed_args+')'));assert unconfigured['matched'] is True and unconfigured['approved_plan_hash'] is None
+  for mutation in [fixed_args.replace("'capability'","'issue'"),fixed_args.replace("'capability'","'verify'"),fixed_args.replace(fixed['pid'],participants[0]['pid']),fixed_args.replace(fixed['uid'],participants[0]['uid']),fixed_args.replace("null", "'"+window+"'",1)]:
+   probe(empty_setup,'select public.check_controlled_team_auth_evidence_key('+mutation+')',error='controlled_team_auth_scope_denied')
+  # Full native capture insists on transaction_read_only=on. An independent
+  # empty database cloned from this local fixture supplies that state below.
+  empty_db='w2_empty_'+secrets.token_hex(4)
+  sql('create database '+empty_db+' template '+db,database='postgres')
+  try:
+   sql('begin;'+empty_setup+'commit;',database=empty_db)
+   empty_capture_q='begin isolation level repeatable read read only;set local request.headers='+lit(request_headers()).removesuffix('::jsonb')+";set local request.jwt.claims='{\"role\":\"service_role\"}';set local role service_role;select "+CAPTURE_CALL+';rollback;'
+   stage_capture=json.loads(sql(empty_capture_q,database=empty_db));assert stage_capture['project'] is None and stage_capture['context']==CONTEXT and stage_capture['gates']['launch']==1 and stage_capture['format']=='ACA_W2_PRESERVATION_HMAC_V2' and 'keyId' not in stage_capture
+   # The existing fixture ledger is deliberately54 synthetic stub rows.
+   # Bring ONLY this disposable unconfigured clone to57 synthetic rows so the
+   # strict accepted V2 Node consumer is exercised without normalizing counts.
+   assert sql('select count(*) from supabase_migrations.schema_migrations',database=empty_db)=='54'
+   sql("insert into supabase_migrations.schema_migrations(version,name,statements) select 'local-networkless-'||lpad(n::text,2,'0'),'synthetic-not-hosted-migrations',array[]::text[] from generate_series(55,57)n",database=empty_db)
+   native_before=json.loads(sql(empty_capture_q,database=empty_db));native_after=json.loads(sql(empty_capture_q,database=empty_db))
+   assert native_before['ledger']['count']==native_after['ledger']['count']==57 and native_before['context']==native_after['context']==CONTEXT
+   node_code="const f=require('node:fs'),p=require('./scripts/operator-w2/preservation.ts'),v=JSON.parse(f.readFileSync(0,'utf8'));p.validateAcceptedStageSnapshot(v.before,v.context);p.validateAcceptedStageSnapshot(v.after,v.context);const r=p.compareAcceptedStageSnapshots(v.before,v.after,v.context);console.log(JSON.stringify({status:r.status,beforeSHA256:r.beforeSHA256,afterSHA256:r.afterSHA256,context:r.context,algorithm:r.algorithm,tableCount:Object.keys(v.before.tables).length,ledger:v.before.ledger.count,productionOrW2Authorization:r.productionOrW2Authorization}));"
+   material=json.dumps({'context':CONTEXT,'before':native_before,'after':native_after},separators=(',',':'));assert EVIDENCE_HEADER not in material and MAC_KEY.hex() not in material and HEADER not in material
+   node=subprocess.run(['node','--import','tsx','-e',node_code],cwd=ROOT,input=material,text=True,capture_output=True,timeout=30)
+   assert node.returncode==0,node.stderr[:2000];native_consumer=json.loads(node.stdout)
+   assert native_consumer['status']=='PASS' and native_consumer['beforeSHA256']==native_consumer['afterSHA256'] and native_consumer['ledger']==57 and native_consumer['tableCount']==116 and native_consumer['productionOrW2Authorization'] is False
+   native_proof={'status':'PASS_ACTUAL_NETWORKLESS_SQL_V2_TO_NODE_CONSUMER','context':CONTEXT,'SQLCaptures':2,'NodeConsumer':'validateAcceptedStageSnapshot + compareAcceptedStageSnapshots + complete semantic fingerprint','result':native_consumer,'ledgerQualification':'Only the disposable local clone received3 explicitly synthetic empty-statement ledger stubs (54to57). No hosted ledger/source-record emulation claimed. Node count57 remains strict.','migrationSHA256':hashlib.sha256(migration_source.encode()).hexdigest(),'testSHA256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'keyHeadersOrRawRowsExported':False,'network':'none','hostedCalls':0,'productionMutations':0}
+   if a.evidence_dir:
+    native_dest=Path(a.evidence_dir);assert native_dest.is_absolute() and native_dest.name=='local-mock' and native_dest.parent.name=='phase2-team-w2-derived-evidence-channel';native_dest.mkdir(parents=True,exist_ok=True)
+    with (native_dest/'native-sql-node-integration.json').open('x') as f:json.dump(native_proof,f,indent=2);f.write('\n')
+   ok('actual nativeV2 SQL capture pair under derived32byte key passes current Node accepted-stage validator/complete fingerprint with strict ledger57/context and all116 tables')
+   if a.native_integration_only:
+    print(json.dumps(native_proof),flush=True);sys.exit(0)
+   for extra in ["update private.launch_controls set team_creation_enabled=true;","update private.billing_configuration set yookassa_enabled=true;"]:
+    sql('begin;'+extra+'commit;',database=empty_db)
+    sql(empty_capture_q,error='controlled_team_capture_denied',database=empty_db)
+    sql('update private.launch_controls set team_creation_enabled=false;update private.billing_configuration set yookassa_enabled=false;',database=empty_db)
+  finally:sql('drop database '+empty_db+' with(force)',database='postgres')
+  assert rows()==before_key_rows
+  ok('strict unconfigured branch allows only fixed read-only capability and full native capture; preserves acquisition ON, denies issue/verify/window/foreign binding or Team/billing gates without creating rows')
+  if a.evidence_dir:
+   dest=Path(a.evidence_dir);assert dest.is_absolute() and dest.name=='local-mock' and dest.parent.name=='phase2-team-w2-derived-evidence-channel';dest.mkdir(parents=True,exist_ok=True)
+   names=allowed_changed|{'controlled_team_evidence_mac'}
+   catalog=json.loads(sql("select coalesce(jsonb_agg(jsonb_build_object('acl',p.proacl,'args',pg_get_function_identity_arguments(p.oid),'name',p.proname,'schema',n.nspname,'proconfig',p.proconfig,'prosecdef',p.prosecdef,'definition_hash',encode(sha256(convert_to(pg_get_functiondef(p.oid),'UTF8')),'hex'),'source_hash',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),'owner',pg_get_userbyid(p.proowner),'provolatile',p.provolatile,'proparallel',p.proparallel,'proleakproof',p.proleakproof,'proisstrict',p.proisstrict,'prokind',p.prokind,'pronargs',p.pronargs,'proargtypes',p.proargtypes::text,'prorettype',p.prorettype::regtype::text,'proretset',p.proretset,'procost',p.procost,'prorows',p.prorows) order by n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)),'[]'::jsonb) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in('public','private') and p.proname in("+','.join("'"+n+"'" for n in names)+")"))
+   tag='$aca_evidence_raw_source$';assert tag not in migration_source
+   ledgerhash=sql("select encode(sha256(convert_to(ARRAY["+tag+migration_source+tag+"]::text,'UTF8')),'hex')")
+   delta={'qualification':'Observed networkless PostgreSQL17 expected final delta only; not hosted acceptance. Old object definitions in beforeFunctions preserve old ACL/owner provenance.','migration':{'file':migration.name,'version':migration.name[:14],'name':migration.stem[15:],'rawSourceSHA256':hashlib.sha256(migration_source.encode()).hexdigest(),'ledgerStatementCount':1,'ledgerStatementsSHA256':ledgerhash},'beforeFunctions':[x for x in before_key_functions if x['name'] in names],'afterFunctions':catalog,'beforeCatalogue':before_key_catalog,'afterCatalogue':function_catalog(),'captureEnvelope':{'format':'ACA_W2_PRESERVATION_HMAC_V2','algorithm':'HMAC-SHA256','context':CONTEXT,'keyIdPresent':False,'unconfiguredProject':None,'configuredProject':'fhvxqeaujjeiflanqsbg'}}
+   with (dest/'expected-final-function-delta-and-ledger.json').open('x') as f:json.dump(delta,f,indent=2);f.write('\n')
  # PostgREST GET uses a read-only transaction. The argless fixed-source RPC
  # must work there, deny writes/missing headers, and return only commitments.
- capture=json.loads(service('set transaction read only;select public.capture_controlled_team_w2_preservation()'))
- assert capture['format']=='ACA_W2_PRESERVATION_HMAC_V1' and capture['transactionReadOnly']=='on' and len(capture['tables'])==116 and capture['wireTraces']==[]
+ capture=json.loads(service('set transaction read only;select '+CAPTURE_CALL))
+ assert capture['format']==('ACA_W2_PRESERVATION_HMAC_V2' if a.with_evidence_key else 'ACA_W2_PRESERVATION_HMAC_V1') and capture['transactionReadOnly']=='on' and len(capture['tables'])==116 and capture['wireTraces']==[]
  key_json=json.dumps({'id':owner})
  owner_key=mac('aca-w2-preservation-v1\nkey\nauth.users\n'+key_json)
  captured_owner=next(x for x in capture['tables']['auth.users']['rows'] if x['key']==owner_key)
@@ -199,17 +287,17 @@ try:
  expected_email=mac('aca-w2-preservation-v1\ncell\nauth.users\n'+key_json+'\nemail\n'+json.dumps('w2-owner@example.test'))
  assert captured_owner['fields']['email']==expected_email
  assert HEADER not in json.dumps(capture) and 'w2-owner@example.test' not in json.dumps(capture) and 'credential_mac' not in json.dumps(capture['wireTraces'])
- service('select public.capture_controlled_team_w2_preservation()','controlled_team_capture_denied')
- service("set transaction read only;set local request.headers='{}';select public.capture_controlled_team_w2_preservation()",'controlled_team_capture_denied')
+ service('select '+CAPTURE_CALL,'controlled_team_capture_denied')
+ service("set transaction read only;set local request.headers='{}';select "+CAPTURE_CALL,'controlled_team_capture_denied')
  for role in ['anon','authenticated']:
-  actor('set transaction read only;select public.capture_controlled_team_w2_preservation()',role=role,error='permission denied')
+  actor('set transaction read only;select '+CAPTURE_CALL,role=role,error='permission denied')
  assert rows()==after
  sql('alter table private.controlled_team_auth_wire disable trigger controlled_team_auth_wire_immutable')
- disabled=json.loads(service('set transaction read only;select public.capture_controlled_team_w2_preservation()'))
+ disabled=json.loads(service('set transaction read only;select '+CAPTURE_CALL))
  assert disabled['catalogue']!=capture['catalogue'] and disabled['tables']==capture['tables']
  sql('alter table private.controlled_team_auth_wire enable trigger controlled_team_auth_wire_immutable')
  sql('create table public.w2_unexpected_inventory(id uuid primary key)')
- service('set transaction read only;select public.capture_controlled_team_w2_preservation()','controlled_team_capture_denied')
+ service('set transaction read only;select '+CAPTURE_CALL,'controlled_team_capture_denied')
  sql('drop table public.w2_unexpected_inventory')
  assert rows()==after
  # Privilege changes that leave data/table ACLs untouched must still alter
@@ -218,7 +306,7 @@ try:
  for change,restore in probes:
   sql(change)
   try:
-   changed=json.loads(service('set transaction read only;select public.capture_controlled_team_w2_preservation()'))
+   changed=json.loads(service('set transaction read only;select '+CAPTURE_CALL))
    assert changed['catalogue']!=capture['catalogue'] and changed['tables']==capture['tables'],change
   finally:sql(restore)
  assert rows()==after
@@ -228,7 +316,7 @@ try:
   fd=os.open(out,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
   with os.fdopen(fd,'w') as f:json.dump(capture,f,ensure_ascii=False,separators=(',',':'));f.write('\n');f.flush();os.fsync(f.fileno())
   print(json.dumps({'localSQLCapture':str(out),'sha256':hashlib.sha256(out.read_bytes()).hexdigest(),'bytes':out.stat().st_size,'hostedProviderAttestation':False}),flush=True)
- ok('argless snapshot is read-only service-only full116table HMAC capture; independently verified cell/key domains; no credential/key values escape')
+ ok('native snapshot is read-only service-only full116table HMAC capture; independently verified cell/key domains; no credential/key values escape')
  # Force every scoped facts branch to compile against the canonical local app
  # schema. Empty hosted Auth skeletons do not pretend to attest hosted schema.
  # The temporary SECURITY DEFINER bridge exists only in this rolled-back test.
@@ -306,12 +394,15 @@ try:
  assert historical_effects==sql(f"select jsonb_agg(to_jsonb(e) order by id) from private.controlled_team_effects e where run_id='{run}' and effect in('auth_link','invitation_email')")
  assert sql("select count(*) from private.controlled_team_auth_wire where credential_mac is not null")=='3'
  assert sql("select count(*) from pg_attribute where attrelid='private.controlled_team_auth_wire'::regclass and attname in('token','token_hash','secret','authorization','key') and not attisdropped")=='0'
- final_capture=json.loads(service('set transaction read only;select public.capture_controlled_team_w2_preservation()'))
+ final_capture=json.loads(service('set transaction read only;select '+CAPTURE_CALL))
  assert len(final_capture['wireTraces'])==6 and all('credential_mac' not in x for x in final_capture['wireTraces'])
  assert final_capture['catalogue']==capture['catalogue'], 'all local counterfactual security probes restored exactly'
  rendered=json.dumps(final_capture)
  assert HEADER not in rendered and all(x['cmac'] not in rendered and x['token'] not in rendered for x in participants)
  ok('all six original spent rows exact; private receipts immutable, only keyed opaque issuance commitments persist, no token/key column')
- print(json.dumps({'status':'PASS','checks':len(checks),'network':'none','realAuthProviderCalls':0,'newProductionWindows':0,'captureTimings':capture_timings}))
+ if a.with_evidence_key and a.evidence_dir:
+  summary={'status':'PASS','checks':len(checks),'network':'none','realAuthProviderCalls':0,'productionMutations':0,'localOnlyCounterfactualFixture':True,'allHistoricalRowsPreservedByMigration':True,'allOtherFunctionsAndACLsPreservedByMigration':True,'allSixSpentEffectsPreserved':True,'captureTimings':capture_timings,'migrationSHA256':hashlib.sha256(migration_source.encode()).hexdigest(),'testSHA256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'keyMaterialExported':False,'qualification':'Synthetic full application schema plus explicit116 Auth/storage skeleton inventory; hosted schema/header behavior is not inferred.'}
+  with (dest/'sql-summary.json').open('x') as f:json.dump(summary,f,indent=2);f.write('\\n')
+ print(json.dumps({'status':'PASS','explicitEvidenceKeyMode':a.with_evidence_key,'checks':len(checks),'network':'none','realAuthProviderCalls':0,'newProductionWindows':0,'captureTimings':capture_timings}))
 finally:
  sql('drop database if exists '+db+' with(force)',database='postgres')

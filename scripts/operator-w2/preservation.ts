@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {CAPTURE_TABLES} from './capture-queries';
 import {FIXED,PARTICIPANTS,OLD_EFFECTS,assertData,digest,need} from './contract';
+import {evidenceKeyContext,EVIDENCE_KEY_ALGORITHM,type EvidenceKeyContext} from '../../src/server/team/evidence-channel-key';
 export const COHORT=Object.freeze([
  {participantId:PARTICIPANTS[0],userId:'b7cc06c7-056c-4fd8-b445-eeaf187cec7c'},
  {participantId:PARTICIPANTS[1],userId:'6041e8a9-5df5-497d-b4d2-43605a75ae43'},
@@ -10,25 +11,35 @@ export type Checkpoint={kind:'exact'|'prepare'|'arm'|'stop'|'grant-advanced'|'re
 export type PreservationScope={rootId:string;windowId:string|null;teamId:string;accountId:string;planSHA256:string;expectedSHA:string;operationStartedAt:string;operationFinishedAt:string;clockSkewSeconds:0|2;clockPolicyApproved:boolean;expectedAnswersHMAC?:string;expectedSourceFingerprint?:string;expectedJobId?:string;expectedReportId?:string;expectedSubscriptionId?:string;expectedPDFChecksum?:string;expectedFixtureCommitmentSHA256?:string;expectedRevision?:number;expectedAnswersCount?:number;submitAnswers?:boolean};
 export type CaptureRow={key:string;full:string;fields:Record<string,string>;facts:Record<string,unknown>|null};
 export type CaptureTable={columns:string[];rows:CaptureRow[]};
-export type PreservationSnapshot={format:'ACA_W2_PRESERVATION_HMAC_V1';capturedAt:string;databaseClock:string;transactionReadOnly:'on';timezone:'UTC';keyId:string;project:string;tables:Record<string,CaptureTable>;catalogue:string;ledger:{count:number;digest:string};gates:{launch:number;financial:number};wireTraces:Record<string,unknown>[]};
+export type PreservationSnapshot={format:'ACA_W2_PRESERVATION_HMAC_V2';algorithm:typeof EVIDENCE_KEY_ALGORITHM;context:EvidenceKeyContext;capturedAt:string;databaseClock:string;transactionReadOnly:'on';timezone:'UTC';project:string|null;tables:Record<string,CaptureTable>;catalogue:string;ledger:{count:number;digest:string};gates:{launch:number;financial:number};wireTraces:Record<string,unknown>[]};
 export type PreservationResult=Readonly<{status:'PASS'|'HOLD';checkpoint:string;beforeSHA256:string;afterSHA256:string;checks:number;violations:readonly string[];evidenceSHA256:string}>;
 const HEX=/^[a-f0-9]{64}$/;
 const AUTH_USER_COLUMNS='id aud role email phone created_at deleted_at invited_at updated_at instance_id is_sso_user banned_until confirmed_at email_change is_anonymous phone_change is_super_admin recovery_token last_sign_in_at recovery_sent_at raw_app_meta_data confirmation_token email_confirmed_at encrypted_password phone_change_token phone_confirmed_at raw_user_meta_data confirmation_sent_at email_change_sent_at phone_change_sent_at email_change_token_new reauthentication_token reauthentication_sent_at email_change_token_current email_change_confirm_status'.split(' ');
 const TRACE_COLUMNS='id root_run_id window_id participant_id user_id operation effect_id verification_id credential_source_trace_id approved_plan_hash status reserved_at deadline_at prewire_credential_match credential_match dispatched_at received_at http_status response_identity_matches finished_at'.split(' ');
 function instant(v:unknown){return typeof v==='string'&&Number.isFinite(Date.parse(v))&&/(?:Z|\+00(?::00)?)$/.test(v);}
-export function validateSnapshot(raw:unknown):PreservationSnapshot{
+export function preservationContext(binding:{rootId:string;planSHA256:string;expectedSHA:string}):EvidenceKeyContext{return evidenceKeyContext({domain:'aca-w2-evidence-key',version:1,rootRunId:binding.rootId,approvedPlanSHA256:binding.planSHA256,canonicalAppSHA:binding.expectedSHA});}
+function validateCapture(raw:unknown,expectedContext:EvidenceKeyContext,branch:'production'|'accepted-staging'):PreservationSnapshot{
+ assertData(expectedContext);const context=evidenceKeyContext(expectedContext);need(context.rootRunId===FIXED.root,'preservation_context_root');
  assertData(raw);need(raw&&typeof raw==='object'&&!Array.isArray(raw),'preservation_snapshot');const s=raw as PreservationSnapshot;
- need(Object.keys(s).sort().join('|')===['format','capturedAt','databaseClock','transactionReadOnly','timezone','keyId','project','tables','catalogue','ledger','gates','wireTraces'].sort().join('|'),'preservation_envelope');
- need(s.format==='ACA_W2_PRESERVATION_HMAC_V1'&&s.project===FIXED.project&&s.transactionReadOnly==='on'&&s.timezone==='UTC'&&instant(s.capturedAt)&&instant(s.databaseClock)&&HEX.test(s.keyId)&&HEX.test(s.catalogue),'preservation_capture_binding');
+ need(Object.keys(s).sort().join('|')===['format','algorithm','context','capturedAt','databaseClock','transactionReadOnly','timezone','project','tables','catalogue','ledger','gates','wireTraces'].sort().join('|'),'preservation_envelope');
+ need(s.format==='ACA_W2_PRESERVATION_HMAC_V2'&&s.algorithm===EVIDENCE_KEY_ALGORITHM&&digest(s.context)===digest(context)&&s.project===(branch==='production'?FIXED.project:null)&&s.transactionReadOnly==='on'&&s.timezone==='UTC'&&instant(s.capturedAt)&&instant(s.databaseClock)&&HEX.test(s.catalogue),'preservation_capture_binding');
  need(s.tables&&Object.keys(s.tables).sort().join('|')===[...CAPTURE_TABLES].sort().join('|'),'preservation_complete_table_inventory');
- for(const t of Object.values(s.tables)){need(Array.isArray(t.columns)&&t.columns.length>0&&new Set(t.columns).size===t.columns.length&&t.columns.every(c=>/^[a-z_][a-z0-9_]*$/.test(c))&&Array.isArray(t.rows),'preservation_table');const keys=new Set<string>();for(const r of t.rows){need(Object.keys(r).sort().join('|')==='facts|fields|full|key'&&HEX.test(r.key)&&HEX.test(r.full)&&!keys.has(r.key),'preservation_row');keys.add(r.key);need(Object.keys(r.fields).sort().join('|')===[...t.columns].sort().join('|')&&Object.values(r.fields).every(h=>HEX.test(h))&&(r.facts===null||typeof r.facts==='object'&&!Array.isArray(r.facts)),'preservation_all_fields');}}
+ for(const t of Object.values(s.tables)){need(t&&Object.keys(t).sort().join('|')==='columns|rows'&&Array.isArray(t.columns)&&t.columns.length>0&&new Set(t.columns).size===t.columns.length&&t.columns.every(c=>/^[a-z_][a-z0-9_]*$/.test(c))&&Array.isArray(t.rows),'preservation_table');const keys=new Set<string>();for(const r of t.rows){need(Object.keys(r).sort().join('|')==='facts|fields|full|key'&&HEX.test(r.key)&&HEX.test(r.full)&&!keys.has(r.key),'preservation_row');keys.add(r.key);need(Object.keys(r.fields).sort().join('|')===[...t.columns].sort().join('|')&&Object.values(r.fields).every(h=>HEX.test(h))&&(r.facts===null||typeof r.facts==='object'&&!Array.isArray(r.facts)),'preservation_all_fields');}}
  need(AUTH_USER_COLUMNS.every(k=>s.tables['auth.users'].columns.includes(k))&&'id email user_id provider created_at updated_at provider_id identity_data last_sign_in_at'.split(' ').every(k=>s.tables['auth.identities'].columns.includes(k)),'preservation_auth_security_columns');
- need(s.ledger&&Object.keys(s.ledger).sort().join('|')==='count|digest'&&Number.isSafeInteger(s.ledger.count)&&s.ledger.count===54&&HEX.test(s.ledger.digest),'preservation_ledger');
- need(s.gates&&Object.keys(s.gates).sort().join('|')==='financial|launch'&&s.gates.launch===0&&s.gates.financial===0&&Array.isArray(s.wireTraces),'preservation_closed_gates');
+ need(s.ledger&&Object.keys(s.ledger).sort().join('|')==='count|digest'&&Number.isSafeInteger(s.ledger.count)&&s.ledger.count===57&&HEX.test(s.ledger.digest),'preservation_ledger');
+ need(s.gates&&Object.keys(s.gates).sort().join('|')==='financial|launch'&&s.gates.launch===(branch==='production'?0:1)&&s.gates.financial===0&&Array.isArray(s.wireTraces),'preservation_closed_gates');
  need(new Set(s.wireTraces.map(t=>t.id)).size===s.wireTraces.length,'preservation_unique_private_traces');
- for(const t of s.wireTraces)need(Object.keys(t).sort().join('|')===[...TRACE_COLUMNS].sort().join('|')&&t.root_run_id===FIXED.root&&COHORT.some(p=>p.participantId===t.participant_id&&p.userId===t.user_id)&&['issue','verify'].includes(String(t.operation)),'preservation_private_trace_shape');return s;
+ for(const t of s.wireTraces)need(Object.keys(t).sort().join('|')===[...TRACE_COLUMNS].sort().join('|')&&t.root_run_id===FIXED.root&&COHORT.some(p=>p.participantId===t.participant_id&&p.userId===t.user_id)&&['issue','verify'].includes(String(t.operation)),'preservation_private_trace_shape');
+ if(branch==='accepted-staging'){need(s.wireTraces.length===0&&s.tables['private.controlled_team_policy'].rows.length===1&&['private.controlled_team_runs','private.controlled_team_effects','private.controlled_team_windows','private.controlled_team_verifications','private.controlled_team_auth_wire'].every(t=>s.tables[t].rows.length===0),'preservation_unconfigured_stage_scope');}return s;
 }
-export function captureFingerprint(raw:unknown):string{const s=validateSnapshot(raw);const semantic=Object.fromEntries(Object.entries(s).filter(([k])=>k!=='capturedAt'&&k!=='databaseClock'));return digest(semantic);}
+export function validateSnapshot(raw:unknown,expectedContext:EvidenceKeyContext):PreservationSnapshot{return validateCapture(raw,expectedContext,'production');}
+/** Stage origin/service identity is proved by the fixed transport separately;
+ * project:null never grants production or W2 authority. No fixture is inserted. */
+export function validateAcceptedStageSnapshot(raw:unknown,expectedContext:EvidenceKeyContext):PreservationSnapshot{return validateCapture(raw,expectedContext,'accepted-staging');}
+function semanticFingerprint(s:PreservationSnapshot):string{return digest(Object.fromEntries(Object.entries(s).filter(([k])=>k!=='capturedAt'&&k!=='databaseClock')));}
+export function captureFingerprint(raw:unknown,expectedContext:EvidenceKeyContext):string{return semanticFingerprint(validateSnapshot(raw,expectedContext));}
+export function acceptedStageCaptureFingerprint(raw:unknown,expectedContext:EvidenceKeyContext):string{return semanticFingerprint(validateAcceptedStageSnapshot(raw,expectedContext));}
+export function compareAcceptedStageSnapshots(before:unknown,after:unknown,expectedContext:EvidenceKeyContext){const b=validateAcceptedStageSnapshot(before,expectedContext),a=validateAcceptedStageSnapshot(after,expectedContext);need(Date.parse(a.capturedAt)>=Date.parse(b.capturedAt)&&Date.parse(a.databaseClock)>=Date.parse(b.databaseClock),'preservation_stage_capture_chronology');const beforeSHA256=semanticFingerprint(b),afterSHA256=semanticFingerprint(a);need(beforeSHA256===afterSHA256,'preservation_stage_full_capture_exact');return Object.freeze({status:'PASS' as const,format:b.format,algorithm:b.algorithm,context:b.context,beforeSHA256,afterSHA256,observationEnvelopeExclusions:Object.freeze(['capturedAt','databaseClock']),productionOrW2Authorization:false});}
 type Facts=Record<string,unknown>;
 const facts=(r:CaptureRow|undefined):Facts=>r?.facts??{};
 const fieldChanges=(x:CaptureRow,y:CaptureRow)=>Object.keys(x.fields).filter(k=>x.fields[k]!==y.fields[k]);
@@ -40,12 +51,13 @@ const ADMIN='dea5f776-1923-4e8d-9042-d3ffbb1d8833';
  * no exception, including timestamps. This is preservation, not authorization. */
 export function consumeSnapshot(before:unknown,current:unknown,checkpoint:Checkpoint,scope:PreservationScope):PreservationResult{
  let checks=0;const violations:string[]=[];let b:PreservationSnapshot,a:PreservationSnapshot;
- try{b=validateSnapshot(before);a=validateSnapshot(current);}catch{return Object.freeze({status:'HOLD',checkpoint:checkpoint.kind,beforeSHA256:digest({invalid:true}),afterSHA256:digest({invalid:true}),checks,violations:Object.freeze(['invalid_full_capture']),evidenceSHA256:digest({checkpoint,invalid:true})});}
+ let expectedContext:EvidenceKeyContext;
+ try{expectedContext=preservationContext({rootId:scope.rootId,planSHA256:scope.planSHA256,expectedSHA:scope.expectedSHA});b=validateSnapshot(before,expectedContext);a=validateSnapshot(current,expectedContext);}catch{return Object.freeze({status:'HOLD',checkpoint:checkpoint.kind,beforeSHA256:digest({invalid:true}),afterSHA256:digest({invalid:true}),checks,violations:Object.freeze(['invalid_full_capture']),evidenceSHA256:digest({checkpoint,invalid:true})});}
  const check=(v:unknown,c:string)=>{checks++;if(!v)violations.push(c);};
  check(scope.rootId===FIXED.root&&scope.teamId===FIXED.team&&scope.accountId===FIXED.account&&HEX.test(scope.planSHA256)&&/^[a-f0-9]{40}$/.test(scope.expectedSHA),'fixed_scope');
  check(instant(scope.operationStartedAt)&&instant(scope.operationFinishedAt)&&Date.parse(scope.operationStartedAt)<=Date.parse(scope.operationFinishedAt),'operation_interval');
  check(scope.clockSkewSeconds===0||scope.clockSkewSeconds===2&&scope.clockPolicyApproved===true,'explicit_clock_policy');
- check(b.keyId===a.keyId&&b.catalogue===a.catalogue&&same(b.ledger,a.ledger),'key_schema_ledger_exact');
+ check(same(b.context,a.context)&&b.catalogue===a.catalogue&&same(b.ledger,a.ledger),'key_schema_ledger_exact');
  check(Date.parse(b.capturedAt)<=Date.parse(scope.operationStartedAt)&&Date.parse(scope.operationFinishedAt)<=Math.max(Date.parse(a.capturedAt),Date.parse(a.databaseClock)),'causal_full_capture_brackets');
  const lo=Date.parse(scope.operationStartedAt)-scope.clockSkewSeconds*1000,hi=Date.parse(scope.operationFinishedAt)+scope.clockSkewSeconds*1000;
  const inTime=(v:unknown)=>instant(v)&&Date.parse(v as string)>=lo&&Date.parse(v as string)<=hi;
@@ -172,5 +184,5 @@ export function consumeSnapshot(before:unknown,current:unknown,checkpoint:Checkp
  check(a.wireTraces.length===rows('private.controlled_team_auth_wire').filter(r=>facts(r).root_run_id===FIXED.root).length&&a.wireTraces.every(t=>rows('private.controlled_team_auth_wire').some(r=>TRACE_COLUMNS.every(k=>facts(r)[k]===t[k]))),'wire_raw_safe_projection_consistency');
  const oldTraceIds=new Set(b.wireTraces.map(t=>t.id));check(a.wireTraces.filter(t=>oldTraceIds.has(t.id)).every(t=>same(t,b.wireTraces.find(x=>x.id===t.id))),'historical_wire_traces_exact');
  check(a.wireTraces.length-b.wireTraces.length===(kind==='access'||kind==='verify-finalize'?1:0),'wire_trace_count');
- const result={status:violations.length?'HOLD' as const:'PASS' as const,checkpoint:checkpoint.kind,beforeSHA256:captureFingerprint(b),afterSHA256:captureFingerprint(a),checks,violations:Object.freeze(violations)};return Object.freeze({...result,evidenceSHA256:createHash('sha256').update(JSON.stringify(result)).digest('hex')});
+ const result={status:violations.length?'HOLD' as const:'PASS' as const,checkpoint:checkpoint.kind,beforeSHA256:captureFingerprint(b,expectedContext),afterSHA256:captureFingerprint(a,expectedContext),checks,violations:Object.freeze(violations)};return Object.freeze({...result,evidenceSHA256:createHash('sha256').update(JSON.stringify(result)).digest('hex')});
 }

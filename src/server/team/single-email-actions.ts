@@ -10,6 +10,7 @@ import type {TeamPasswordlessState} from "./passwordless-actions";
 import {teamRpc} from "./service";
 import {reserveControlledTeamW2Verification} from '@/server-runtime/team-smoke';
 import {controlledTeamW2VerifyFetch} from './controlled-auth-transport';
+import {createRuntimeEvidenceChannel} from '@/server-runtime/team-auth-evidence';
 
 export async function continueSingleEmailAction(_:TeamPasswordlessState,form:FormData):Promise<TeamPasswordlessState>{
  let participant:string;
@@ -21,6 +22,7 @@ export async function continueSingleEmailAction(_:TeamPasswordlessState,form:For
   for(const [kind,version] of Object.entries(policy.versions))if(form.get(`${kind}_version`)!==version)throw new Error("team_policy_changed");
   const w2='w2' in c?c.w2:undefined;
   if(w2&&form.has('marketing_consent')&&form.get('marketing_consent')!=='false')throw Error('team_policy_changed');
+  if(w2)createRuntimeEvidenceChannel({runId:w2.controlled.run_id,planHash:w2.controlled.approved_plan_hash??''});
   const client=await createAuthClient();
   // A pending identity has no application role. Do not use cached getIdentity
   // until the consent-gated database transaction has provisioned that identity.

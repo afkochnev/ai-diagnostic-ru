@@ -1,5 +1,6 @@
-/** Source-fixed read-only RPC. No caller SQL, table names, local key or key args. */
-export const CAPTURE_QUERIES = Object.freeze({w2_preservation_capture_v1:Object.freeze({kind:'readonly-rpc' as const,method:'GET' as const,path:'/rest/v1/rpc/capture_controlled_team_w2_preservation'})});
+/** Source-fixed read-only v2 RPC. Nonsecret context args only; no caller SQL,
+ * table names, master secret, derived key or key fingerprint arguments. */
+export const CAPTURE_QUERIES = Object.freeze({w2_preservation_capture_v1:Object.freeze({kind:'readonly-rpc' as const,method:'GET' as const,path:'/rest/v1/rpc/capture_controlled_team_w2_preservation',args:Object.freeze(['p_run_id','p_plan_sha256','p_application_sha'] as const),format:'ACA_W2_PRESERVATION_HMAC_V2' as const})});
 export const CAPTURE_TABLES = Object.freeze([
   "auth.audit_log_entries",
   "auth.custom_oauth_providers",

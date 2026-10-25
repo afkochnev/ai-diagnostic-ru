@@ -1,3 +1,4 @@
+import {deriveEvidenceChannelKey,evidenceChannelHeader,evidenceChannelMAC} from '../../src/server/team/evidence-channel-key';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -6,7 +7,7 @@ import { accessJob, controls, createFiniteTransport, databaseAction, workerJob }
 import { FIXED, OFF, OLD_EFFECTS, PARTICIPANTS, REQUIRED_SOURCE_FILES, WEB, bytesDigest, createW2Plan, digest, scope } from '../../scripts/operator-w2/contract';
 import { openRootJournal } from '../../scripts/operator-w2/journal';
 import { collectReadiness, consumeReadiness, observedReadiness, readinessSummary } from '../../scripts/operator-w2/readiness';
-import { captureFingerprint } from '../../scripts/operator-w2/preservation';
+import { captureFingerprint as fingerprint, preservationContext } from '../../scripts/operator-w2/preservation';
 import { CAPTURE_TABLES } from '../../scripts/operator-w2/capture-queries';
 import { createW2Operator } from '../../scripts/operator-w2/operator';
 import * as pf from './preservation-fixtures';
@@ -14,12 +15,16 @@ import { COHORT, type PreservationSnapshot } from '../../scripts/operator-w2/pre
 import { createLocalMockFixture, fixtureCanonicalJSON, fixtureAnswerExpectation } from '../../scripts/operator-w2/fixture';
 import preservationColumns from './fixtures/preservation-columns.json';
 const H = 'a'.repeat(64), SHA = 'a'.repeat(40), TREE = 'b'.repeat(40), W = '00000000-0000-4000-8000-000000000202';
+const evidenceContext=preservationContext({rootId:FIXED.root,planSHA256:H,expectedSHA:SHA});
+const captureFingerprint=(value:unknown)=>fingerprint(value,evidenceContext);
+const rootSecret='synthetic-existing-auth-flow-secret-for-operator-tests';
+const evidenceKey=()=>deriveEvidenceChannelKey(rootSecret,evidenceContext);
 const directories: string[] = [];
 const directory = () => { const p = mkdtempSync(join(realpathSync(tmpdir()), 'operator-w2-test-')); chmodSync(p, 0o700); directories.push(p); return p; };
 afterEach(() => { vi.useRealTimers(); for (const p of directories.splice(0))
     rmSync(p, { recursive: true, force: true }); vi.unstubAllGlobals(); });
-const env = () => ({ APP_URL: FIXED.origin, SUPABASE_URL: `https://${FIXED.project}.supabase.co`, ...Object.fromEntries(OFF.map(k => [k, 'false'])), TEAM_ENABLED: 'false', SECRET_FOR_TEST: 'FAKE_SECRET_NOT_REAL' });
-function fixture() { const now = new Date().toISOString(); const preimage = { web: env(), worker: env(), auth: { uri_allow_list: FIXED.origin + '/auth/confirm', site_url: FIXED.origin, external_email_enabled: true } }; const snapshot: PreservationSnapshot = { format: 'ACA_W2_PRESERVATION_HMAC_V1' as const, capturedAt: now, databaseClock: now, transactionReadOnly: 'on' as const, timezone: 'UTC' as const, keyId: H, project: FIXED.project, tables: Object.fromEntries(CAPTURE_TABLES.map(name => [name, { columns: (preservationColumns as Record<string, string[]>)[name], rows: [] }])), catalogue: H, ledger: { count: 54, digest: H }, gates: { launch: 0, financial: 0 }, wireTraces: [] }; const sourceManifest = Object.fromEntries(REQUIRED_SOURCE_FILES.map(p => [p, H])); const config = (id: string) => ({ id, owner: 'tea-daipgd67bikc739jftl0', type: id === WEB ? 'web_service' : 'background_worker', repo: 'https://github.com/afkochnev/ai-diagnostic-ru', branch: 'main', autoDeploy: 'no', rootDir: '', details: {} }); const effects = OLD_EFFECTS.map(id => ({ id, status: 'succeeded', fingerprint: H })); for (const id of OLD_EFFECTS)
+const env = () => ({ APP_URL: FIXED.origin, SUPABASE_URL: `https://${FIXED.project}.supabase.co`, ...Object.fromEntries(OFF.map(k => [k, 'false'])), TEAM_ENABLED: 'false', AUTH_FLOW_SECRET:rootSecret, SECRET_FOR_TEST: 'FAKE_SECRET_NOT_REAL' });
+function fixture() { const now = new Date().toISOString(); const preimage = { web: env(), worker: env(), auth: { uri_allow_list: FIXED.origin + '/auth/confirm', site_url: FIXED.origin, external_email_enabled: true } }; const snapshot: PreservationSnapshot = { format: 'ACA_W2_PRESERVATION_HMAC_V2' as const, capturedAt: now, databaseClock: now, transactionReadOnly: 'on' as const, timezone: 'UTC' as const, algorithm:'HMAC-SHA256' as const,context:evidenceContext, project: FIXED.project, tables: Object.fromEntries(CAPTURE_TABLES.map(name => [name, { columns: (preservationColumns as Record<string, string[]>)[name], rows: [] }])), catalogue: H, ledger: { count: 57, digest: H }, gates: { launch: 0, financial: 0 }, wireTraces: [] }; const sourceManifest = Object.fromEntries(REQUIRED_SOURCE_FILES.map(p => [p, H])); const config = (id: string) => ({ id, owner: 'tea-daipgd67bikc739jftl0', type: id === WEB ? 'web_service' : 'background_worker', repo: 'https://github.com/afkochnev/ai-diagnostic-ru', branch: 'main', autoDeploy: 'no', rootDir: '', details: {} }); const effects = OLD_EFFECTS.map(id => ({ id, status: 'succeeded', fingerprint: H })); for (const id of OLD_EFFECTS)
     addRow(snapshot, 'private.controlled_team_effects', id, { id, run_id: FIXED.root, window_id: null, status: 'succeeded' }); addRow(snapshot, 'private.account_subscriptions', FIXED.freeSubscription, { id: FIXED.freeSubscription, account_id: FIXED.account, plan_key: 'free', status: 'active', source: 'manual', effective_until: null, providerFieldsNull: true }); const input = { version: 1, authorization: 'LOCAL_MOCK_ONLY', rootId: FIXED.root, teamId: FIXED.team, expectedSHA: SHA, treeSHA: TREE, planSHA256: H, sourceManifest, sourceManifestSHA256: digest(sourceManifest), oldEffectsSHA256: digest(effects), finalBaselineSHA256: captureFingerprint(snapshot), fixtureCommitmentSHA256: H, clockSkewSeconds: 0, clockPolicyApproved: false, preimage: { webDeployId: 'dep-current00000000', workerDeployId: 'dep-current00000000', webEnvSHA256: digest(preimage.web), workerEnvSHA256: digest(preimage.worker), authConfigSHA256: digest(preimage.auth), webConfigSHA256: digest(config(WEB)), workerConfigSHA256: digest(config(FIXED.worker)), webOneoffsSHA256: digest([]), workerOneoffsSHA256: digest([]) }, maximumRenderJobs: 5, maximumAccessJobs: 3, maximumAuthLinks: 3, maximumVerifications: 3, maximumModelGET: 1, maximumResponses: 4, maximumResponseOutputParameterSum: 32000, maximumEmails: 3, maximumAggregate: 1, maximumReport: 1, maximumPDF: 1, maximumWebDeploys: 2, maximumEnvWrites: 2, maximumAuthConfigWrites: 2, maximumSuspend: 1, maximumResume: 1, maximumManualWorkerDeploy: 0 }; const plan = createW2Plan(input), journal = openRootJournal(plan, { mode: 'LOCAL_MOCK', base: directory() }); const runtime = { webEnvironment: { ...preimage.web }, workerEnvironment: { ...preimage.worker }, auth: structuredClone(preimage.auth), suspended: false, instanceId: FIXED.worker + '-abc12', webDeployId: 'dep-current00000000', workerDeployId: 'dep-current00000000', workerTrigger: undefined as string | undefined, workerDeployCreatedAt: undefined as string | undefined, stopAt: undefined as string | undefined, webJobs: [] as Record<string, unknown>[], workerJobs: [] as Record<string, unknown>[] }; const calls: {
     url: string;
     method: string;
@@ -49,7 +54,7 @@ function fixture() { const now = new Date().toISOString(); const preimage = { we
         return Response.json({ logs: u.searchParams.get('text') === 'claim_success' ? [{ message: "[consultation-worker] { checkpoint: 'claim_success', claimed: 0 }", timestamp: new Date().toISOString() }] : runtime.stopAt ? [{ message: '[worker] stopped', timestamp: runtime.stopAt }] : [], hasMore: false });
     return Response.json({ ...config(id), ownerId: 'tea-daipgd67bikc739jftl0', suspended: id === FIXED.worker && runtime.suspended ? 'suspended' : 'not_suspended', serviceDetails: {} });
 } if (mutation)
-    return mutation(u.href, init!); throw Error('FAKE_UNEXPECTED_MUTATION'); }); const credentials = { render: 'FAKE_RENDER', management: 'FAKE_MANAGEMENT', github: 'FAKE_GITHUB', serviceRole: 'FAKE_SERVICE_ROLE' }; const transport = createFiniteTransport(plan, { mode: 'LOCAL_MOCK', fetch, credentials }), collector = { mode: 'LOCAL_MOCK' as const, preimage, journal, localMockSource: { sha: SHA, tree: TREE, manifestSHA256: plan.sourceManifestSHA256 } }; return { plan, input, preimage, snapshot, state, runtime, journal, calls, fetch, credentials, transport, collector, getMutation: () => mutation, setMutation: (fn: typeof mutation) => { mutation = fn; } }; }
+    return mutation(u.href, init!); throw Error('FAKE_UNEXPECTED_MUTATION'); }); const credentials = { render: 'FAKE_RENDER', management: 'FAKE_MANAGEMENT', github: 'FAKE_GITHUB', serviceRole: 'FAKE_SERVICE_ROLE',authFlowSecret:rootSecret }; const transport = createFiniteTransport(plan, { mode: 'LOCAL_MOCK', fetch, credentials }), collector = { mode: 'LOCAL_MOCK' as const, preimage, journal, localMockSource: { sha: SHA, tree: TREE, manifestSHA256: plan.sourceManifestSHA256 } }; return { plan, input, preimage, snapshot, state, runtime, journal, calls, fetch, credentials, transport, collector, getMutation: () => mutation, setMutation: (fn: typeof mutation) => { mutation = fn; } }; }
 type TestSnapshot = {
     tables: Record<string, {
         columns: string[];
@@ -100,9 +105,25 @@ describe('shared durable root journal', () => {
     it('never exposes a delete/reset/overwrite method or permits mock protected path', () => { const f = fixture(); expect(Object.keys(f.journal).sort()).toEqual(['assertSettled', 'inventory', 'read', 'receipt', 'reserve', 'terminal']); expect(() => openRootJournal(f.plan, { mode: 'LOCAL_MOCK', base: FIXED.journalBase })).toThrow(); });
 });
 describe('actual finite read receipts and no arbitrary HTTP', () => {
-    it('collects actual fixed source/CI/env/schema/ledger/Auth evidence with no mutation', async () => { const f = fixture(), r = await collectReadiness(f.plan, null, f.transport, f.collector), summary = readinessSummary(r); expect(summary.baselineSHA256).toBe(digest(f.snapshot)); expect(f.calls.some(x => x.url.endsWith('/rpc/capture_controlled_team_w2_preservation') && x.method === 'GET' && x.body === null)).toBe(true); expect(f.calls.every(x => x.method === 'GET' || (x.url.endsWith('/database/query') && (x.body as {
+    it('collects actual fixed source/CI/env/schema/ledger/Auth evidence with no mutation', async () => { const f = fixture(), r = await collectReadiness(f.plan, null, f.transport, f.collector), summary = readinessSummary(r); expect(summary.baselineSHA256).toBe(digest(f.snapshot)); expect(f.calls.some(x => new URL(x.url).pathname.endsWith('/rpc/capture_controlled_team_w2_preservation') && x.method === 'GET' && x.body === null)).toBe(true); expect(f.calls.every(x => x.method === 'GET' || (x.url.endsWith('/database/query') && (x.body as {
         read_only: boolean;
     }).read_only || x.url.endsWith('/rpc/check_controlled_team_auth_evidence_key')))).toBe(true); expect(JSON.stringify(summary)).not.toContain('FAKE_SECRET'); expect(() => consumeReadiness({ ...r }, f.plan, 'db/prepare', null, f.transport)).toThrow(/owned/); });
+    it('authenticates separately while deriving private capability/capture MACs only from the existing root and canonical context',async()=>{
+        const f=fixture(),headers:Headers[]=[],bodies:string[]=[],fetch:typeof globalThis.fetch=async(input,init)=>{
+            const h=new Headers(init?.headers),u=new URL(String(input));
+            if(u.pathname.endsWith('/rpc/check_controlled_team_auth_evidence_key')||u.pathname.endsWith('/rpc/capture_controlled_team_w2_preservation')){
+                headers.push(h);bodies.push(String(init?.body??''));expect(h.get('x-aca-w2-evidence-key')).toBe(evidenceChannelHeader(evidenceKey()));
+                expect(h.get('authorization')).toBe('Bearer different-synthetic-service-role');
+                if(init?.body){const b=JSON.parse(String(init.body));expect(b.p_challenge_mac).toBe(evidenceChannelMAC(evidenceKey(),['aca-w2-auth-evidence-v1','challenge',FIXED.root,'-',PARTICIPANTS[0],'b7cc06c7-056c-4fd8-b445-eeaf187cec7c','capability','-',b.p_challenge].join('\n')));}
+                else{expect(u.searchParams.get('p_run_id')).toBe(FIXED.root);expect(u.searchParams.get('p_plan_sha256')).toBe(H);expect(u.searchParams.get('p_application_sha')).toBe(SHA);}
+            }else expect(h.has('x-aca-w2-evidence-key')).toBe(false);
+            return f.fetch(input,init);
+        };
+        const t=createFiniteTransport(f.plan,{mode:'READ_ONLY',fetch,credentials:{...f.credentials,serviceRole:'different-synthetic-service-role'}});
+        await t.checkAuthHeaderCapability();await t.readDatabase('w2_preservation_capture_v1');await t.readAuthVersion();
+        expect(headers).toHaveLength(2);expect(bodies.join('')).not.toContain(rootSecret);expect(bodies.join('')).not.toContain(evidenceChannelHeader(evidenceKey()));
+        expect(()=>createFiniteTransport(f.plan,{mode:'READ_ONLY',fetch,credentials:{...f.credentials,authFlowSecret:''}})).toThrow();
+    });
     it('bounded complete pagination uses cursor and rejects missing cursor', async () => { const f = fixture(); let n = 0; const fetch = vi.fn(async (input: RequestInfo | URL) => { void input; return Response.json(n++ === 0 ? Array.from({ length: 100 }, (_, i) => ({ job: { id: 'job-' + i }, cursor: 'cursor_' + i })) : [{ job: { id: 'job-last' } }]); }); const t = createFiniteTransport(f.plan, { mode: 'READ_ONLY', fetch, credentials: f.credentials }); expect(await t.readService(WEB, 'jobs')).toHaveLength(101); expect(fetch.mock.calls).toHaveLength(2); expect(String(fetch.mock.calls[1][0])).toContain('cursor=cursor_99'); const bad = createFiniteTransport(f.plan, { mode: 'READ_ONLY', fetch: vi.fn(async () => Response.json(Array.from({ length: 100 }, () => ({ job: { id: 'job' } })))), credentials: f.credentials }); await expect(bad.readService(WEB, 'jobs')).rejects.toThrow(/pagination/); });
     it('rejects arbitrary service/resource/query names without an HTTP call', async () => { const f = fixture(); await expect(f.transport.readService('srv-wrong', 'jobs')).rejects.toThrow(); await expect(f.transport.readService(WEB, 'shell' as never)).rejects.toThrow(); await expect(f.transport.readDatabase('select pg_sleep(99)' as never)).rejects.toThrow(); expect(f.calls).toHaveLength(0); });
     it('unknown mutation is durably spent and cannot issue a second POST', async () => { const f = fixture(); let posts = 0; f.setMutation(() => { posts++; throw Error('FAKE_TIMEOUT_SECRET'); }); const o = createW2Operator(f.plan, { ...f.collector, mode: 'LOCAL_MOCK', fetch: f.fetch, credentials: f.credentials }); const r = await o.observe(); o.initialize(r); await expect(o.prepare(W, r)).rejects.toThrow(/unknown_action_spent/); expect(posts).toBe(1); expect(f.journal.read('db/prepare', 'receipt')?.status).toBe('UNKNOWN_SPENT_STOP'); expect(() => o.prepare(W, r)).toThrow(); expect(o.scope?.windowId).toBe(W); expect(o.status().unresolved).toEqual(['db/prepare']); expect(posts).toBe(1); });
@@ -285,7 +306,7 @@ else {
         d2 = await o.observe();
     }
     o.reserveAnswers(PARTICIPANTS[i], await o.observe(), fixtureHandle);
-    const expected = fixtureAnswerExpectation(fixtureHandle, PARTICIPANTS[i], 'Bearer ' + credentials.serviceRole);
+    const expected = fixtureAnswerExpectation(fixtureHandle, PARTICIPANTS[i], evidenceKey());
     applyPairDelta(f, pf.answerPair(), i, expected.answersHMAC);
     (f.state.cohort[i] as {
         status: string;

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { FIXED, OLD_EFFECTS, PARTICIPANTS, WEB, assertData, assertEnvironment, bytesDigest, digest, fresh, need, type Scope, type Slot, type W2Plan } from './contract';
 import { assertOwnedTransport, type FiniteTransport, type Preimage } from './capabilities';
 import { assertOwnedJournal, type Journal } from './journal';
-import { captureFingerprint, validateSnapshot } from './preservation';
+import { captureFingerprint, validateSnapshot, preservationContext } from './preservation';
 export type Readiness = Readonly<{
     checkedAt: string;
     evidenceSHA256: string;
@@ -129,7 +129,7 @@ export async function collectReadiness(plan: W2Plan, scope: Scope | null, transp
         status: string;
         conclusion: string;
     }[];
-}; need(main.sha === plan.expectedSHA && main.commit?.tree?.sha === plan.treeSHA && typeof checks.total_count === 'number' && checks.total_count <= 100 && Array.isArray(checks.check_runs) && checks.total_count === checks.check_runs.length && ['application', 'isolated-sql'].every(n => checks.check_runs?.some(x => x.name === n && x.head_sha === plan.expectedSHA && x.status === 'completed' && x.conclusion === 'success')), 'canonical_main_ci'); const state = valueRows(rawState), baseline = validateSnapshot(rawBaseline); for (const s of [web, worker]) {
+}; need(main.sha === plan.expectedSHA && main.commit?.tree?.sha === plan.treeSHA && typeof checks.total_count === 'number' && checks.total_count <= 100 && Array.isArray(checks.check_runs) && checks.total_count === checks.check_runs.length && ['application', 'isolated-sql'].every(n => checks.check_runs?.some(x => x.name === n && x.head_sha === plan.expectedSHA && x.status === 'completed' && x.conclusion === 'success')), 'canonical_main_ci'); const state = valueRows(rawState), baseline = validateSnapshot(rawBaseline,preservationContext(plan)); for (const s of [web, worker]) {
     const webOwned = ['controls/web-deploy-warm', 'controls/web-deploy-restore'].map(k => options.journal.read(k as Slot, 'receipt')?.providerId).filter(Boolean);
     if (s.id === WEB)
         need([plan.preimage.webDeployId, ...webOwned].includes(s.live.id) && [plan.preimage.webDeployId, ...webOwned].includes(String(s.latest.id)), 'owned_web_build');
@@ -190,7 +190,7 @@ export function consumeReadiness(handle: Readiness, plan: W2Plan, slot: Slot, sc
     expires_at: string | null;
     personal_deadline_at: string | null;
 } | null; const restoring = slot.startsWith('controls/env-restore') || slot.startsWith('controls/auth-restore') || slot.startsWith('controls/web-deploy-restore') || slot === 'controls/worker-resume' || slot === 'db/free-cas' || slot.startsWith('db/terminalize'); if (slot === 'db/prepare') {
-    need(window === null && captureFingerprint(proof.baseline) === plan.finalBaselineSHA256, 'post_human_final_baseline');
+    need(window === null && captureFingerprint(proof.baseline,preservationContext(plan)) === plan.finalBaselineSHA256, 'post_human_final_baseline');
 }
 else if (restoring)
     need(window?.status === 'stopped', 'stopped_before_containment');
