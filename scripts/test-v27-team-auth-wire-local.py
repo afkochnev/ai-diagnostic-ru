@@ -32,7 +32,7 @@ def race(q,user=None,role='service_role'):
  return next(x.stdout.strip() for x in results if x.returncode==0)
 def ok(t):checks.append(t);print('PASS '+t,flush=True)
 def rows():
- return json.loads(sql("create temporary table h(k text,v jsonb);do $$declare t record;v jsonb;begin for t in select schemaname,tablename from pg_tables where schemaname in('public','private','auth') loop execute format('select coalesce(jsonb_agg(to_jsonb(x)),''[]''::jsonb) from %I.%I x',t.schemaname,t.tablename) into v;insert into h values(t.schemaname||'.'||t.tablename,v);end loop;end;$$;select jsonb_object_agg(k,v) from h;"))
+ return json.loads(sql("create temporary table h(k text,v jsonb);do $$declare t record;v jsonb;begin for t in select schemaname,tablename from pg_tables where schemaname in('public','private','auth','storage','supabase_migrations') loop execute format('select coalesce(jsonb_agg(to_jsonb(x)),''[]''::jsonb) from %I.%I x',t.schemaname,t.tablename) into v;insert into h values(t.schemaname||'.'||t.tablename,v);end loop;end;$$;select jsonb_object_agg(k,v) from h;"))
 try:
  sql('create database '+db,database='postgres')
  sql((ROOT/'supabase/tests/fixtures/methodology-retirement-local-auth.sql').read_text())
@@ -131,6 +131,62 @@ try:
  wrong=probe('',"set local request.headers="+rewritten+";select public.check_controlled_team_auth_evidence_key("+args(participants[0],'capability',None,window_override=None)+')');assert json.loads(wrong)['matched'] is False
  assert rows()==after
  ok('same-header domain-separated capability is read-only; missing/rewritten header fails closed')
+ # Additive paired diagnostic: synthetic UUID domain only, so staging needs no
+ # production cohort, W2 row or invitation. The real admission RPC stays exact.
+ diagnostic_migration=next((ROOT/'supabase/migrations').glob('*_controlled_team_apikey_capability_diagnostic.sql'))
+ signature='public.check_controlled_team_auth_header_capability(uuid,uuid,uuid,uuid,text,uuid,text,text,text)'
+ def functions():
+  return json.loads(sql("select coalesce(jsonb_agg(jsonb_build_object('schema',n.nspname,'name',p.proname,'args',pg_get_function_identity_arguments(p.oid),'definition',pg_get_functiondef(p.oid),'acl',p.proacl,'config',p.proconfig,'owner',p.proowner,'volatile',p.provolatile,'securityDefiner',p.prosecdef) order by n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)),'[]'::jsonb) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in('public','private') and p.prokind='f'"))
+ old_functions=functions();diagnostic_rows=rows()
+ sql(diagnostic_migration.read_text().rsplit('commit;',1)[0]+'select missing_apikey_diagnostic_rollback_probe();commit;','does not exist')
+ assert rows()==diagnostic_rows and functions()==old_functions and sql("select to_regprocedure('"+signature+"')") == ''
+ sql(diagnostic_migration.read_text())
+ new_functions=functions();added=[x for x in new_functions if x['name']=='check_controlled_team_auth_header_capability']
+ assert len(added)==1 and added[0]['volatile']=='s' and added[0]['securityDefiner'] is True and added[0]['config']==['search_path=""']
+ assert [x for x in new_functions if x['name']!='check_controlled_team_auth_header_capability']==old_functions and rows()==diagnostic_rows
+ for role in ['anon','authenticated','service_role']:
+  assert sql(f"select has_function_privilege('{role}','{signature}','EXECUTE')")==('t' if role=='service_role' else 'f')
+ assert sql("select not exists(select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a where p.oid='"+signature+"'::regprocedure and a.grantee=0)")=='t'
+ ok('paired diagnostic migration is additive/transactional/service-only STABLE; all old function definitions/ACLs and every full row including storage/ledger remain exact')
+ diag_run='00000000-0000-4000-8000-0000000000d1';diag_pid='00000000-0000-4000-8000-0000000000d2';diag_uid='00000000-0000-4000-8000-0000000000d3'
+ api_key='local-service-role-'+('p'*40);authorization=HEADER;challenge='c'*64
+ message='aca-w2-auth-evidence-v1\nchallenge\n'+diag_run+'\n-\n'+diag_pid+'\n'+diag_uid+'\ncapability\n-\n'+challenge
+ authorization_mac=hmac.new(authorization.encode(),message.encode(),hashlib.sha256).hexdigest();apikey_mac=hmac.new(api_key.encode(),message.encode(),hashlib.sha256).hexdigest()
+ diag_values=[diag_run,None,diag_pid,diag_uid,'capability',None,challenge,authorization_mac,apikey_mac]
+ def diag(headers,values=None,error=None,role='service_role'):
+  assignment="'not-json'" if headers=='MALFORMED_JSON' else lit(headers).removesuffix('::jsonb')
+  values=diag_values if values is None else values
+  q='set local request.headers='+assignment+';select public.check_controlled_team_auth_header_capability('+','.join('null' if v is None else "'"+str(v).replace("'","''")+"'" for v in values)+')'
+  result=probe('set transaction read only',q,role=role,error=error)
+  assert rows()==diagnostic_rows
+  return None if error else json.loads(result)
+ both=diag({'authorization':authorization,'apikey':api_key})
+ assert set(both)=={'authorization_matched','apikey_matched','run_id','window_id','participant_id','user_id','operation','reservation_id','diagnostic_only','server_now'}
+ assert both['authorization_matched'] is True and both['apikey_matched'] is True and both['diagnostic_only'] is True and both['run_id']==diag_run and both['participant_id']==diag_pid and both['user_id']==diag_uid and both['window_id'] is None and both['reservation_id'] is None
+ assert all(secret not in json.dumps(both) for secret in [authorization,api_key,authorization_mac,apikey_mac,challenge])
+ diagnostic_rewritten=diag({'authorization':authorization+'x','apikey':api_key});assert diagnostic_rewritten['authorization_matched'] is False and diagnostic_rewritten['apikey_matched'] is True
+ diagnostic_rewritten=diag({'authorization':authorization,'apikey':api_key+'x'});assert diagnostic_rewritten['authorization_matched'] is True and diagnostic_rewritten['apikey_matched'] is False
+ swapped=diag({'authorization':authorization,'apikey':api_key},diag_values[:-2]+[apikey_mac,authorization_mac]);assert swapped['authorization_matched'] is False and swapped['apikey_matched'] is False
+ missing=diag({'apikey':api_key});assert missing['authorization_matched'] is False and missing['apikey_matched'] is True
+ missing=diag({'authorization':authorization});assert missing['authorization_matched'] is True and missing['apikey_matched'] is False
+ ok('one paired read-only RPC independently distinguishes Authorization and raw apikey; exact domain, scope, key bytes and no secret/MAC/challenge output')
+ for malformed in [None,False,123,{},[],api_key+' ', ' '+api_key,'Bearer '+api_key,'short','x'*4097,api_key+'\n',api_key+'é']:
+  result=diag({'authorization':authorization,'apikey':malformed});assert result['authorization_matched'] is True and result['apikey_matched'] is False
+ for headers in [{},[],None,'MALFORMED_JSON']:
+  result=diag(headers);assert result['authorization_matched'] is False and result['apikey_matched'] is False
+ for field in [6,7,8]:
+  for malformed in [None,'','z'*64,'a'*63,'A'*64]:
+   values=diag_values.copy();values[field]=malformed;result=diag({'authorization':authorization,'apikey':api_key},values)
+   assert result['authorization_matched'] is (False if field in [6,7] else True) and result['apikey_matched'] is (False if field in [6,8] else True)
+ ok('missing/malformed/non-string/whitespace/Bearer-prefixed/non-ASCII/oversized raw apikey and malformed challenge/MAC fail closed without fallback or header normalization')
+ for role in ['anon','authenticated']:diag({'authorization':authorization,'apikey':api_key},error='permission denied',role=role)
+ for index,bad in [(0,run),(0,None),(2,participants[0]['pid']),(2,None),(3,participants[0]['uid']),(3,None),(1,window),(5,'00000000-0000-4000-8000-0000000000d4'),(4,'issue'),(4,'verify'),(4,None)]:
+  values=diag_values.copy();values[index]=bad;diag({'authorization':authorization,'apikey':api_key},values,error='controlled_team_auth_scope_denied')
+ assert json.loads(service('select public.check_controlled_team_auth_evidence_key('+args(participants[0],'capability',None,window_override=None)+')'))['matched'] is True
+ assert [x for x in functions() if x['name']!='check_controlled_team_auth_header_capability']==old_functions and rows()==diagnostic_rows
+ assert sql('select count(*) from private.controlled_team_windows')=='0' and sql('select count(*) from private.controlled_team_auth_wire')=='0' and sql('select count(*) from private.controlled_team_verifications')=='0'
+ assert sql("select count(*) from private.controlled_team_effects where run_id='"+run+"'")=='6'
+ ok('diagnostic denies API roles and every real/foreign/null/issue/verify/window/reservation scope; old Authorization admission remains exact and all six effects/window0/wire0/verification0/full rows are preserved')
  # PostgREST GET uses a read-only transaction. The argless fixed-source RPC
  # must work there, deny writes/missing headers, and return only commitments.
  capture=json.loads(service('set transaction read only;select public.capture_controlled_team_w2_preservation()'))
