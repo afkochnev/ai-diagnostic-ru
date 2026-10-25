@@ -83,15 +83,76 @@ production result or satisfy the old W2 admission gate. Every other outcome,
 scope denial, ambiguity or preservation drift is
 `V27_TEAM_W2_AUTH_HEADER_DIAGNOSTIC_HOLD`.
 
-## Conditional fix boundary
+## Second, bounded header-channel diagnosis
 
-Do not switch credential HMAC in this diagnostic migration. Only after the actual
-staging comparison and preservation PASS may a separate additive migration change
-the W2 credential HMAC key source to apikey, together with the matching Node code,
-tests and capture/readiness algorithm documentation. Preserve the original
-Authorization challenge for comparison. No weaker hash, fallback key, new secret,
-history rewrite or budget reset is permitted. A new native capture requires its
-own baseline and bridge; old HMAC snapshots cannot be retroactively relabelled.
+The first staging observation was HTTP 200, exact scope,
+`authorization_matched=false`, `apikey_matched=false`, with preservation PASS.
+It did not establish a usable credential-key channel. Do not repeat that spent
+attempt or switch the W2 key source.
+
+The second additive RPC, `inspect_controlled_team_auth_header_channels`, is
+service-role-only, STABLE and bound to the same synthetic UUIDs, null window and
+null reservation. It returns exactly seven fields: Authorization/apikey classes,
+their presence, whether the actual Bearer payload equals apikey, whether the
+request JWT role is service_role, and `custom_probe_matched`. JWT classification
+means compact three-part syntax, not independent JWT validation. No header,
+payload, fragment, length, fingerprint, challenge or MAC is returned.
+
+Node classifies the existing protected key only as `sb_secret`, `legacy_jwt` or
+`other`. In the single POST it adds a fresh independent 256-bit random
+`x-aca-w2-probe` header. That value exists only in process memory and its HTTPS
+header; it is never an RPC argument, receipt, log or artifact. Node and SQL use
+it as the HMAC-SHA256 key for this diagnostic message only:
+
+```text
+aca-w2-header-channel-diagnostic-v2
+challenge
+00000000-0000-4000-8000-0000000000d1
+-
+00000000-0000-4000-8000-0000000000d2
+00000000-0000-4000-8000-0000000000d3
+capability
+-
+<independent fresh random 64-hex challenge>
+```
+
+The message is UTF-8/LF with no trailing newline. The probe is encoded as 64
+lowercase hex characters in the header; both sides HMAC with those exact text
+bytes. The challenge is independently generated and is not the key. Neither is
+persisted by the operator. The protected service key remains only in the two
+normal authentication headers, never in RPC arguments or evidence output.
+
+`header-channel-diagnostic.ts` is an inert staging-only factory. Before `run()`,
+the wrapper must durably reserve one exclusive attempt. Dispatch consumes it
+even on timeout or an unknown response. The strict schema, 8 KiB limit,
+30-second deadline, redirect rejection and no-retry rule remain in force.
+
+The same full preservation sequence applies to this second migration, anchored
+to the prior typed post-diagnostic snapshot. Only the new function/ACL and one
+new ledger entry are allowed; all old rows, Auth timestamps, old functions,
+environment, gates and reservations must compare exactly. No app deploy is
+needed. Existing staging mock acquisition is preserved; Team/billing remain OFF.
+
+Interpret only a valid, fully preserved observation:
+
+- Custom probe false: `V27_TEAM_W2_REQUEST_HEADER_CHANNEL_UNSUITABLE_HOLD`.
+  Stop attempts to use request.headers as a shared HMAC-key channel.
+- Node sb_secret, SQL bearer_jwt and apikey jwt, both present, equal payloads,
+  service_role and custom probe true:
+  `V27_TEAM_W2_AUTH_GATEWAY_TRANSLATION_CONFIRMED`. This establishes changed
+  downstream representation, without identifying a particular gateway hop.
+- Any other combination: `V27_TEAM_W2_AUTH_HEADER_DIAGNOSTIC_HOLD`.
+
+## Separate architecture decision required
+
+Do not switch credential HMAC in either diagnostic migration. Even a successful
+custom probe proves transport only; it is not a production security mechanism.
+Stop after diagnosis. A safe W2 evidence mechanism needs a separate design and
+review. If no header channel is suitable, that design must remove the dependency
+on gateway headers, for example by evaluating a DB-issued one-time evidence
+capability. Preserve both existing challenges and all W2 source bytes. No
+fallback, weaker hash, unhashed secret, persistent new secret, history rewrite or
+budget reset is permitted. Old HMAC snapshots cannot be retroactively relabelled.
 
 Canonical merge/staging acceptance and a production guard rollout remain separate
 gates. Production rollout requires a further explicit owner authorization with
