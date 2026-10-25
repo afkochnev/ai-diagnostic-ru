@@ -37,7 +37,7 @@ jobs:
         run: >-
           docker run --rm --network none --entrypoint node ai-diagnostic-web-build:ci
           --import tsx -e
-          "const f=require('node:fs');for(const p of ['scripts/controlled-team-worker.ts','scripts/controlled-team-w2-access.ts','scripts/controlled-team-evidence-readonly.ts'])if(!f.lstatSync(p).isFile())throw Error('controlled_entrypoint_missing');if(f.existsSync('scripts/test-v27-team-w2-local.py'))throw Error('operator_test_in_runtime');Promise.all([import('./src/server/team/controlled-runner.ts'),import('./src/server-runtime/team-w2-access.ts'),import('./scripts/controlled-team-evidence-readonly.ts')]).catch(()=>process.exit(1));"
+          "const f=require('node:fs');for(const p of ['scripts/controlled-team-worker.ts','scripts/controlled-team-w2-access.ts','scripts/controlled-team-evidence-readonly.ts'])if(!f.lstatSync(p).isFile())throw Error('controlled_entrypoint_missing');if(f.existsSync('scripts/test-v27-team-w2-local.py')||f.existsSync('scripts/operator-w2/operator.ts'))throw Error('operator_test_or_transport_in_runtime');Promise.all([import('./src/server/team/controlled-runner.ts'),import('./src/server-runtime/team-w2-access.ts'),import('./scripts/controlled-team-evidence-readonly.ts')]).catch(()=>process.exit(1));"
   sql:
     name: isolated-sql
     runs-on: ubuntu-latest

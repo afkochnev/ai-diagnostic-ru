@@ -22,6 +22,7 @@ scripts/**
 !scripts/controlled-team-evidence-readonly.ts
 # Pure read-only preservation contract dependencies; no operator transports.
 !scripts/operator-w2/
+scripts/operator-w2/**
 !scripts/operator-w2/preservation.ts
 !scripts/operator-w2/contract.ts
 !scripts/operator-w2/capture-queries.ts
