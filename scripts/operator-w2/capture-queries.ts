@@ -117,5 +117,31 @@ export const CAPTURE_TABLES = Object.freeze([
   "public.user_roles",
   "public.users",
   "storage.buckets",
-  "storage.objects"
+  "storage.buckets_analytics",
+  "storage.buckets_vectors",
+  "storage.migrations",
+  "storage.objects",
+  "storage.s3_multipart_uploads",
+  "storage.s3_multipart_uploads_parts",
+  "storage.vector_indexes"
 ] as const);
+
+/** Exact managed-storage relations, resolved and owner-checked in migration58. */
+export const MANAGED_STORAGE_CAPTURE_TABLES = Object.freeze([
+  "storage.buckets_analytics",
+  "storage.buckets_vectors",
+  "storage.migrations",
+  "storage.s3_multipart_uploads",
+  "storage.s3_multipart_uploads_parts",
+  "storage.vector_indexes"
+] as const);
+
+/** Actual compatible hosted column order, reviewed for this exact attempt. */
+export const MANAGED_STORAGE_CAPTURE_COLUMNS:Readonly<Record<string,readonly string[]>> = Object.freeze({
+  "storage.buckets_analytics": Object.freeze(["name", "type", "format", "created_at", "updated_at", "id", "deleted_at"]),
+  "storage.buckets_vectors": Object.freeze(["id", "type", "created_at", "updated_at"]),
+  "storage.migrations": Object.freeze(["id", "name", "hash", "executed_at"]),
+  "storage.s3_multipart_uploads": Object.freeze(["id", "in_progress_size", "upload_signature", "bucket_id", "key", "version", "owner_id", "created_at", "user_metadata", "metadata"]),
+  "storage.s3_multipart_uploads_parts": Object.freeze(["id", "upload_id", "size", "part_number", "bucket_id", "key", "etag", "owner_id", "version", "created_at"]),
+  "storage.vector_indexes": Object.freeze(["id", "name", "bucket_id", "data_type", "dimension", "distance_metric", "metadata_configuration", "created_at", "updated_at"]),
+});

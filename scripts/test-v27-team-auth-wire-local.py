@@ -20,6 +20,11 @@ HEADER='Bearer local-existing-service-role-'+('k'*40)
 MAC_KEY=HEADER.encode();EVIDENCE_HEADER=None;APP_SHA='b'*40
 CONTEXT={'domain':'aca-w2-evidence-key','version':1,'rootRunId':'e3623f1d-2da0-4dfe-b600-d747f529c5fc','approvedPlanSHA256':'a'*64,'canonicalAppSHA':APP_SHA}
 CAPTURE_CALL='public.capture_controlled_team_w2_preservation()'
+# Exact observed managed Storage column/type/default/constraint fixture, with
+# entirely synthetic content. These rows never emulate/copy hosted values.
+MANAGED_STORAGE_COLUMNS={'storage.buckets_analytics': ['name', 'type', 'format', 'created_at', 'updated_at', 'id', 'deleted_at'], 'storage.buckets_vectors': ['id', 'type', 'created_at', 'updated_at'], 'storage.migrations': ['id', 'name', 'hash', 'executed_at'], 'storage.s3_multipart_uploads': ['id', 'in_progress_size', 'upload_signature', 'bucket_id', 'key', 'version', 'owner_id', 'created_at', 'user_metadata', 'metadata'], 'storage.s3_multipart_uploads_parts': ['id', 'upload_id', 'size', 'part_number', 'bucket_id', 'key', 'etag', 'owner_id', 'version', 'created_at'], 'storage.vector_indexes': ['id', 'name', 'bucket_id', 'data_type', 'dimension', 'distance_metric', 'metadata_configuration', 'created_at', 'updated_at']}
+MANAGED_STORAGE_FIXTURE_SQL='do $$begin if not exists(select 1 from pg_roles where rolname=\'supabase_storage_admin\') then create role supabase_storage_admin nologin;end if;end $$;grant usage on schema storage to supabase_storage_admin;create type storage.buckettype as enum(\'STANDARD\',\'ANALYTICS\',\'VECTOR\');alter table storage.buckets alter column id type text using id::text;create table storage.buckets_analytics("name" text not null,"type" storage.buckettype default \'ANALYTICS\'::storage.buckettype not null,"format" text default \'ICEBERG\'::text not null,"created_at" timestamp with time zone default now() not null,"updated_at" timestamp with time zone default now() not null,"id" uuid default gen_random_uuid() not null,"deleted_at" timestamp with time zone);alter table storage.buckets_analytics add constraint buckets_analytics_pkey PRIMARY KEY (id);alter table storage.buckets_analytics owner to supabase_storage_admin;create table storage.buckets_vectors("id" text not null,"type" storage.buckettype default \'VECTOR\'::storage.buckettype not null,"created_at" timestamp with time zone default now() not null,"updated_at" timestamp with time zone default now() not null);alter table storage.buckets_vectors add constraint buckets_vectors_pkey PRIMARY KEY (id);alter table storage.buckets_vectors owner to supabase_storage_admin;create table storage.migrations("id" integer not null,"name" character varying(100) not null,"hash" character varying(40) not null,"executed_at" timestamp without time zone default CURRENT_TIMESTAMP);alter table storage.migrations add constraint migrations_name_key UNIQUE (name);alter table storage.migrations add constraint migrations_pkey PRIMARY KEY (id);alter table storage.migrations owner to supabase_storage_admin;create table storage.s3_multipart_uploads("id" text not null,"in_progress_size" bigint default 0 not null,"upload_signature" text not null,"bucket_id" text not null,"key" text not null,"version" text not null,"owner_id" text,"created_at" timestamp with time zone default now() not null,"user_metadata" jsonb,"metadata" jsonb);alter table storage.s3_multipart_uploads add constraint s3_multipart_uploads_bucket_id_fkey FOREIGN KEY (bucket_id) REFERENCES storage.buckets(id);alter table storage.s3_multipart_uploads add constraint s3_multipart_uploads_pkey PRIMARY KEY (id);alter table storage.s3_multipart_uploads owner to supabase_storage_admin;create table storage.s3_multipart_uploads_parts("id" uuid default gen_random_uuid() not null,"upload_id" text not null,"size" bigint default 0 not null,"part_number" integer not null,"bucket_id" text not null,"key" text not null,"etag" text not null,"owner_id" text,"version" text not null,"created_at" timestamp with time zone default now() not null);alter table storage.s3_multipart_uploads_parts add constraint s3_multipart_uploads_parts_bucket_id_fkey FOREIGN KEY (bucket_id) REFERENCES storage.buckets(id);alter table storage.s3_multipart_uploads_parts add constraint s3_multipart_uploads_parts_pkey PRIMARY KEY (id);alter table storage.s3_multipart_uploads_parts add constraint s3_multipart_uploads_parts_upload_id_fkey FOREIGN KEY (upload_id) REFERENCES storage.s3_multipart_uploads(id) ON DELETE CASCADE;alter table storage.s3_multipart_uploads_parts owner to supabase_storage_admin;create table storage.vector_indexes("id" text default gen_random_uuid() not null,"name" text not null,"bucket_id" text not null,"data_type" text not null,"dimension" integer not null,"distance_metric" text not null,"metadata_configuration" jsonb,"created_at" timestamp with time zone default now() not null,"updated_at" timestamp with time zone default now() not null);alter table storage.vector_indexes add constraint vector_indexes_bucket_id_fkey FOREIGN KEY (bucket_id) REFERENCES storage.buckets_vectors(id);alter table storage.vector_indexes add constraint vector_indexes_pkey PRIMARY KEY (id);alter table storage.vector_indexes owner to supabase_storage_admin;insert into storage.buckets values(\'synthetic-bucket\');insert into storage.buckets_analytics(name) values(\'synthetic-analytics\');insert into storage.buckets_vectors(id) values(\'synthetic-vectors\');insert into storage.migrations(id,name,hash,executed_at) select n,\'synthetic-managed-\'||n,lpad(n::text,40,\'0\'),case when n%2=0 then timestamp \'2026-01-01 00:00:00\' else null end from generate_series(1,74)n;insert into storage.s3_multipart_uploads(id,upload_signature,bucket_id,key,version,user_metadata,metadata) values(\'synthetic-upload\',\'synthetic-signature\',\'synthetic-bucket\',\'synthetic-key\',\'v1\',\'{"test":true}\',\'{"size":5}\');insert into storage.s3_multipart_uploads_parts(upload_id,part_number,bucket_id,key,etag,version) values(\'synthetic-upload\',1,\'synthetic-bucket\',\'synthetic-key\',\'synthetic-etag\',\'v1\');insert into storage.vector_indexes(name,bucket_id,data_type,dimension,distance_metric,metadata_configuration) values(\'synthetic-index\',\'synthetic-vectors\',\'float32\',3,\'cosine\',\'{"test":true}\');'
+
 def request_headers():return {'authorization':HEADER,**({'x-aca-w2-evidence-key':EVIDENCE_HEADER} if EVIDENCE_HEADER is not None else {})}
 
 def actor(q,user=None,role='service_role',error=None):return sql('begin;set local request.headers='+lit(request_headers()).removesuffix('::jsonb')+';set local request.jwt.claims='+lit({'role':role,'sub':user,'aal':'aal1','session_id':user}).removesuffix('::jsonb')+';set local role '+role+';'+q+';commit;',error)
@@ -227,6 +232,31 @@ try:
   assert header_cap({'x-aca-w2-evidence-key':EVIDENCE_HEADER},wrong_ascii)['matched'] is False
   assert rows()==before_key_rows
   ok('final transactional migration preserves all old rows/other functions; drops both diagnostic APIs and argless capture; private no-grants; independent context-derived32byte HMAC and strict custom-only key channel')
+  # Migration58 admits only the six independently reviewed managed relations.
+  sql(MANAGED_STORAGE_FIXTURE_SQL)
+  migration=next((ROOT/'supabase/migrations').glob('*_controlled_team_managed_storage_capture.sql'));migration_source=migration.read_text()
+  before_key_rows=rows();before_key_functions=functions();before_key_catalog=function_catalog()
+  service('set transaction read only;select '+CAPTURE_CALL,'controlled_team_capture_denied')
+  assert rows()==before_key_rows and functions()==before_key_functions
+  ok('old57 counterexample with exact122 relations, valid derived channel and read-only scope denies before the additive58 correction')
+  sql(migration_source.rsplit('commit;',1)[0]+'select missing_managed_storage_rollback_probe();commit;','does not exist')
+  assert rows()==before_key_rows and functions()==before_key_functions
+  sql(migration_source);assert rows()==before_key_rows
+  after=rows();final_key_functions=functions();allowed_changed={'capture_controlled_team_w2_preservation'}
+  assert [f for f in before_key_functions if f['name'] not in allowed_changed]==[f for f in final_key_functions if f['name'] not in allowed_changed]
+  for old,new in zip(before_key_catalog['functionSecurity'],function_catalog()['functionSecurity']):
+   assert {k:v for k,v in old.items() if k!='definition_sha256'}=={k:v for k,v in new.items() if k!='definition_sha256'}
+  assert sql('select count(*) from storage.migrations')=='74'
+  ok('additive58 full rollback and apply preserve all rows, old functions/owners/ACLs and six spent effects; only native capture body changes')
+  if a.evidence_dir:
+   helper=Path(a.evidence_dir).parent/'staging-capture.mjs'
+   assert helper.name=='staging-capture.mjs' and helper.parent.name=='phase2-team-w2-storage-inventory-attempt-2'
+   capture_query=subprocess.check_output(['node','--input-type=module','-e',"import {buildCaptureSQL} from "+json.dumps(helper.as_uri())+";process.stdout.write(buildCaptureSQL());"],cwd=ROOT,text=True)
+   syntax_capture=json.loads(sql('begin isolation level repeatable read read only;'+capture_query+';rollback;'))
+   semantics={'status':'PASS_LOCAL_NETWORKLESS_CAPTURE_SELECT_SEMANTICS_ONLY','tableCount':len(syntax_capture['tablesFull']),'transactionReadOnly':syntax_capture['transactionReadOnly'],'isolation':syntax_capture['isolation'],'timezone':syntax_capture['timezone'],'captureHelperSHA256':hashlib.sha256(helper.read_bytes()).hexdigest(),'querySHA256':hashlib.sha256(capture_query.encode()).hexdigest(),'hostedCalls':0,'hostedPreservationClaim':False,'rawRowsOrKeyMaterialExported':False}
+   assert semantics['tableCount']==122 and semantics['transactionReadOnly']=='on' and semantics['isolation']=='repeatable read'
+   with (Path(a.evidence_dir)/'capture-select-local-semantics.json').open('x') as f:json.dump(semantics,f,indent=2);f.write('\n')
+
   empty_setup="set local session_replication_role=replica;update private.controlled_team_policy set run_id=null;delete from private.controlled_team_runs;delete from private.controlled_team_windows;delete from private.controlled_team_effects;delete from private.controlled_team_verifications;delete from private.controlled_team_auth_wire;set local session_replication_role=origin;update private.launch_controls set anonymous_start_enabled=true,team_creation_enabled=false,team_invitations_enabled=false;"
   fixed={'pid':'0ae17418-e97a-46c7-9000-c13580f72506','uid':'b7cc06c7-056c-4fd8-b445-eeaf187cec7c'}
   fixed_args=args(fixed,'capability',None,window_override=None)
@@ -242,22 +272,22 @@ try:
    empty_capture_q='begin isolation level repeatable read read only;set local request.headers='+lit(request_headers()).removesuffix('::jsonb')+";set local request.jwt.claims='{\"role\":\"service_role\"}';set local role service_role;select "+CAPTURE_CALL+';rollback;'
    stage_capture=json.loads(sql(empty_capture_q,database=empty_db));assert stage_capture['project'] is None and stage_capture['context']==CONTEXT and stage_capture['gates']['launch']==1 and stage_capture['format']=='ACA_W2_PRESERVATION_HMAC_V2' and 'keyId' not in stage_capture
    # The existing fixture ledger is deliberately54 synthetic stub rows.
-   # Bring ONLY this disposable unconfigured clone to57 synthetic rows so the
+   # Bring ONLY this disposable unconfigured clone to58 synthetic rows so the
    # strict accepted V2 Node consumer is exercised without normalizing counts.
    assert sql('select count(*) from supabase_migrations.schema_migrations',database=empty_db)=='54'
-   sql("insert into supabase_migrations.schema_migrations(version,name,statements) select 'local-networkless-'||lpad(n::text,2,'0'),'synthetic-not-hosted-migrations',array[]::text[] from generate_series(55,57)n",database=empty_db)
+   sql("insert into supabase_migrations.schema_migrations(version,name,statements) select 'local-networkless-'||lpad(n::text,2,'0'),'synthetic-not-hosted-migrations',array[]::text[] from generate_series(55,58)n",database=empty_db)
    native_before=json.loads(sql(empty_capture_q,database=empty_db));native_after=json.loads(sql(empty_capture_q,database=empty_db))
-   assert native_before['ledger']['count']==native_after['ledger']['count']==57 and native_before['context']==native_after['context']==CONTEXT
+   assert native_before['ledger']['count']==native_after['ledger']['count']==58 and native_before['context']==native_after['context']==CONTEXT
    node_code="const f=require('node:fs'),p=require('./scripts/operator-w2/preservation.ts'),v=JSON.parse(f.readFileSync(0,'utf8'));p.validateAcceptedStageSnapshot(v.before,v.context);p.validateAcceptedStageSnapshot(v.after,v.context);const r=p.compareAcceptedStageSnapshots(v.before,v.after,v.context);console.log(JSON.stringify({status:r.status,beforeSHA256:r.beforeSHA256,afterSHA256:r.afterSHA256,context:r.context,algorithm:r.algorithm,tableCount:Object.keys(v.before.tables).length,ledger:v.before.ledger.count,productionOrW2Authorization:r.productionOrW2Authorization}));"
    material=json.dumps({'context':CONTEXT,'before':native_before,'after':native_after},separators=(',',':'));assert EVIDENCE_HEADER not in material and MAC_KEY.hex() not in material and HEADER not in material
    node=subprocess.run(['node','--import','tsx','-e',node_code],cwd=ROOT,input=material,text=True,capture_output=True,timeout=30)
    assert node.returncode==0,node.stderr[:2000];native_consumer=json.loads(node.stdout)
-   assert native_consumer['status']=='PASS' and native_consumer['beforeSHA256']==native_consumer['afterSHA256'] and native_consumer['ledger']==57 and native_consumer['tableCount']==116 and native_consumer['productionOrW2Authorization'] is False
-   native_proof={'status':'PASS_ACTUAL_NETWORKLESS_SQL_V2_TO_NODE_CONSUMER','context':CONTEXT,'SQLCaptures':2,'NodeConsumer':'validateAcceptedStageSnapshot + compareAcceptedStageSnapshots + complete semantic fingerprint','result':native_consumer,'ledgerQualification':'Only the disposable local clone received3 explicitly synthetic empty-statement ledger stubs (54to57). No hosted ledger/source-record emulation claimed. Node count57 remains strict.','migrationSHA256':hashlib.sha256(migration_source.encode()).hexdigest(),'testSHA256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'keyHeadersOrRawRowsExported':False,'network':'none','hostedCalls':0,'productionMutations':0}
+   assert native_consumer['status']=='PASS' and native_consumer['beforeSHA256']==native_consumer['afterSHA256'] and native_consumer['ledger']==58 and native_consumer['tableCount']==122 and native_consumer['productionOrW2Authorization'] is False
+   native_proof={'status':'PASS_ACTUAL_NETWORKLESS_SQL_V2_TO_NODE_CONSUMER','context':CONTEXT,'SQLCaptures':2,'NodeConsumer':'validateAcceptedStageSnapshot + compareAcceptedStageSnapshots + complete semantic fingerprint','result':native_consumer,'ledgerQualification':'Only the disposable local clone received4 explicitly synthetic empty-statement ledger stubs (54to58). No hosted ledger/source-record emulation claimed. Node count58 remains strict.','migrationSHA256':hashlib.sha256(migration_source.encode()).hexdigest(),'testSHA256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'keyHeadersOrRawRowsExported':False,'network':'none','hostedCalls':0,'productionMutations':0}
    if a.evidence_dir:
-    native_dest=Path(a.evidence_dir);assert native_dest.is_absolute() and native_dest.name=='local-mock' and native_dest.parent.name=='phase2-team-w2-derived-evidence-channel';native_dest.mkdir(parents=True,exist_ok=True)
+    native_dest=Path(a.evidence_dir);assert native_dest.is_absolute() and native_dest.name=='local-mock' and native_dest.parent.name=='phase2-team-w2-storage-inventory-attempt-2';native_dest.mkdir(parents=True,exist_ok=True)
     with (native_dest/'native-sql-node-integration.json').open('x') as f:json.dump(native_proof,f,indent=2);f.write('\n')
-   ok('actual nativeV2 SQL capture pair under derived32byte key passes current Node accepted-stage validator/complete fingerprint with strict ledger57/context and all116 tables')
+   ok('actual nativeV2 SQL capture pair under derived32byte key passes current Node accepted-stage validator/complete fingerprint with strict ledger58/context and all122 tables')
    if a.native_integration_only:
     print(json.dumps(native_proof),flush=True);sys.exit(0)
    for extra in ["update private.launch_controls set team_creation_enabled=true;","update private.billing_configuration set yookassa_enabled=true;"]:
@@ -268,7 +298,7 @@ try:
   assert rows()==before_key_rows
   ok('strict unconfigured branch allows only fixed read-only capability and full native capture; preserves acquisition ON, denies issue/verify/window/foreign binding or Team/billing gates without creating rows')
   if a.evidence_dir:
-   dest=Path(a.evidence_dir);assert dest.is_absolute() and dest.name=='local-mock' and dest.parent.name=='phase2-team-w2-derived-evidence-channel';dest.mkdir(parents=True,exist_ok=True)
+   dest=Path(a.evidence_dir);assert dest.is_absolute() and dest.name=='local-mock' and dest.parent.name=='phase2-team-w2-storage-inventory-attempt-2';dest.mkdir(parents=True,exist_ok=True)
    names=allowed_changed|{'controlled_team_evidence_mac'}
    catalog=json.loads(sql("select coalesce(jsonb_agg(jsonb_build_object('acl',p.proacl,'args',pg_get_function_identity_arguments(p.oid),'name',p.proname,'schema',n.nspname,'proconfig',p.proconfig,'prosecdef',p.prosecdef,'definition_hash',encode(sha256(convert_to(pg_get_functiondef(p.oid),'UTF8')),'hex'),'source_hash',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),'owner',pg_get_userbyid(p.proowner),'provolatile',p.provolatile,'proparallel',p.proparallel,'proleakproof',p.proleakproof,'proisstrict',p.proisstrict,'prokind',p.prokind,'pronargs',p.pronargs,'proargtypes',p.proargtypes::text,'prorettype',p.prorettype::regtype::text,'proretset',p.proretset,'procost',p.procost,'prorows',p.prorows) order by n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)),'[]'::jsonb) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in('public','private') and p.proname in("+','.join("'"+n+"'" for n in names)+")"))
    tag='$aca_evidence_raw_source$';assert tag not in migration_source
@@ -278,7 +308,24 @@ try:
  # PostgREST GET uses a read-only transaction. The argless fixed-source RPC
  # must work there, deny writes/missing headers, and return only commitments.
  capture=json.loads(service('set transaction read only;select '+CAPTURE_CALL))
- assert capture['format']==('ACA_W2_PRESERVATION_HMAC_V2' if a.with_evidence_key else 'ACA_W2_PRESERVATION_HMAC_V1') and capture['transactionReadOnly']=='on' and len(capture['tables'])==116 and capture['wireTraces']==[]
+ assert capture['format']==('ACA_W2_PRESERVATION_HMAC_V2' if a.with_evidence_key else 'ACA_W2_PRESERVATION_HMAC_V1') and capture['transactionReadOnly']=='on' and len(capture['tables'])==(122 if a.with_evidence_key else 116) and capture['wireTraces']==[]
+ if a.with_evidence_key:
+  for table,columns in MANAGED_STORAGE_COLUMNS.items():
+   committed=capture['tables'][table];assert committed['columns']==columns
+   actual=json.loads(sql("select coalesce(jsonb_agg(jsonb_build_object('key',jsonb_build_object('id',r.id)::text,'full',to_jsonb(r)::text,'fields',(select jsonb_object_agg(k,v::text) from jsonb_each(to_jsonb(r)) f(k,v)))),'[]'::jsonb) from "+table+" r"))
+   assert len(committed['rows'])==len(actual)==(74 if table=='storage.migrations' else 1)
+   for row in actual:
+    pk=row['key'];expected_key=mac('aca-w2-preservation-v1\nkey\n'+table+'\n'+pk)
+    evidence=next(r for r in committed['rows'] if r['key']==expected_key)
+    assert evidence['full']==mac('aca-w2-preservation-v1\nrow\n'+table+'\n'+pk+'\n'+row['full'])
+    assert evidence['fields']=={k:mac('aca-w2-preservation-v1\ncell\n'+table+'\n'+pk+'\n'+k+'\n'+v) for k,v in row['fields'].items()} and evidence['facts'] is None
+  storage_rows=rows();storage_functions=functions()
+  for change,restore in [('alter table storage.buckets_vectors owner to postgres','alter table storage.buckets_vectors owner to supabase_storage_admin'),('alter table storage.buckets_analytics rename to missing_analytics','alter table storage.missing_analytics rename to buckets_analytics'),('create table storage.unexpected_managed_table(id integer)','drop table storage.unexpected_managed_table')]:
+   sql(change)
+   try:service('set transaction read only;select '+CAPTURE_CALL,'controlled_team_capture_denied')
+   finally:sql(restore)
+   assert rows()==storage_rows and functions()==storage_functions
+  ok('all six managed tables and74 synthetic migration rows retain full independent key/row/cell HMACs; missing table, wrong actual owner and seventh unexpected table fail closed')
  key_json=json.dumps({'id':owner})
  owner_key=mac('aca-w2-preservation-v1\nkey\nauth.users\n'+key_json)
  captured_owner=next(x for x in capture['tables']['auth.users']['rows'] if x['key']==owner_key)
@@ -316,7 +363,7 @@ try:
   fd=os.open(out,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
   with os.fdopen(fd,'w') as f:json.dump(capture,f,ensure_ascii=False,separators=(',',':'));f.write('\n');f.flush();os.fsync(f.fileno())
   print(json.dumps({'localSQLCapture':str(out),'sha256':hashlib.sha256(out.read_bytes()).hexdigest(),'bytes':out.stat().st_size,'hostedProviderAttestation':False}),flush=True)
- ok('native snapshot is read-only service-only full116table HMAC capture; independently verified cell/key domains; no credential/key values escape')
+ ok('native snapshot is read-only service-only complete fixed-inventory HMAC capture; independently verified cell/key domains; no credential/key values escape')
  # Force every scoped facts branch to compile against the canonical local app
  # schema. Empty hosted Auth skeletons do not pretend to attest hosted schema.
  # The temporary SECURITY DEFINER bridge exists only in this rolled-back test.
@@ -401,8 +448,8 @@ try:
  assert HEADER not in rendered and all(x['cmac'] not in rendered and x['token'] not in rendered for x in participants)
  ok('all six original spent rows exact; private receipts immutable, only keyed opaque issuance commitments persist, no token/key column')
  if a.with_evidence_key and a.evidence_dir:
-  summary={'status':'PASS','checks':len(checks),'network':'none','realAuthProviderCalls':0,'productionMutations':0,'localOnlyCounterfactualFixture':True,'allHistoricalRowsPreservedByMigration':True,'allOtherFunctionsAndACLsPreservedByMigration':True,'allSixSpentEffectsPreserved':True,'captureTimings':capture_timings,'migrationSHA256':hashlib.sha256(migration_source.encode()).hexdigest(),'testSHA256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'keyMaterialExported':False,'qualification':'Synthetic full application schema plus explicit116 Auth/storage skeleton inventory; hosted schema/header behavior is not inferred.'}
-  with (dest/'sql-summary.json').open('x') as f:json.dump(summary,f,indent=2);f.write('\\n')
+  summary={'status':'PASS','checks':len(checks),'network':'none','realAuthProviderCalls':0,'productionMutations':0,'localOnlyCounterfactualFixture':True,'allHistoricalRowsPreservedByMigration':True,'allOtherFunctionsAndACLsPreservedByMigration':True,'allSixSpentEffectsPreserved':True,'captureTimings':capture_timings,'migrationSHA256':hashlib.sha256(migration_source.encode()).hexdigest(),'testSHA256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'keyMaterialExported':False,'qualification':'Synthetic full application schema plus explicit122 inventory, exact six managed Storage column/type fixtures and74 synthetic migration rows; hosted schema/header behavior is not inferred.'}
+  with (dest/'sql-summary.json').open('x') as f:json.dump(summary,f,indent=2);f.write('\n')
  print(json.dumps({'status':'PASS','explicitEvidenceKeyMode':a.with_evidence_key,'checks':len(checks),'network':'none','realAuthProviderCalls':0,'newProductionWindows':0,'captureTimings':capture_timings}))
 finally:
  sql('drop database if exists '+db+' with(force)',database='postgres')

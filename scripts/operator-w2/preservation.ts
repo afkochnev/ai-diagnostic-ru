@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {CAPTURE_TABLES} from './capture-queries';
+import {CAPTURE_TABLES,MANAGED_STORAGE_CAPTURE_COLUMNS} from './capture-queries';
 import {FIXED,PARTICIPANTS,OLD_EFFECTS,assertData,digest,need} from './contract';
 import {evidenceKeyContext,EVIDENCE_KEY_ALGORITHM,type EvidenceKeyContext} from '../../src/server/team/evidence-channel-key';
 export const COHORT=Object.freeze([
@@ -25,8 +25,9 @@ function validateCapture(raw:unknown,expectedContext:EvidenceKeyContext,branch:'
  need(s.format==='ACA_W2_PRESERVATION_HMAC_V2'&&s.algorithm===EVIDENCE_KEY_ALGORITHM&&digest(s.context)===digest(context)&&s.project===(branch==='production'?FIXED.project:null)&&s.transactionReadOnly==='on'&&s.timezone==='UTC'&&instant(s.capturedAt)&&instant(s.databaseClock)&&HEX.test(s.catalogue),'preservation_capture_binding');
  need(s.tables&&Object.keys(s.tables).sort().join('|')===[...CAPTURE_TABLES].sort().join('|'),'preservation_complete_table_inventory');
  for(const t of Object.values(s.tables)){need(t&&Object.keys(t).sort().join('|')==='columns|rows'&&Array.isArray(t.columns)&&t.columns.length>0&&new Set(t.columns).size===t.columns.length&&t.columns.every(c=>/^[a-z_][a-z0-9_]*$/.test(c))&&Array.isArray(t.rows),'preservation_table');const keys=new Set<string>();for(const r of t.rows){need(Object.keys(r).sort().join('|')==='facts|fields|full|key'&&HEX.test(r.key)&&HEX.test(r.full)&&!keys.has(r.key),'preservation_row');keys.add(r.key);need(Object.keys(r.fields).sort().join('|')===[...t.columns].sort().join('|')&&Object.values(r.fields).every(h=>HEX.test(h))&&(r.facts===null||typeof r.facts==='object'&&!Array.isArray(r.facts)),'preservation_all_fields');}}
+ for(const [name,columns] of Object.entries(MANAGED_STORAGE_CAPTURE_COLUMNS))need(digest(s.tables[name].columns)===digest(columns),'preservation_managed_storage_columns');
  need(AUTH_USER_COLUMNS.every(k=>s.tables['auth.users'].columns.includes(k))&&'id email user_id provider created_at updated_at provider_id identity_data last_sign_in_at'.split(' ').every(k=>s.tables['auth.identities'].columns.includes(k)),'preservation_auth_security_columns');
- need(s.ledger&&Object.keys(s.ledger).sort().join('|')==='count|digest'&&Number.isSafeInteger(s.ledger.count)&&s.ledger.count===57&&HEX.test(s.ledger.digest),'preservation_ledger');
+ need(s.ledger&&Object.keys(s.ledger).sort().join('|')==='count|digest'&&Number.isSafeInteger(s.ledger.count)&&s.ledger.count===58&&HEX.test(s.ledger.digest),'preservation_ledger');
  need(s.gates&&Object.keys(s.gates).sort().join('|')==='financial|launch'&&s.gates.launch===(branch==='production'?0:1)&&s.gates.financial===0&&Array.isArray(s.wireTraces),'preservation_closed_gates');
  need(new Set(s.wireTraces.map(t=>t.id)).size===s.wireTraces.length,'preservation_unique_private_traces');
  for(const t of s.wireTraces)need(Object.keys(t).sort().join('|')===[...TRACE_COLUMNS].sort().join('|')&&t.root_run_id===FIXED.root&&COHORT.some(p=>p.participantId===t.participant_id&&p.userId===t.user_id)&&['issue','verify'].includes(String(t.operation)),'preservation_private_trace_shape');
