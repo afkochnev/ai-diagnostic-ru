@@ -49,9 +49,9 @@ describe('W2 personal action is current consent first and one durable attempt',(
   s.verify.mockResolvedValue({data:{session:{},user:{id:root,email,email_confirmed_at:'confirmed'}},error:null});
   expect((await continueSingleEmailAction({},consent())).phase).toBe('expired');expect(s.rpc).not.toHaveBeenCalled();
  });
- it('matching confirmed exact UID still consumes the one personal attempt but no redundant Auth verify',async()=>{
+ it('matching already-confirmed exact UID cannot bypass the required trace-backed personal verify',async()=>{
   s.current.mockResolvedValue({data:{user:{id:uid,email,email_confirmed_at:'confirmed'}}});
-  await expect(continueSingleEmailAction({},consent())).rejects.toThrow('redirect:');expect(s.reserve).toHaveBeenCalledOnce();expect(s.verify).not.toHaveBeenCalled();
+  expect((await continueSingleEmailAction({},consent())).phase).toBe('expired');expect(s.reserve).not.toHaveBeenCalled();expect(s.verify).not.toHaveBeenCalled();expect(s.rpc).not.toHaveBeenCalled();
  });
  it('a finalizer participant mismatch does not redirect or claim acceptance',async()=>{
   s.rpc.mockResolvedValue(root);expect((await continueSingleEmailAction({},consent())).phase).toBe('expired');

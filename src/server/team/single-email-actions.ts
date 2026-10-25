@@ -27,6 +27,9 @@ export async function continueSingleEmailAction(_:TeamPasswordlessState,form:For
   const {data:{user:current}}=await client.auth.getUser();
   if(current?.email && current.email.toLowerCase()!==c.target.email)throw new Error("team_wrong_account");
   if(w2&&current&&current.id!==w2.proof.userId)throw Error('team_wrong_account');
+  // A previously confirmed W2 identity is never a substitute for this window's
+  // one personally consented, trace-backed verification.
+  if(w2&&current?.email_confirmed_at)throw Error('controlled_team_unavailable');
   await enforceRateLimit(`team-single-verify:${c.hash}`,10,600);
   const verification=w2?await reserveControlledTeamW2Verification(w2.controlled,{participantId:w2.proof.participantId,userId:w2.proof.userId,invitationHash:c.hash}):null;
   if(!current?.email_confirmed_at){

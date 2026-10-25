@@ -1,5 +1,6 @@
 import {createClient} from '@supabase/supabase-js';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+vi.mock('@/server-runtime/team-auth-evidence',()=>({createAuthWireEvidence:()=>({begin:async()=>{},finish:async()=>{}})}));
 import {controlledTeamW2VerifyFetch,controlledTeamAuthFetch} from '@/server/team/controlled-auth-transport';
 import type {ControlledTeamContext,ControlledTeamW2Verification,ControlledTeamEffect} from '@/server-runtime/team-smoke';
 import type {ControlledTeamW2Proof} from '@/server-runtime/team-w2-proof';
@@ -14,7 +15,7 @@ describe('W2 single reserved consent verification dispatch',()=>{
  it('allows exactly one HTTP and rejects local SDK re-dispatch after an unknown result',async()=>{
   const actual=vi.fn<typeof fetch>().mockRejectedValue(Error('synthetic ambiguous'));
   const guarded=controlledTeamW2VerifyFetch(context(),verification(),proof(),actual);
-  await expect(guarded(url,{method:'POST',body:JSON.stringify(body)})).rejects.toThrow('synthetic');
+  await expect(guarded(url,{method:'POST',body:JSON.stringify(body)})).rejects.toThrow('auth_evidence_unavailable');
   await expect(guarded(url,{method:'POST',body:JSON.stringify(body)})).rejects.toThrow('dispatch_spent');
   expect(actual).toHaveBeenCalledOnce();expect(actual.mock.calls[0][1]).toMatchObject({redirect:'error',cache:'no-store'});
  });
