@@ -26,6 +26,10 @@ scripts/operator-w2/**
 !scripts/operator-w2/preservation.ts
 !scripts/operator-w2/contract.ts
 !scripts/operator-w2/capture-queries.ts
+# Finite safe diagnostics and bounded staging capture wrapper only.
+!scripts/operator-w2/evidence-diagnostic.ts
+!scripts/operator-w2/evidence-readonly-runner.ts
+!scripts/operator-w2/evidence-readonly-command.ts
 tests
 supabase
 # Keep operator documentation out; this non-secret JSON is a runtime contract.
