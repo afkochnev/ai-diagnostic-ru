@@ -1,14 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createStagingRenderJobDiagnostic, type RenderJobObservation } from '../../scripts/operator-w2/render-job-diagnostic';
 
 const SECRET = 'synthetic-render-credential-do-not-export', SERVICE = 'srv-daiqfnrm8hqs73dtaf1g';
-const body = { startCommand: 'node scripts/synthetic-readonly-fixture.js', planId: 'plan-srv-006' as const };
+const contract = JSON.parse(readFileSync(new URL('../fixtures/render-job-diagnostic/official-contract.json', import.meta.url), 'utf8'));
+const frozenFree = JSON.parse(readFileSync(new URL('../fixtures/render-job-diagnostic/frozen-staging-free-service.json', import.meta.url), 'utf8'));
+const body = contract.request as { startCommand: string; planId: 'plan-srv-006' };
 const expectedBodySHA256 = createHash('sha256').update(JSON.stringify(body)).digest('hex');
-const job = { id: 'job-synthetic000001', serviceId: SERVICE, ...body };
+// Deliberately not generated from body: the public request and response schemas
+// are independent contracts, including createdAt on a successful job response.
+const job = contract.receipt;
 function fixture(fetchImpl: typeof fetch = vi.fn(async () => Response.json(job, { status: 201 })) as typeof fetch) {
     const observations: RenderJobObservation[] = [];
-    const options = { body: { ...body }, expectedBodySHA256, fetch: fetchImpl, credentialReader: vi.fn(() => SECRET), reserveIntent: vi.fn(), checkPreDispatch: vi.fn(), writeObservation: vi.fn((o: RenderJobObservation) => { observations.push(o); }) };
+    const options = { body: { ...body }, expectedBodySHA256, baseServicePreflight: { observedAt: new Date().toISOString(), service: structuredClone(contract.eligibleBaseService) }, fetch: fetchImpl, credentialReader: vi.fn(() => SECRET), reserveIntent: vi.fn(), checkPreDispatch: vi.fn(), writeObservation: vi.fn((o: RenderJobObservation) => { observations.push(o); }) };
     return { options, observations, fetchImpl, construct: () => createStagingRenderJobDiagnostic(options) };
 }
 afterEach(() => vi.useRealTimers());
@@ -18,6 +23,7 @@ describe('staging-only finite Render job diagnostic', () => {
         const fetchImpl = vi.fn(async (url, init) => {
             expect(url).toBe(`https://api.render.com/v1/services/${SERVICE}/jobs`);
             expect(init).toMatchObject({ method: 'POST', body: JSON.stringify(body), redirect: 'error', cache: 'no-store' });
+            expect(init?.body).toBe(contract.requestUTF8);
             expect(new Headers(init?.headers).get('authorization')).toBe('Bearer ' + SECRET);
             return Response.json({ ...job, untrusted: SECRET }, { status });
         }) as typeof fetch;
@@ -139,5 +145,160 @@ describe('staging-only finite Render job diagnostic', () => {
         Object.defineProperty(bad, 'startCommand', { enumerable: true, get: getter });
         expect(() => createStagingRenderJobDiagnostic({ ...f.options, body: bad })).toThrow('request_denied');
         expect(getter).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled(); expect(f.options.reserveIntent).not.toHaveBeenCalled();
+    });
+});
+
+function expectNoPorts(f: ReturnType<typeof fixture>) {
+    expect(f.options.reserveIntent).not.toHaveBeenCalled();
+    expect(f.options.credentialReader).not.toHaveBeenCalled();
+    expect(f.options.checkPreDispatch).not.toHaveBeenCalled();
+    expect(f.fetchImpl).not.toHaveBeenCalled();
+    expect(f.options.writeObservation).not.toHaveBeenCalled();
+    expect(f.observations).toEqual([]);
+}
+
+describe('fresh paid base-service prerequisite', () => {
+    it('keeps source-derived request, response and service fixtures independent', () => {
+        expect(contract.provenance.openAPI).toBe('https://api-docs.render.com/openapi/render-public-api-1.json');
+        expect(Object.keys(body)).toEqual(['startCommand', 'planId']);
+        expect(JSON.stringify(body)).toBe(contract.requestUTF8);
+        expect(Object.keys(job).sort()).toEqual(['createdAt', 'id', 'planId', 'serviceId', 'startCommand']);
+        expect(job).not.toBe(body); expect(job.createdAt).toBe('2026-10-26T10:00:00.000Z');
+        expect(contract.eligibleBaseService.serviceDetails.plan).toBe('starter');
+        expect(contract.paidPlanValues).toHaveLength(20);
+        expect(new Set(contract.paidPlanValues).size).toBe(20);
+    });
+
+    it.each(contract.paidPlanValues as string[])('accepts the documented conservative paidPlan %s without any construction effect', plan => {
+        const f = fixture(); f.options.baseServicePreflight.service.serviceDetails.plan = plan;
+        expect(f.construct).not.toThrow(); expectNoPorts(f);
+    });
+
+    type MalformedRecord = Record<string | symbol, unknown>;
+    const serviceOf = (value: MalformedRecord) => value.service as MalformedRecord;
+    const detailsOf = (value: MalformedRecord) => serviceOf(value).serviceDetails as MalformedRecord;
+    const denied: Record<string, (value: MalformedRecord) => unknown> = {
+        absent: () => undefined,
+        null: () => null,
+        array: () => [],
+        'wrapper-extra': value => ({ ...value, trusted: true }),
+        'wrapper-missing-observation': value => { delete value.observedAt; return value; },
+        'wrapper-missing-service': value => { delete value.service; return value; },
+        'wrapper-symbol': value => Object.assign(value, { [Symbol('extra')]: true }),
+        'wrapper-null-prototype': value => Object.assign(Object.create(null), value),
+        'wrapper-custom-prototype': value => Object.assign(Object.create({ trusted: true }), value),
+        'service-null': value => { value.service = null; return value; },
+        'service-array': value => { value.service = []; return value; },
+        'service-extra': value => { serviceOf(value).name = 'unreviewed'; return value; },
+        'service-missing-owner': value => { delete serviceOf(value).ownerId; return value; },
+        'service-symbol': value => { serviceOf(value)[Symbol('extra')] = true; return value; },
+        'service-custom-prototype': value => { Object.setPrototypeOf(value.service, { trusted: true }); return value; },
+        'wrong-service': value => { serviceOf(value).id = 'srv-production-denied'; return value; },
+        'wrong-owner': value => { serviceOf(value).ownerId = 'tea-another-workspace'; return value; },
+        'wrong-type-worker': value => { serviceOf(value).type = 'background_worker'; return value; },
+        'wrong-type-private': value => { serviceOf(value).type = 'private_service'; return value; },
+        'details-null': value => { serviceOf(value).serviceDetails = null; return value; },
+        'details-array': value => { serviceOf(value).serviceDetails = []; return value; },
+        'details-extra': value => { detailsOf(value).buildPlan = 'starter'; return value; },
+        'details-missing-plan': value => { delete detailsOf(value).plan; return value; },
+        'details-symbol': value => { detailsOf(value)[Symbol('extra')] = true; return value; },
+        'details-null-prototype': value => { Object.setPrototypeOf(detailsOf(value), null); return value; },
+        'free-base-with-paid-job-plan': value => { detailsOf(value).plan = 'free'; return value; },
+        'unknown-plan': value => { detailsOf(value).plan = 'unknown'; return value; },
+        'custom-plan': value => { detailsOf(value).plan = 'custom'; return value; },
+        'legacy-plan': value => { detailsOf(value).plan = 'legacy'; return value; },
+        'wrong-plan-case': value => { detailsOf(value).plan = 'STARTER'; return value; },
+        'empty-plan': value => { detailsOf(value).plan = ''; return value; },
+        'non-string-plan': value => { detailsOf(value).plan = 1; return value; },
+        'boxed-plan': value => { detailsOf(value).plan = new String('starter'); return value; },
+    };
+    for (const [name, change] of Object.entries(denied)) {
+        it(`denies ${name} before every callback, including observation persistence`, () => {
+            const f = fixture(); f.options.baseServicePreflight = change(f.options.baseServicePreflight) as typeof f.options.baseServicePreflight;
+            expect(f.construct).toThrow('staging_render_job_base_service_denied'); expectNoPorts(f);
+        });
+    }
+
+    for (const path of ['observedAt', 'service', 'service.id', 'service.ownerId', 'service.type', 'service.serviceDetails', 'service.serviceDetails.plan']) {
+        it(`denies accessor ${path} without evaluating it or any port`, () => {
+            const f = fixture(), getter = vi.fn(() => SECRET), parts = path.split('.');
+            let target: MalformedRecord = f.options.baseServicePreflight;
+            for (const name of parts.slice(0, -1)) target = target[name] as MalformedRecord;
+            Object.defineProperty(target, parts.at(-1)!, { enumerable: true, get: getter });
+            expect(f.construct).toThrow('staging_render_job_base_service_denied');
+            expect(getter).not.toHaveBeenCalled(); expectNoPorts(f);
+        });
+    }
+
+    it('denies the saved actual Free service projection even with a fresh simulated wrapper timestamp', () => {
+        vi.useFakeTimers(); vi.setSystemTime('2026-10-26T10:00:00.000Z');
+        const f = fixture(); f.options.baseServicePreflight.service = structuredClone(frozenFree.service);
+        expect(frozenFree.provenance.sourceArtifactSHA256).toBe('784c07337d81c8369877bf57b9ebad2fb57b37cc0043343291d023025faac75e');
+        expect(frozenFree.provenance.savedObservedAt).toBe('2026-10-23T19:03:30.769Z');
+        expect(f.options.baseServicePreflight.observedAt).toBe('2026-10-26T10:00:00.000Z');
+        expect(f.options.body.planId).toBe('plan-srv-006');
+        expect(f.construct).toThrow('staging_render_job_base_service_denied'); expectNoPorts(f);
+    });
+
+    it.each([0, 60000])('accepts canonical observedAt at age %sms inclusively', age => {
+        vi.useFakeTimers(); vi.setSystemTime('2026-10-26T10:00:00.000Z');
+        const f = fixture(); f.options.baseServicePreflight.observedAt = new Date(Date.now() - age).toISOString();
+        expect(f.construct).not.toThrow(); expectNoPorts(f);
+    });
+
+    for (const [name, observedAt] of Object.entries({
+        stale: '2026-10-26T09:58:59.999Z', future: '2026-10-26T10:00:00.001Z',
+        'missing-milliseconds': '2026-10-26T10:00:00Z', 'two-digit-milliseconds': '2026-10-26T10:00:00.00Z',
+        'extra-precision': '2026-10-26T10:00:00.0000Z', 'offset-form': '2026-10-26T10:00:00.000+00:00',
+        'noncanonical-calendar': '2026-02-30T10:00:00.000Z', 'invalid-date': 'not a date',
+        whitespace: ' 2026-10-26T10:00:00.000Z', 'number-value': 1793008800000, 'date-object': new Date('2026-10-26T10:00:00.000Z'), null: null,
+    })) {
+        it(`rejects observedAt ${name} before construction effects`, () => {
+            vi.useFakeTimers(); vi.setSystemTime('2026-10-26T10:00:00.000Z');
+            const f = fixture(); f.options.baseServicePreflight.observedAt = observedAt as string;
+            expect(f.construct).toThrow('staging_render_job_base_service_denied'); expectNoPorts(f);
+        });
+    }
+
+    it('rechecks age before reserve or credential access; a changed input cannot refresh the snapshot', async () => {
+        vi.useFakeTimers(); vi.setSystemTime('2026-10-26T10:00:00.000Z');
+        const f = fixture(), client = f.construct(); vi.setSystemTime('2026-10-26T10:01:00.001Z');
+        await expect(client.dispatch()).rejects.toThrow('staging_render_job_base_service_denied'); expectNoPorts(f);
+        f.options.baseServicePreflight.observedAt = new Date().toISOString();
+        await expect(client.dispatch()).rejects.toThrow('staging_render_job_base_service_denied'); expectNoPorts(f);
+    });
+
+    it('rechecks that the observation is not in the future before any dispatch callbacks', async () => {
+        vi.useFakeTimers(); vi.setSystemTime('2026-10-26T10:00:00.000Z');
+        const f = fixture(), client = f.construct(); vi.setSystemTime('2026-10-26T09:59:59.999Z');
+        await expect(client.dispatch()).rejects.toThrow('staging_render_job_base_service_denied'); expectNoPorts(f);
+    });
+
+    it.each([60001, -1])('rejects age %sms reached during the dispatch guard; slot stays spent', async age => {
+        vi.useFakeTimers(); const initial = Date.parse('2026-10-26T10:00:00.000Z'); vi.setSystemTime(initial);
+        const f = fixture(); f.options.checkPreDispatch.mockImplementation(async () => { vi.setSystemTime(initial + age); });
+        const client = f.construct(), result = await client.dispatch();
+        expect(result).toMatchObject({ status: 'UNKNOWN_SPENT_STOP', stage: 'dispatch_guard', reason: 'DISPATCH_GUARD_FAILED', fetchInvoked: false, httpStatus: null, providerId: null, retry: false });
+        expect(f.options.reserveIntent).toHaveBeenCalledTimes(1); expect(f.options.credentialReader).toHaveBeenCalledTimes(1); expect(f.options.checkPreDispatch).toHaveBeenCalledTimes(1);
+        expect(f.fetchImpl).not.toHaveBeenCalled(); expect(f.options.writeObservation).toHaveBeenCalledTimes(1);
+        await expect(client.dispatch()).rejects.toThrow('attempt_spent'); expect(f.options.reserveIntent).toHaveBeenCalledTimes(1);
+    });
+
+    it('permits the exact60s prefetch boundary after an awaited guard', async () => {
+        vi.useFakeTimers(); const initial = Date.parse('2026-10-26T10:00:00.000Z'); vi.setSystemTime(initial);
+        const f = fixture(); f.options.checkPreDispatch.mockImplementation(async () => { vi.setSystemTime(initial + 60000); });
+        expect(await f.construct().dispatch()).toMatchObject({ status: 'KNOWN_ACCEPTED', retry: false });
+        expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+    });
+
+    it('snapshots the validated paid service and timestamp, without trusting later caller mutation', async () => {
+        const f = fixture(), client = f.construct();
+        f.options.baseServicePreflight.observedAt = 'not a date';
+        f.options.baseServicePreflight.service.id = 'srv-production-denied';
+        f.options.baseServicePreflight.service.ownerId = 'tea-another-workspace';
+        f.options.baseServicePreflight.service.type = 'background_worker';
+        f.options.baseServicePreflight.service.serviceDetails.plan = 'free';
+        expect(await client.dispatch()).toMatchObject({ status: 'KNOWN_ACCEPTED', retry: false, providerId: job.id });
+        expect(f.fetchImpl).toHaveBeenCalledTimes(1);
     });
 });
