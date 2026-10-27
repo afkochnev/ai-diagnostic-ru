@@ -1,0 +1,38 @@
+{
+  "provenance": {
+    "kind": "PRIMARY_SOURCE_SCHEMA_DERIVED_SYNTHETIC_FIXTURE",
+    "reviewedOn": "2026-10-26",
+    "openAPI": "https://api-docs.render.com/openapi/render-public-api-1.json",
+    "requestSchema": "#/paths/~1services~1{serviceId}~1jobs/post/requestBody/content/application~1json/schema",
+    "responseSchema": "#/paths/~1services~1{serviceId}~1jobs/post/responses/201/content/application~1json/schema",
+    "paidPlanSchema": "#/components/schemas/paidPlan",
+    "freeServiceRestriction": "https://render.com/docs/free#other-limitations",
+    "qualification": "Request, response and eligible service are independent literal fixtures. IDs and command are synthetic. No raw OpenAPI digest, live service eligibility or hosted execution is claimed."
+  },
+  "paidPlanValues": [
+    "starter", "standard", "pro", "pro_plus", "pro_max", "pro_ultra",
+    "0.5c-512mb", "1c-2g", "2c-4g", "2c-8g", "2c-16g", "4c-8g",
+    "4c-16g", "4c-32g", "8c-16g", "8c-32g", "8c-64g", "12c-24g",
+    "12c-48g", "12c-96g"
+  ],
+  "request": {
+    "startCommand": "node scripts/synthetic-readonly-fixture.js",
+    "planId": "plan-srv-006"
+  },
+  "requestUTF8": "{\"startCommand\":\"node scripts/synthetic-readonly-fixture.js\",\"planId\":\"plan-srv-006\"}",
+  "receipt": {
+    "id": "job-synthetic00000000001",
+    "serviceId": "srv-daiqfnrm8hqs73dtaf1g",
+    "startCommand": "node scripts/synthetic-readonly-fixture.js",
+    "planId": "plan-srv-006",
+    "createdAt": "2026-10-26T10:00:00.000Z"
+  },
+  "eligibleBaseService": {
+    "id": "srv-daiqfnrm8hqs73dtaf1g",
+    "ownerId": "tea-daipgd67bikc739jftl0",
+    "type": "web_service",
+    "serviceDetails": {
+      "plan": "starter"
+    }
+  }
+}

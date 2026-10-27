@@ -7,7 +7,7 @@ import {controlledTeamContext,reserveControlledTeamW2Access,completeControlledTe
 import {sealControlledTeamW2Proof} from './team-w2-proof';
 import {controlledTeamAuthFetch} from '@/server/team/controlled-auth-transport';
 import {sendControlledTeamW2AccessEmail} from '@/server/team/invitation-email';
-import {createAuthWireEvidence} from './team-auth-evidence';
+import {createAuthWireEvidence,createRuntimeEvidenceChannel} from './team-auth-evidence';
 
 /** This function consumes the two NEW W2 durable slots for one exact pending
  * identity. Re-entry after any reserved dispatch fails; it cannot reset R's
@@ -17,6 +17,9 @@ export async function recoverControlledTeamAccess(input:{windowId:string;partici
  const config=authConfig();
  const context=await controlledTeamContext({windowId,participantId});
  if(!context?.window_id||!context.team_id||!context.personal_deadline_at)throw Error('controlled_team_unavailable');
+ // Validate the actual build and existing root-secret context before spending
+ // the one issuance reservation. This makes no request and returns no key.
+ createRuntimeEvidenceChannel({runId:context.run_id,planHash:context.approved_plan_hash??''});
  const effect=await reserveControlledTeamW2Access(context,participantId,'reauth_link');
  let dispatched=false,completed=false;
  try{

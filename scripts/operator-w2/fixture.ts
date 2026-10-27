@@ -1,7 +1,8 @@
 import {constants,closeSync,fstatSync,lstatSync,openSync,readSync,realpathSync} from 'node:fs';
 import {dirname,isAbsolute,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
-import {createHash,createHmac} from 'node:crypto';
+import {createHash} from 'node:crypto';
+import {evidenceChannelMAC,type EvidenceChannelKey} from '../../src/server/team/evidence-channel-key';
 import {FIXED,PARTICIPANTS,assertData,need} from './contract';
 const DOMAIN='AI-COMPANY-AUDIT/V27/W2/UNUSED-FIXTURE-ASSIGNMENT/V1\0';
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -44,6 +45,6 @@ export function createLocalMockFixture(bytes:Uint8Array,binding:Binding):Committ
 export function postgresAnswerJSONB(answers:Record<string,string|number>):string{
  assertData(answers);need(Object.getPrototypeOf(answers)===Object.prototype&&Object.keys(answers).length===84,'fixture_jsonb_answers');return '{'+Object.keys(answers).sort((a,b)=>Buffer.byteLength(a)-Buffer.byteLength(b)||Buffer.compare(Buffer.from(a),Buffer.from(b))).map(k=>{const v=answers[k];need(UUID.test(k)&&(typeof v==='number'&&Number.isInteger(v)&&v>=0&&v<=4||typeof v==='string'&&v.length>0&&v.length<=10000&&!/[\u0000\uD800-\uDFFF]/u.test(v)),'fixture_jsonb_value');return JSON.stringify(k)+': '+JSON.stringify(v);}).join(', ')+'}';
 }
-export function fixtureAnswerExpectation(handle:CommittedFixture,participantId:string,authorization:string){
- const v=owned.get(handle);need(v&&(PARTICIPANTS as readonly string[]).includes(participantId),'owned_private_fixture');need(/^Bearer [A-Za-z0-9._-]{20,4096}$/.test(authorization),'existing_authorization_only');const assignment=v.assignment.find(p=>p.participantId===participantId)!,profile=v.profiles.find(p=>p.abstractProfile===assignment.abstractProfile)!;const answers=Object.fromEntries(profile.controls.map(c=>[c.questionId,c.tagName==='SELECT'?Number(c.value):c.value]));const pk='{"participant_id": '+JSON.stringify(participantId)+'}';const message='aca-w2-preservation-v1\ncell\nprivate.team_responses\n'+pk+'\nanswers\n'+postgresAnswerJSONB(answers);const answersHMAC=createHmac('sha256',Buffer.from(authorization,'utf8')).update(message,'utf8').digest('hex');return Object.freeze({answersHMAC,count:84 as const,fixtureCommitmentSHA256:handle.assignmentCommitmentSHA256,rawMappingSaltAnswersReturned:false as const});
+export function fixtureAnswerExpectation(handle:CommittedFixture,participantId:string,evidenceKey:EvidenceChannelKey){
+ const v=owned.get(handle);need(v&&(PARTICIPANTS as readonly string[]).includes(participantId),'owned_private_fixture');const assignment=v.assignment.find(p=>p.participantId===participantId)!,profile=v.profiles.find(p=>p.abstractProfile===assignment.abstractProfile)!;const answers=Object.fromEntries(profile.controls.map(c=>[c.questionId,c.tagName==='SELECT'?Number(c.value):c.value]));const pk='{"participant_id": '+JSON.stringify(participantId)+'}';const message='aca-w2-preservation-v1\ncell\nprivate.team_responses\n'+pk+'\nanswers\n'+postgresAnswerJSONB(answers);const answersHMAC=evidenceChannelMAC(evidenceKey,message);return Object.freeze({answersHMAC,count:84 as const,fixtureCommitmentSHA256:handle.assignmentCommitmentSHA256,rawMappingSaltAnswersReturned:false as const});
 }
