@@ -173,11 +173,11 @@ describe("authenticated read-only diagnostic status GET", () => {
   it.each(["queued", "generating", "completed", "failed"])("reads the exact diagnostic's latest AI report in state %s after membership authorization", async (status) => {
     rows.ai_reports = { id: reportId, version: 2, status, error_code: "provider_retryable" };
     const response = await getAI(request(), context());
-    expect(await response.json()).toEqual({ status, report_id: reportId, version: 2, ...(status === "failed" ? { error_code: "provider_retryable" } : {}) });
+    expect(await response.json()).toEqual({ status, report_id: reportId, version: 2, ...(status === "failed" ? { error_code: "AI_REPORT_FAILED" } : {}) });
     expectPrivate(response);
     expect(reads.map((read) => read.table)).toEqual(["diagnostics", "company_profiles", "account_memberships", "accounts", "ai_reports"]);
     expect(reads.at(-1)).toEqual({
-      table: "ai_reports", columns: ["id,version,status,error_code"], filters: [["diagnostic_id", diagnosticId]],
+      table: "ai_reports", columns: ["id,version,status"], filters: [["diagnostic_id", diagnosticId]],
       orders: [["version", { ascending: false }]], limits: [1],
     });
   });
