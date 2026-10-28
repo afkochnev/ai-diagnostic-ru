@@ -13,6 +13,10 @@ function mount(){for(const f of h.effects){const c=f();if(c)cleanups.push(c);}}
 beforeEach(()=>{h.values=[];h.cursor=0;h.effects=[];cleanups=[];fetcher.mockReset();reload.mockReset();vi.useFakeTimers();vi.stubGlobal('React',React);vi.stubGlobal('fetch',fetcher);vi.stubGlobal('window',{location:{reload}});});
 afterEach(()=>{cleanups.forEach(c=>c());vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();});
 describe('Individual recovery controls',()=>{
+ it('never selects historical provider error material for owner client props',()=>{
+  const source=readFileSync('src/server/diagnostic/result.ts','utf8');
+  expect(source).not.toContain('error_code');expect(source).not.toContain('error_message');
+ });
  it('shows owner failed recovery label and the result page includes it for failed only',()=>{
   const tree=render(()=>ReportRegenerationButton({diagnosticId:'d',failed:true}));expect(nodes(tree).some(x=>x.type==='button'&&x.props.children==='Повторить формирование AI-отчёта')).toBe(true);
   const source=readFileSync('src/app/[locale]/(workspace)/diagnostics/[diagnosticId]/result/page.tsx','utf8');expect(source).toContain('data.aiReport?.status === "failed" && <ReportRegenerationButton diagnosticId={diagnosticId} failed />');expect(fetcher).not.toHaveBeenCalled();
