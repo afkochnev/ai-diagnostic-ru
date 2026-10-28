@@ -1,0 +1,21 @@
+{
+  "provenance": {
+    "kind": "SANITIZED_PROJECTION_OF_SAVED_STAGING_SERVICE_READ",
+    "sourceArtifact": "artifacts/v27-production-launch/phase2-team-guard-canonical-staging/service-preflight.json",
+    "sourceArtifactSHA256": "784c07337d81c8369877bf57b9ebad2fb57b37cc0043343291d023025faac75e",
+    "savedObservedAt": "2026-10-23T19:03:30.769Z",
+    "serviceSelector": "services[id=srv-daiqfnrm8hqs73dtaf1g].serviceConfig",
+    "frozenNormalizedServiceConfigurationSHA256": "d7311e6f7a2187899d3eb23ffd4a3de39abccf9b248fa8f6b48bda064e8008c6",
+    "independentSavedMetadataBridge": "artifacts/v27-production-launch/phase2-team-w2-jobs-http400-local-fix/independent-saved-service-eligibility-proof.json",
+    "independentSavedMetadataBridgeSHA256": "2db2df56c6580dcb2b44b1d410e41da1ddfdcce1114cea5a5b85ab71b6cd5583",
+    "qualification": "Historical saved metadata only. Tests may replace the outer observedAt under a mock clock to isolate Free-plan denial. This does not refresh the actual service observation, upgrade a service or claim present-day eligibility."
+  },
+  "service": {
+    "id": "srv-daiqfnrm8hqs73dtaf1g",
+    "ownerId": "tea-daipgd67bikc739jftl0",
+    "type": "web_service",
+    "serviceDetails": {
+      "plan": "free"
+    }
+  }
+}

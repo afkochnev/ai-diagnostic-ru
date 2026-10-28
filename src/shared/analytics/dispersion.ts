@@ -23,3 +23,9 @@ export type DispersionProfile={overall:{mean:number;stddev:number;maturity:strin
 export function orderedDispersionQuestions(questions:DispersionQuestion[],descending=false){
  return [...questions].sort((a,b)=>(descending?-1:1)*(a.stddev-b.stddev)||a.blockPosition-b.blockPosition||a.position-b.position);
 }
+
+/** Display-only normalization; scoring, raw SD and interpretation thresholds stay unchanged. */
+export function formatDispersionPercent(stddev:number,scaleRange:4|100){
+ return `${displayAnalyticalNumber(classifyDispersion(stddev,scaleRange).normalizedPercent)}%`;
+}
+export const dispersionUnitsNote="Разброс показан в процентах от полного диапазона шкалы: стандартное отклонение делится на 4 для вопросов или на 100 для блоков и индекса и умножается на 100. Средние оценки остаются в шкалах 0–4 и 0–100 соответственно.";

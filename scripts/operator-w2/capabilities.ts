@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { createHmac, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import {deriveEvidenceChannelKey,evidenceChannelHeader,evidenceChannelMAC} from '../../src/server/team/evidence-channel-key';
 import { consumeReservation, type JournalRecord } from './journal';
 import { consumeReadiness, type Readiness } from './readiness';
 import { prepareControlledWindowDispatch } from '../../src/server/team/controlled-window-dispatch';
@@ -92,6 +93,7 @@ export function createFiniteTransport(plan: W2Plan, options: {
         management: string;
         github: string;
         serviceRole: string;
+        authFlowSecret: string;
     };
 }) {
     options = { ...options, credentials: { ...options.credentials } };
@@ -99,6 +101,7 @@ export function createFiniteTransport(plan: W2Plan, options: {
     need(options.mode !== 'PRODUCTION' || plan.authorization === 'EXPLICIT_OWNER_W2_EXECUTION', 'transport_authority');
     const credentials = { ...options.credentials };
     need(Object.values(credentials).every(x => typeof x === 'string' && x.length > 0), 'protected_credentials');
+    const evidenceKey=deriveEvidenceChannelKey(credentials.authFlowSecret,{domain:'aca-w2-evidence-key',version:1,rootRunId:plan.rootId,approvedPlanSHA256:plan.planSHA256,canonicalAppSHA:plan.expectedSHA});
     async function boundedJSON(response: Response, controller: AbortController) {
         const maximum = 16777216, contentLength = response.headers.get('content-length');
         need(contentLength === null || /^\d+$/.test(contentLength) && Number(contentLength) <= maximum, 'response_byte_limit');
@@ -130,7 +133,7 @@ export function createFiniteTransport(plan: W2Plan, options: {
         const controller = new AbortController();
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-            return await Promise.race([(async () => { const response = await options.fetch(origin + path, { method, headers: { Authorization: 'Bearer ' + credentials[credential], 'Content-Type': 'application/json', ...(credential === 'github' ? { Accept: 'application/vnd.github+json' } : {}), ...(credential === 'serviceRole' ? { apikey: credentials.serviceRole } : {}) }, ...(body !== null ? { body: JSON.stringify(body) } : {}), redirect: 'error', signal: controller.signal }); need(!response.redirected && response.ok, 'http_status'); return { status: response.status, value: await boundedJSON(response, controller) }; })(), new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(Error('timeout')); }, 30000); })]);
+            return await Promise.race([(async () => { const response = await options.fetch(origin + path, { method, headers: { Authorization: 'Bearer ' + credentials[credential], 'Content-Type': 'application/json', ...(credential === 'github' ? { Accept: 'application/vnd.github+json' } : {}), ...(credential === 'serviceRole' ? { apikey: credentials.serviceRole, ...(['/rest/v1/rpc/check_controlled_team_auth_evidence_key','/rest/v1/rpc/capture_controlled_team_w2_preservation'].includes(path.split('?')[0])?{'x-aca-w2-evidence-key':evidenceChannelHeader(evidenceKey)}:{}) } : {}) }, ...(body !== null ? { body: JSON.stringify(body) } : {}), redirect: 'error', signal: controller.signal }); need(!response.redirected && response.ok, 'http_status'); return { status: response.status, value: await boundedJSON(response, controller) }; })(), new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(Error('timeout')); }, 30000); })]);
         }
         catch {
             controller.abort();
@@ -164,7 +167,7 @@ export function createFiniteTransport(plan: W2Plan, options: {
         }
         throw Error('w2_operator_incomplete_inventory');
     }
-    const transport = Object.freeze({ mode: options.mode, readService, async checkAuthHeaderCapability() { const challenge = randomBytes(32).toString('hex'), participant = PARTICIPANTS[0], user = 'b7cc06c7-056c-4fd8-b445-eeaf187cec7c', mac = createHmac('sha256', 'Bearer ' + credentials.serviceRole).update(['aca-w2-auth-evidence-v1', 'challenge', FIXED.root, '-', participant, user, 'capability', '-', challenge].join('\n'), 'utf8').digest('hex'), started = Date.now(); const raw = (await request('POST', 'https://fhvxqeaujjeiflanqsbg.supabase.co', '/rest/v1/rpc/check_controlled_team_auth_evidence_key', { p_run_id: FIXED.root, p_window_id: null, p_participant_id: participant, p_user_id: user, p_operation: 'capability', p_reservation_id: null, p_challenge: challenge, p_challenge_mac: mac }, 'serviceRole')).value; const result = parse(z.strictObject({ matched: z.literal(true), run_id: z.literal(FIXED.root), window_id: z.null(), participant_id: z.literal(participant), user_id: z.literal(user), operation: z.literal('capability'), reservation_id: z.null(), server_now: z.iso.datetime({ offset: true }), approved_plan_hash: z.null() }), raw), finished = Date.now(), server = Date.parse(result.server_now), skew = plan.clockSkewSeconds * 1000; need(server >= started - skew && server <= finished + skew, 'capability_clock_scope'); return Object.freeze({ checkedAt: new Date(finished).toISOString(), receiptSHA256: digest(result), matched: true, sideEffectFree: true }); }, async readAuthVersion() {
+    const transport = Object.freeze({ mode: options.mode, readService, async checkAuthHeaderCapability() { const challenge = randomBytes(32).toString('hex'), participant = PARTICIPANTS[0], user = 'b7cc06c7-056c-4fd8-b445-eeaf187cec7c', mac = evidenceChannelMAC(evidenceKey,['aca-w2-auth-evidence-v1', 'challenge', FIXED.root, '-', participant, user, 'capability', '-', challenge].join('\n')), started = Date.now(); const raw = (await request('POST', 'https://fhvxqeaujjeiflanqsbg.supabase.co', '/rest/v1/rpc/check_controlled_team_auth_evidence_key', { p_run_id: FIXED.root, p_window_id: null, p_participant_id: participant, p_user_id: user, p_operation: 'capability', p_reservation_id: null, p_challenge: challenge, p_challenge_mac: mac }, 'serviceRole')).value; const result = parse(z.strictObject({ matched: z.literal(true), run_id: z.literal(FIXED.root), window_id: z.null(), participant_id: z.literal(participant), user_id: z.literal(user), operation: z.literal('capability'), reservation_id: z.null(), server_now: z.iso.datetime({ offset: true }), approved_plan_hash: z.null() }), raw), finished = Date.now(), server = Date.parse(result.server_now), skew = plan.clockSkewSeconds * 1000; need(server >= started - skew && server <= finished + skew, 'capability_clock_scope'); return Object.freeze({ checkedAt: new Date(finished).toISOString(), receiptSHA256: digest(result), matched: true, sideEffectFree: true }); }, async readAuthVersion() {
             const response = await request('GET', 'https://fhvxqeaujjeiflanqsbg.supabase.co', '/auth/v1/health', null, 'serviceRole');
             const value = parse(z.strictObject({ version: z.literal('v2.197.0'), name: z.literal('GoTrue'), description: z.literal('GoTrue is a user registration and authentication API') }), response.value);
             return Object.freeze({ checkedAt: new Date().toISOString(), advertisedVersion: value.version, officialCommit: '4eee58f296d9698a1c2c0ae14d7a0b379c7622d3', versionEvidenceKind: 'SELF_REPORTED_HEALTH_NOT_BINARY_ATTESTATION' as const, receiptSHA256: digest(value) });
@@ -181,7 +184,7 @@ export function createFiniteTransport(plan: W2Plan, options: {
             }[];
             hasMore?: boolean;
         }; need(raw && Array.isArray(raw.logs) && raw.hasMore === false, 'complete_worker_idle_logs'); const entries = raw.logs.filter(x => x.message === "[consultation-worker] { checkpoint: 'claim_success', claimed: 0 }" && typeof x.timestamp === 'string' && Date.parse(x.timestamp) >= Date.parse(start) && Date.parse(x.timestamp) <= Date.parse(until)); need(entries.length > 0, 'positive_actual_new_worker_empty_claim'); return Object.freeze({ instanceId, observedAt: entries.at(-1)!.timestamp!, checkedAt: until, evidenceSHA256: digest(raw) }); }, async readAuthConfiguration() { return (await request('GET', 'https://api.supabase.com', `/v1/projects/${FIXED.project}/config/auth`, null, 'management')).value; }, async readSource() { return { main: (await request('GET', 'https://api.github.com', '/repos/afkochnev/ai-diagnostic-ru/commits/main', null, 'github')).value, checks: (await request('GET', 'https://api.github.com', `/repos/afkochnev/ai-diagnostic-ru/commits/${plan.expectedSHA}/check-runs?per_page=100`, null, 'github')).value }; }, async readDatabase(name: import('./read-queries').ReadQuery | 'w2_preservation_capture_v1') { if (name === 'w2_preservation_capture_v1')
-            return (await request('GET', 'https://fhvxqeaujjeiflanqsbg.supabase.co', '/rest/v1/rpc/capture_controlled_team_w2_preservation', null, 'serviceRole')).value; const { READ_QUERIES } = await import('./read-queries'); need(Object.hasOwn(READ_QUERIES, name), 'fixed_select'); return (await request('POST', 'https://api.supabase.com', `/v1/projects/${FIXED.project}/database/query`, { query: READ_QUERIES[name], read_only: true }, 'management')).value; },
+            return (await request('GET', 'https://fhvxqeaujjeiflanqsbg.supabase.co', '/rest/v1/rpc/capture_controlled_team_w2_preservation?'+new URLSearchParams({p_run_id:plan.rootId,p_plan_sha256:plan.planSHA256,p_application_sha:plan.expectedSHA}), null, 'serviceRole')).value; const { READ_QUERIES } = await import('./read-queries'); need(Object.hasOwn(READ_QUERIES, name), 'fixed_select'); return (await request('POST', 'https://api.supabase.com', `/v1/projects/${FIXED.project}/database/query`, { query: READ_QUERIES[name], read_only: true }, 'management')).value; },
         /** Internal to the serial operator: a root intent and owned readiness must
          * already exist. This transport never accepts a caller wire or command. */
         async execute(handle: Capability, reservation: JournalRecord, readiness: Readiness): Promise<TransportReceipt> {

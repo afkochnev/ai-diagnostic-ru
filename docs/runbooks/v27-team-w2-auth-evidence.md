@@ -1,7 +1,8 @@
 # W2 Auth evidence and finite operator integration
 
-This is implementation and local/mock verification only. It does not authorize
-staging acceptance, a production rollout, W2 execution or another provider call.
+The current evidence-key protocol is documented in
+[v27-team-w2-derived-evidence-channel.md](v27-team-w2-derived-evidence-channel.md).
+Production rollout and W2 execution require separate owner authorization.
 The current Team, its three participants, original six successful effects and
 all used lifetime reservations remain unchanged. Team, acquisition and billing
 remain OFF. This change allocates no window, recipient, credential or budget.
@@ -20,9 +21,10 @@ The raw Auth token hash never becomes an RPC argument, SQL statement parameter,
 operator artifact, log or trace column. An unkeyed hash of it is also forbidden:
 the provider value can be derived from an OTP and must not become an offline
 guessing oracle. A purpose-separated HMAC binds the actual credential to the
-root, W2, participant and prebound UID. The key is the exact existing service
-Authorization header, used transiently inside Node and PostgREST. No new secret
-or local HMAC key is installed or transferred.
+root, W2, participant and prebound UID. The key is derived from the existing AUTH_FLOW_SECRET with an explicit purpose,
+root, approved-plan hash and actual build SHA. Its32raw bytes travel only as the
+strict transient evidence header. Supabase credentials authenticate the request
+independently and never become shared MAC material. No persistent secret is added.
 
 The credential message is UTF-8, with LF separators and no final newline:
 
@@ -38,10 +40,10 @@ credential
 
 The result is lowercase hexadecimal HMAC-SHA256. A separate fresh challenge
 message binds the operation and reservation. A service-only capability RPC first
-checks that Node and PostgREST see the same exact Authorization value. The future
-staging acceptance must verify this read-only capability without issuing or
-verifying an Auth credential. A rewritten/missing header, mismatch or unsupported
-gateway behavior is HOLD; there is no fallback key or weaker digest mode.
+checks that Node and PostgREST use the same derived evidence key. The staging
+acceptance verifies this read-only capability without issuing or verifying an
+Auth credential. A missing/malformed custom header or mismatch is HOLD; there
+is no Authorization/apikey fallback or weaker digest mode.
 
 The finite collector also checks the fixed Auth health endpoint's advertised
 `v2.197.0` version before effects, because the accepted transition model was
@@ -122,11 +124,15 @@ waiver is inherited from an earlier run. This new capture algorithm needs its ow
 future before/after baseline and an independent bridge to the previously accepted
 preservation evidence; it does not retroactively certify an old snapshot.
 
-Later staging approval must pin the exact new PR head and migration hash, show
-only this migration in dry-run, preserve existing staging configuration and TEST
-mode, and use SQL/fake-HTTP evidence only. Merge, canonical rollout and W2 execution
-still need their separate approvals. Production, billing PRs and phase 3 are outside
-this change.
+The owner has authorized exact-head staging acceptance and, only after PASS,
+canonical merge/staging verification in PR16. The additional migration removes
+the historical diagnostics and installs the derived channel. Native V2 captures
+carry explicit nonsecret context and no keyId/fingerprint; compare only identical
+contexts. Candidate-to-merge context changes require an independent full-row SHA
+preservation bridge and a fresh pair under the canonical context. No W2 window,
+credential issuance/verification, email, AI, PDF, payment or refund is permitted.
+Production guard rollout remains separately authorized; billing PR11 and phase3
+are outside this change.
 
 Provider semantics were checked against the primary documentation for
 [Supabase function security](https://supabase.com/docs/guides/database/functions),
