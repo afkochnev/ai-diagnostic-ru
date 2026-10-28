@@ -18,7 +18,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ diagnosti
   } catch (error) {
     if (error instanceof RateLimitExceeded) return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: { "Retry-After": String(error.retryAfter) } });
     if (error instanceof Error && error.message === "not_found") return NextResponse.json({ error: "not_found" }, { status: 404 });
-    console.error("[report-regeneration]", { diagnostic_id: diagnosticId, user_id: identity.user.id, error_code: error instanceof Error ? error.message.slice(0, 120) : "unknown" });
+    console.error("[report-regeneration]", { diagnostic_id: diagnosticId, user_id: identity.user.id, error_code: "report_regeneration_unavailable" });
     return NextResponse.json({ error: "report_regeneration_unavailable" }, { status: 503 });
   }
 }
