@@ -4,6 +4,8 @@ vi.mock("@/server/entitlements", () => ({
   AdvancedRequiredError: class extends Error {}, advancedRequiredMessage: "Эта возможность доступна на тарифе Advanced.",
 }));
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import crypto from "node:crypto";
+import pdfReportSchema from "../../AI_REPORT_SCHEMA_RU_1_0.json";
 
 vi.mock("server-only", () => ({}));
 
@@ -99,6 +101,9 @@ const COMPANY = "50000000-0000-4000-8000-000000000005";
 const OTHER_COMPANY = "70000000-0000-4000-8000-000000000007";
 const DIAGNOSTIC = "80000000-0000-4000-8000-000000000008";
 const REPORT = "90000000-0000-4000-8000-000000000009";
+
+const fixturePdf = (label: string) => Buffer.from(`%PDF-1.7\n${label}\n%%EOF\n`);
+const fixtureArtifact = (reportId: string, label: string) => ({ id: "60000000-0000-4000-8000-000000000006", report_id: reportId, ai_report_version: 1, format: "pdf", template_version: "stage12-1i", status: "ready", content_base64: fixturePdf(label).toString("base64"), checksum: crypto.createHash("sha256").update(fixturePdf(label)).digest("hex") });
 
 beforeEach(() => {
   vi.stubEnv("APP_URL", "https://ai-diagnostic-staging-web.onrender.com");
@@ -310,8 +315,8 @@ describe("service-role report boundaries", () => {
     state.tables.diagnostics[0].status = "completed";
     state.tables.diagnostics[0].completed_at = "2026-10-12T00:00:00Z";
     state.tables.diagnostic_company_snapshots = [{ diagnostic_id: DIAGNOSTIC, profile_data: { name: "Company" } }];
-    state.tables.report_artifacts = [{ report_id: REPORT, ai_report_version: 1, format: "pdf", template_version: "stage12-1i", status: "ready", content_base64: Buffer.from("historical-pdf").toString("base64") }];
-    expect((await getPdfForReport(REPORT, USER)).bytes.toString()).toBe("historical-pdf");
+    state.tables.report_artifacts = [fixtureArtifact(REPORT, "historical-pdf")];
+    expect((await getPdfForReport(REPORT, USER)).bytes.toString()).toBe(fixturePdf("historical-pdf").toString());
     expect(renderPdf).not.toHaveBeenCalled();
     expect(state.writes).toEqual([]);
   });
@@ -327,6 +332,7 @@ describe("service-role report boundaries", () => {
     state.tables.diagnostics[0].status = "completed";
     state.tables.diagnostics[0].completed_at = "2026-10-12T00:00:00Z";
     state.tables.diagnostic_company_snapshots = [{ diagnostic_id: DIAGNOSTIC, profile_data: { name: "Company" } }];
+    state.tables.ai_reports[0].structured_content = Object.fromEntries(Object.entries(pdfReportSchema.properties).map(([k, v]) => [k, v.type === "string" ? "Synthetic report" : Array.from({ length: (v as { minItems: number }).minItems }, () => "Synthetic item")]));
     let completeRender!: (bytes: Buffer) => void;
     let enteredRender!: () => void;
     const rendering = new Promise<Buffer>((resolve) => { completeRender = resolve; });
@@ -338,9 +344,9 @@ describe("service-role report boundaries", () => {
     state.tables.account_memberships[0].status = "revoked";
     await expect(preparePdfForReport(REPORT, USER)).rejects.toThrow("pdf_access_denied");
     expect(renderPdf).toHaveBeenCalledTimes(1);
-    completeRender(Buffer.from("prepared-pdf"));
-    await expect(originalRequest).resolves.toMatchObject({ status: "ready" });
-    expect(state.writes.filter((write) => write.table === "report_artifacts")).toHaveLength(1);
+    completeRender(fixturePdf("prepared-pdf"));
+    await expect(originalRequest).rejects.toThrow("pdf_access_denied");
+    expect(state.writes.filter((write) => write.table === "report_artifacts")).toHaveLength(0);
   });
 });
 
@@ -442,10 +448,10 @@ describe("V21B authoritative multi-company creation", () => {
     state.tables.diagnostics[0].completed_at = "2026-10-12T00:00:00Z";
     state.tables.diagnostic_company_snapshots = [{ diagnostic_id: DIAGNOSTIC, profile_data: { name: "Company" } }];
     state.tables.report_artifacts = [
-      { report_id: "sibling-report", ai_report_version: 1, format: "pdf", template_version: "stage12-1i", status: "ready", content_base64: Buffer.from("sibling-pdf").toString("base64") },
-      { report_id: REPORT, ai_report_version: 1, format: "pdf", template_version: "stage12-1i", status: "ready", content_base64: Buffer.from("own-pdf").toString("base64") },
+      fixtureArtifact("sibling-report", "sibling-pdf"),
+      fixtureArtifact(REPORT, "own-pdf"),
     ];
-    expect((await getPdfForReport(REPORT, USER)).bytes.toString()).toBe("own-pdf");
+    expect((await getPdfForReport(REPORT, USER)).bytes.toString()).toBe(fixturePdf("own-pdf").toString());
     expect(renderPdf).not.toHaveBeenCalled();
   });
 });

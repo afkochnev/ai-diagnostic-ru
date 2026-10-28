@@ -14,8 +14,8 @@ export async function getDiagnosticResult(id: string, userId: string) {
     c.from("company_profiles").select("name").eq("id", diagnostic.company_id).single(),
     c.from("diagnostic_results").select("id,diagnostic_id,version_id,raw_manageability_index,display_manageability_index,maturity_level_id").eq("diagnostic_id", id).maybeSingle(),
     c.from("diagnostic_blocks").select("id,key,position,weight").eq("version_id", diagnostic.version_id).eq("is_active", true).order("position"),
-    c.from("ai_reports").select("id,status,structured_content,error_code,version,prompt_version").eq("diagnostic_id", id).eq("status", "completed").order("version", { ascending: false }).limit(1).maybeSingle(),
-    c.from("ai_reports").select("id,status,structured_content,error_code,version,prompt_version").eq("diagnostic_id", id).order("version", { ascending: false }).limit(1).maybeSingle(),
+    c.from("ai_reports").select("id,status,structured_content,version,prompt_version").eq("diagnostic_id", id).eq("status", "completed").order("version", { ascending: false }).limit(1).maybeSingle(),
+    c.from("ai_reports").select("id,status,structured_content,version,prompt_version").eq("diagnostic_id", id).order("version", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const aiReport = completedReport ?? processReport;
   if (!result) return { diagnostic, company, result: null, blocks: [], blockResults: [], aiReport };
