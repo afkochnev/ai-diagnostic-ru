@@ -1,0 +1,279 @@
+{
+  "synthetic_only": true,
+  "prompt_version": "RU-1.4",
+  "cases": [
+    {
+      "id": "sparse-contrast",
+      "purpose": "Sparse respondent data must not turn aggregate scores into proven symptoms, capabilities or missing controls.",
+      "input": {
+        "company_snapshot": {
+          "company_name": "SYNTHETIC-INDIVIDUAL-A",
+          "industry": "consulting",
+          "country": "Россия",
+          "products": "Настройка учебных стендов и обучение работе с ними",
+          "customers": "Учебные лаборатории",
+          "sales_channels": "Заявки на сайте",
+          "employees_count": 24,
+          "annual_revenue": "50m_100m",
+          "company_age_years": 7,
+          "management_levels": 2,
+          "key_problems": "Хотим упорядочить планирование работ",
+          "main_goals": "Достичь годовой выручки 160 млн руб. и определить правила делегирования"
+        },
+        "deterministic_results": {
+          "manageability_index_raw": 55.625,
+          "manageability_index_display": "55,6",
+          "maturity_level_number": 3,
+          "maturity_level_label": "Зона развития"
+        },
+        "block_results": [
+          {
+            "block_code": "strategy",
+            "block_title": "Стратегия",
+            "block_score_raw": 65,
+            "block_score_display": "65"
+          },
+          {
+            "block_code": "structure",
+            "block_title": "Организационная структура",
+            "block_score_raw": 25,
+            "block_score_display": "25"
+          },
+          {
+            "block_code": "processes",
+            "block_title": "Процессы и операционная эффективность",
+            "block_score_raw": 35,
+            "block_score_display": "35"
+          },
+          {
+            "block_code": "goals_kpi",
+            "block_title": "Цели и показатели",
+            "block_score_raw": 50,
+            "block_score_display": "50"
+          },
+          {
+            "block_code": "management_rhythm",
+            "block_title": "Управленческий ритм",
+            "block_score_raw": 60,
+            "block_score_display": "60"
+          },
+          {
+            "block_code": "team",
+            "block_title": "Зрелость команды",
+            "block_score_raw": 55,
+            "block_score_display": "55"
+          },
+          {
+            "block_code": "motivation",
+            "block_title": "Инновации и развитие",
+            "block_score_raw": 80,
+            "block_score_display": "80"
+          },
+          {
+            "block_code": "culture",
+            "block_title": "Корпоративная культура",
+            "block_score_raw": 75,
+            "block_score_display": "75"
+          }
+        ],
+        "derived_facts": {
+          "strongest_block": {
+            "block_code": "motivation",
+            "title": "Инновации и развитие",
+            "score_raw": 80,
+            "score_display": "80"
+          },
+          "weakest_block": {
+            "block_code": "structure",
+            "title": "Организационная структура",
+            "score_raw": 25,
+            "score_display": "25"
+          },
+          "block_score_spread": {
+            "raw": 55,
+            "display": "55"
+          },
+          "blocks_below_60": [
+            {
+              "title": "Организационная структура",
+              "score": "25"
+            },
+            {
+              "title": "Процессы и операционная эффективность",
+              "score": "35"
+            },
+            {
+              "title": "Цели и показатели",
+              "score": "50"
+            },
+            {
+              "title": "Зрелость команды",
+              "score": "55"
+            }
+          ],
+          "blocks_60_to_62_5_count": 1,
+          "blocks_70_plus": [
+            {
+              "title": "Инновации и развитие",
+              "score": "80"
+            },
+            {
+              "title": "Корпоративная культура",
+              "score": "75"
+            }
+          ]
+        },
+        "open_answers": [
+          {
+            "question": "Какую управленческую задачу нужно решить?",
+            "answer": "Определить, какие решения руководители могут принимать самостоятельно."
+          },
+          {
+            "question": "Когда требуется личное участие первого лица?",
+            "answer": "Первое лицо согласовывает каждую еженедельную заявку на работы."
+          }
+        ]
+      },
+      "must_not_invent": [
+        "observed decision delays",
+        "absence of KPI or process owners",
+        "proven complex-project execution capability",
+        "achieved 160 million revenue"
+      ]
+    },
+    {
+      "id": "explicit-existing-controls",
+      "purpose": "Explicit existing controls and absence of observed delays must survive interpretation; strong scores are not proof of project capability.",
+      "input": {
+        "company_snapshot": {
+          "company_name": "SYNTHETIC-INDIVIDUAL-B",
+          "industry": "consulting",
+          "country": "Россия",
+          "products": "Плановое обслуживание учебных стендов",
+          "customers": "Центры дополнительного образования",
+          "sales_channels": "Сайт и входящие обращения",
+          "employees_count": 42,
+          "annual_revenue": "100m_500m",
+          "company_age_years": 11,
+          "management_levels": 2,
+          "key_problems": "Нужно выбрать приоритеты дальнейшего развития",
+          "main_goals": "Достичь годовой выручки 400 млн руб. и оценить готовность к расширению обслуживания"
+        },
+        "deterministic_results": {
+          "manageability_index_raw": 71.25,
+          "manageability_index_display": "71,3",
+          "maturity_level_number": 4,
+          "maturity_level_label": "Зрелая зона"
+        },
+        "block_results": [
+          {
+            "block_code": "strategy",
+            "block_title": "Стратегия",
+            "block_score_raw": 72.5,
+            "block_score_display": "72,5"
+          },
+          {
+            "block_code": "structure",
+            "block_title": "Организационная структура",
+            "block_score_raw": 65,
+            "block_score_display": "65"
+          },
+          {
+            "block_code": "processes",
+            "block_title": "Процессы и операционная эффективность",
+            "block_score_raw": 70,
+            "block_score_display": "70"
+          },
+          {
+            "block_code": "goals_kpi",
+            "block_title": "Цели и показатели",
+            "block_score_raw": 62.5,
+            "block_score_display": "62,5"
+          },
+          {
+            "block_code": "management_rhythm",
+            "block_title": "Управленческий ритм",
+            "block_score_raw": 75,
+            "block_score_display": "75"
+          },
+          {
+            "block_code": "team",
+            "block_title": "Зрелость команды",
+            "block_score_raw": 67.5,
+            "block_score_display": "67,5"
+          },
+          {
+            "block_code": "motivation",
+            "block_title": "Инновации и развитие",
+            "block_score_raw": 80,
+            "block_score_display": "80"
+          },
+          {
+            "block_code": "culture",
+            "block_title": "Корпоративная культура",
+            "block_score_raw": 77.5,
+            "block_score_display": "77,5"
+          }
+        ],
+        "derived_facts": {
+          "strongest_block": {
+            "block_code": "motivation",
+            "title": "Инновации и развитие",
+            "score_raw": 80,
+            "score_display": "80"
+          },
+          "weakest_block": {
+            "block_code": "goals_kpi",
+            "title": "Цели и показатели",
+            "score_raw": 62.5,
+            "score_display": "62,5"
+          },
+          "block_score_spread": {
+            "raw": 17.5,
+            "display": "17,5"
+          },
+          "blocks_below_60": [],
+          "blocks_60_to_62_5_count": 1,
+          "blocks_70_plus": [
+            {
+              "title": "Стратегия",
+              "score": "72,5"
+            },
+            {
+              "title": "Процессы и операционная эффективность",
+              "score": "70"
+            },
+            {
+              "title": "Управленческий ритм",
+              "score": "75"
+            },
+            {
+              "title": "Инновации и развитие",
+              "score": "80"
+            },
+            {
+              "title": "Корпоративная культура",
+              "score": "77,5"
+            }
+          ]
+        },
+        "open_answers": [
+          {
+            "question": "Как сейчас устроено управление?",
+            "answer": "Владельцы процессов назначены, показатели ведутся ежемесячно. Задержек управленческих решений в последнем квартале не зафиксировано."
+          },
+          {
+            "question": "Что нужно проверить перед ростом?",
+            "answer": "Нужно оценить готовность руководителей к увеличению объёма работ."
+          }
+        ]
+      },
+      "must_not_invent": [
+        "existing decision delays",
+        "absence of KPI or process owners",
+        "proven complex-project execution capability",
+        "achieved 400 million revenue"
+      ]
+    }
+  ]
+}
