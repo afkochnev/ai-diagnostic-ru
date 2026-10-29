@@ -9,9 +9,9 @@ const adminDownload = readFileSync("src/app/api/admin/report-artifacts/[artifact
 
 describe("Stage 9B PDF download boundary", () => {
   it("keeps GET read-only and artifact/version bound", () => {
-    const getPart = service.slice(service.indexOf("export async function getPdfForReport"), service.indexOf("/** Explicit mutation path"));
-    expect(getPart).toContain('eq("status", "ready")');
-    expect(getPart).toContain('eq("ai_report_version", report.version)');
+    const getPart = service.slice(service.indexOf("export async function getPdfForReport"), service.indexOf("const preparationLocks"));
+    expect(getPart).toContain("validatedArtifact");
+    expect(service).toContain("artifact.ai_report_version !== context.report.version");
     expect(getPart).not.toContain("renderPdf");
     expect(getPart).not.toContain("upsert(");
     expect(download).toContain("getPdfForReport");

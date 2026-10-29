@@ -19,9 +19,9 @@ export async function GET(_: Request, { params }: { params: Promise<{ diagnostic
     throw error;
   }
   const db = await createAuthClient();
-  const { data: report } = await db.from("ai_reports").select("id,version,status,error_code").eq("diagnostic_id", diagnosticId).order("version", { ascending: false }).limit(1).maybeSingle();
+  const { data: report } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).order("version", { ascending: false }).limit(1).maybeSingle();
   if (!report) return NextResponse.json({ status: "missing" }, { headers: statusHeaders });
-  return NextResponse.json({ status: report.status, report_id: report.id, version: report.version, ...(report.status === "failed" ? { error_code: report.error_code } : {}) }, { headers: statusHeaders });
+  return NextResponse.json({ status: report.status, report_id: report.id, version: report.version, ...(report.status === "failed" ? { error_code: "AI_REPORT_FAILED" } : {}) }, { headers: statusHeaders });
 }
 
 // Keep older clients compatible; both methods only read status.
