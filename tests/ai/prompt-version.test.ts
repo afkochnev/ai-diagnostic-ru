@@ -18,7 +18,7 @@ beforeEach(()=>{
   provider.create.mockResolvedValue({id:"synthetic",output_text:JSON.stringify(content)});
 });
 describe("explicit Individual prompt selection",()=>{
-  it("current revision is independent of generation count",()=>expect(CURRENT_INDIVIDUAL_PROMPT_VERSION).toBe("RU-1.3"));
+  it("current revision is independent of generation count",()=>expect(CURRENT_INDIVIDUAL_PROMPT_VERSION).toBe("RU-1.4"));
   it.each(INDIVIDUAL_PROMPT_VERSIONS)("loads the exact retained %s asset into the provider request",async version=>{
     await generateReport({synthetic:true},version);
     const request=provider.create.mock.calls[0][0];
