@@ -140,11 +140,25 @@ try:
  passed('mock/real identities separated; real never reuses mock synthesis; quality failure terminal without automatic retries; queues/leases zero')
  if args.regeneration:
   migration=next((ROOT/'supabase/migrations').glob('*_team_report_regeneration.sql'))
+  # Match restored staging: ordinary public functions plus inactive private backups.
+  sql("""do $$declare sig text; d text; name text;begin
+   foreach sig in array array['request_team_report_v3(uuid,text)','prepare_team_report_job(uuid,uuid)','publish_team_report(uuid,uuid,jsonb,text)','fail_team_job(uuid,uuid,text,boolean)'] loop
+    name:=split_part(sig,'(',1);d:=pg_get_functiondef(('public.'||sig)::regprocedure);
+    execute replace(d,'FUNCTION public.'||name||'(','FUNCTION private.'||name||'_pre_controlled(');
+    execute 'revoke all on function private.'||replace(sig,name||'(',name||'_pre_controlled(')||' from public,anon,authenticated,service_role';
+   end loop;
+  end $$;""")
   old_reports=sql(f"select jsonb_object_agg(id,to_jsonb(r)) from public.team_ai_reports r where team_diagnostic_id='{team}'")
   old_pdf=sql("select jsonb_agg(to_jsonb(a) order by id) from public.team_report_artifacts a")
   sql(migration.read_text().rsplit('commit;',1)[0]+'select intentionally_missing_regeneration_probe();commit;',error='does not exist')
   assert sql("select count(*) from information_schema.columns where table_schema='private' and table_name='team_jobs' and column_name='team_report_id'")=='0'
   sql(migration.read_text())
+  active_functions=next((ROOT/'supabase/migrations').glob('*_team_report_regeneration_active_functions.sql'))
+  actor(1,f"select public.regenerate_team_report_v3('{team}','{rid3}','openai')",error='team_v3_job_report_required')
+  sql(active_functions.read_text().rsplit('commit;',1)[0]+'select intentionally_missing_active_functions_probe();commit;',error='does not exist')
+  actor(1,f"select public.regenerate_team_report_v3('{team}','{rid3}','openai')",error='team_v3_job_report_required')
+  sql(active_functions.read_text())
+  assert sql("select position('team_report_id=rid' in pg_get_functiondef('public.request_team_report_v3(uuid,text)'::regprocedure))>0")=='t'
   assert old_reports==sql(f"select jsonb_object_agg(id,to_jsonb(r)) from public.team_ai_reports r where team_diagnostic_id='{team}'")
   assert sql("select count(*) from private.team_jobs where pipeline_version='TEAM-RU-3' and team_report_id is null")=='0'
   passed('regeneration migration applies atomically; existing reports/PDFs retained and V3 jobs bound')
