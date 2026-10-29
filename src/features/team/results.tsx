@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { PdfDownloadButton } from "@/features/pdf/pdf-download-button";
-import { preferredTeamReport, orderDispersion, type TeamResults, type TeamStatistic } from "@/server/team/results";
+import { isMockTeamReport, latestTeamReportAttempt, preferredCompletedTeamReport, orderDispersion, type TeamResults, type TeamStatistic } from "@/server/team/results";
 import { TeamResultForm } from "./result-actions";
 import { TeamReportProgress } from "./report-progress";
 import { RichTeamReport } from "./rich-report";
@@ -15,9 +15,13 @@ export function TeamResultsView({ teamId, result }: { teamId: string; result: Te
   if(result.status === "threshold") return <Card className="mt-8"><h2 className="text-xl font-semibold">Командный результат</h2><p className="mt-3">Для командного результата необходимо минимум 3 завершивших участника.</p></Card>;
   const blocks=result.blocks ?? [], questions=result.questions ?? [];
   const profile:DispersionProfile|undefined=result.status==="ready"&&result.overall?{overall:{mean:Number(result.overall.overall_mean),stddev:Number(result.overall.overall_stddev),maturity:result.maturity??""},participantCount:result.completed_count,blocks:blocks.map(b=>({position:b.position,title:b.title??"",mean:Number(b.mean_score),stddev:Number(b.stddev_score)})),questions:questions.map(q=>({position:q.position,blockPosition:q.block_position??0,blockTitle:blocks.find(b=>b.position===q.block_position)?.title??"",question:q.prompt??"",mean:Number(q.mean_score),stddev:Number(q.stddev_score),participantCount:q.participant_count}))}:undefined;
-  const current=preferredTeamReport(result.reports??[],result.fingerprint,"TEAM-RU-3");
-  const completedMock=current?.status==="completed" && current.model?.startsWith("team-mock-");
-  const selected=current ?? preferredTeamReport(result.reports??[],result.fingerprint,"TEAM-RU-2");
+  const reports=result.reports??[];
+  const current=latestTeamReportAttempt(reports,result.fingerprint,"TEAM-RU-3");
+  const completed=preferredCompletedTeamReport(reports,result.fingerprint,"TEAM-RU-3");
+  const completedMock=completed && isMockTeamReport(completed);
+  const selected=completed ?? preferredCompletedTeamReport(reports,result.fingerprint,"TEAM-RU-2");
+  const preparing=current?.status==="queued" || current?.status==="generating";
+  const regenerate=current?.status==="completed" && !isMockTeamReport(current);
   const legacyCurrent=result.reports?.some(r=>r.source_fingerprint===result.fingerprint && r.prompt_version!=="TEAM-RU-3");
   return <><Card className="mt-8"><h2 className="text-2xl font-semibold">Командный результат</h2><p className="mt-2">Завершивших участников: {result.completed_count}</p>
     {result.status==="pending" ? <><p className="mt-4">Результаты рассчитываются.</p>{result.aggregate_error && <p className="mt-2">Расчёт не завершён. Можно повторить попытку.</p>}<TeamResultForm teamId={teamId} intent="refresh" label="Обновить расчёт" /></> : <>
@@ -30,10 +34,10 @@ export function TeamResultsView({ teamId, result }: { teamId: string; result: Te
     <p className="mt-6 text-sm text-muted">Для обновления статуса обновите страницу. Индивидуальные ответы и оценки конфиденциальны.</p>
   </Card><Card className="mt-8"><h2 className="text-2xl font-semibold">AI-отчёт команды</h2>
     {!current && <p className="mt-3">{legacyCurrent ? "Доступен предыдущий формат отчёта. Можно подготовить отчёт по средним оценкам V3 по тем же ответам." : result.reports?.length ? "Предыдущий отчёт устарел: изменился состав завершённых ответов. Можно подготовить новую версию." : "Командный отчёт ещё не подготовлен."}</p>}
-    {completedMock && <p className="mt-3">Сейчас показан тестовый отчёт. Можно подготовить реальный AI-отчёт по тем же ответам. Предыдущая версия сохранится.</p>}
+    {completedMock && !preparing && <p className="mt-3">Сейчас показан тестовый отчёт. Можно подготовить реальный AI-отчёт по тем же ответам. Предыдущая версия сохранится.</p>}
     {current && (current.status==="queued" || current.status==="generating") && <TeamReportProgress key={current.id} createdAt={current.created_at} status={current.status} />}
     {current?.status==="failed" && <p className="mt-3">{current.error_code==="team_privacy_rejected" ? "Не удалось безопасно подготовить отчёт. Можно повторить генерацию." : current.error_code==="team_qualitative_insufficient" ? "Не удалось получить содержательный анализ открытых ответов. Можно повторить подготовку отчёта." : "Не удалось подготовить отчёт. Можно повторить попытку."}</p>}
-    {result.status==="ready" && (!current || current.status==="failed" || current.status==="superseded" || completedMock) && <TeamResultForm teamId={teamId} intent="report" label={result.reports?.length ? "Обновить AI-отчёт" : "Подготовить AI-отчёт"} />}
+    {result.status==="ready" && (!current || current.status==="failed" || current.status==="superseded" || current.status==="completed") && <TeamResultForm teamId={teamId} intent={regenerate ? "regenerate" : "report"} previousReportId={regenerate ? current.id : undefined} label={reports.length ? "Обновить AI-отчёт" : "Подготовить AI-отчёт"} />}
     {result.reports?.filter(r=>r.status==="completed").map(r=><details key={r.id} open={r.id===selected?.id} className="mt-6"><summary className="cursor-pointer font-semibold">Версия {r.version} · Участников: {r.completed_participant_count}{r.prompt_version==="TEAM-RU-3" ? " · Анализ по средним оценкам V3" : r.prompt_version==="TEAM-RU-2" ? " · Подробный отчёт V2" : " · Предыдущий формат отчёта"}{r.source_fingerprint!==result.fingerprint ? " · Предыдущий состав ответов" : " · Актуальный состав ответов"}</summary>{r.model?.startsWith("team-mock-") && <div className="mt-4 rounded-xl bg-tint p-4"><span className="font-semibold">Тестовый отчёт</span><p className="mt-2 text-sm">Создан тестовым провайдером и не предназначен для оценки качества AI-анализа.</p></div>}{r.structured_content && (["TEAM-RU-2","TEAM-RU-3"].includes(r.prompt_version??"") ? <RichTeamReport content={r.structured_content} pipeline={r.prompt_version} profile={r.source_fingerprint===result.fingerprint&&r.completed_participant_count===result.completed_count?profile:undefined} /> : <LegacyTeamReport content={r.structured_content} />)}{["TEAM-RU-2","TEAM-RU-3"].includes(r.prompt_version??"") && <PdfDownloadButton team reportId={r.id} />}</details>)}
   </Card></>;
 }

@@ -13,8 +13,23 @@ export function orderDispersion(rows: TeamStatistic[], descending = false) {
     || (a.block_id ?? a.question_id ?? "").localeCompare(b.block_id ?? b.question_id ?? ""));
 }
 
+type TeamReport = NonNullable<TeamResults["reports"]>[number];
+export function isMockTeamReport(report:TeamReport) {
+ return report.provider_mode==="mock" || Boolean(report.model?.startsWith("team-mock-"));
+}
+function currentTeamReports(reports:TeamReport[],fingerprint:string|undefined,pipeline:string) {
+ return reports.filter(r=>r.source_fingerprint===fingerprint && r.prompt_version===pipeline).sort((a,b)=>b.version-a.version);
+}
+/** Lifecycle state belongs to the newest real attempt, even while an older result stays readable. */
+export function latestTeamReportAttempt(reports:TeamReport[],fingerprint:string|undefined,pipeline:string) {
+ const candidates=currentTeamReports(reports,fingerprint,pipeline);
+ return candidates.find(r=>!isMockTeamReport(r)) ?? candidates[0];
+}
 /** Prefer a real completed result within the exact source/pipeline, regardless of mock version order. */
-export function preferredTeamReport(reports:NonNullable<TeamResults["reports"]>,fingerprint:string|undefined,pipeline:string) {
- const candidates=reports.filter(r=>r.source_fingerprint===fingerprint && r.prompt_version===pipeline).sort((a,b)=>b.version-a.version);
- return candidates.find(r=>r.status==="completed" && r.model && !r.model.startsWith("team-mock-")) ?? candidates[0];
+export function preferredCompletedTeamReport(reports:TeamReport[],fingerprint:string|undefined,pipeline:string) {
+ const completed=currentTeamReports(reports,fingerprint,pipeline).filter(r=>r.status==="completed");
+ return completed.find(r=>!isMockTeamReport(r)) ?? completed[0];
+}
+export function preferredTeamReport(reports:TeamReport[],fingerprint:string|undefined,pipeline:string) {
+ return preferredCompletedTeamReport(reports,fingerprint,pipeline) ?? latestTeamReportAttempt(reports,fingerprint,pipeline);
 }
