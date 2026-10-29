@@ -45,6 +45,7 @@ function failure(error: unknown): TeamActionState {
     team_auth_link_expired: "Ссылка для входа недействительна или срок её действия истёк. Попросите организатора отправить новое приглашение.",
     team_switch_account_failed: "Не удалось выйти из текущего аккаунта. Попробуйте ещё раз.",
     rate_limited: "Слишком много запросов. Попробуйте позже.",
+    team_report_changed: "Отчёт или ответы команды изменились. Обновите страницу перед созданием новой версии.",
   };
   return { error: messages[code] ?? "Не удалось выполнить действие. Проверьте данные и доступ к приглашению." };
 }
@@ -183,8 +184,13 @@ export async function teamResultAction(_: TeamActionState, form: FormData): Prom
     await requireCompanyWrite(record.team.company_id, identity.user.id);
     await controlledTeamContext({teamId,ownerUserId:identity.user.id});
     await enforceRateLimit(`team-results:${identity.user.id}`,60,3600);
-    const intent = z.enum(["refresh","report","close"]).parse(value(form,"intent"));
-    await teamRpc(intent === "report" ? "request_team_report_v3" : intent === "close" ? "close_team_diagnostic" : "refresh_team_results", { p_team_id: teamId, ...(intent === "report" ? {p_provider:ordinaryTeamReportProvider()} : {}) });
+    const intent = z.enum(["refresh","report","regenerate","close"]).parse(value(form,"intent"));
+    if (intent === "regenerate") {
+      const previousReportId = z.uuid().parse(value(form,"previousReportId"));
+      await teamRpc("regenerate_team_report_v3", { p_team_id: teamId, p_previous_report_id: previousReportId, p_provider: ordinaryTeamReportProvider() });
+    } else {
+      await teamRpc(intent === "report" ? "request_team_report_v3" : intent === "close" ? "close_team_diagnostic" : "refresh_team_results", { p_team_id: teamId, ...(intent === "report" ? {p_provider:ordinaryTeamReportProvider()} : {}) });
+    }
     revalidatePath(`/ru/companies/${record.team.company_id}/teams/${teamId}`);
     return { status: intent === "close" ? "closed" : "requested" };
   } catch (error) { return failure(error); }

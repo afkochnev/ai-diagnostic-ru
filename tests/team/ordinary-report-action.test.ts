@@ -28,3 +28,20 @@ it("preserves owner, origin and write authorization before side effects",async()
   s.allowed=true;s.origin="https://foreign.example.test";await teamResultAction({},form());expect(s.rpc).not.toHaveBeenCalled();
 });
 it("preserves database entitlement denials without silently switching provider",async()=>{s.rpc.mockRejectedValueOnce(new Error("advanced_required"));expect((await teamResultAction({},form())).error).toContain("Advanced");expect(s.rpc).toHaveBeenCalledTimes(1);});
+const regenerateForm=()=>{const f=form();f.set("intent","regenerate");f.set("previousReportId","20000000-0000-4000-8000-000000000004");return f;};
+it("regenerates only from the explicit saved report and server OpenAI policy",async()=>{
+  expect(await teamResultAction({},regenerateForm())).toEqual({status:"requested"});
+  expect(s.rpc).toHaveBeenCalledExactlyOnceWith("regenerate_team_report_v3",{p_team_id:"10000000-0000-4000-8000-000000000001",p_previous_report_id:"20000000-0000-4000-8000-000000000004",p_provider:"openai"});
+});
+it("does not regenerate without a valid previous report reference",async()=>{
+  const f=regenerateForm();f.delete("previousReportId");expect((await teamResultAction({},f)).error).toBeTruthy();expect(s.rpc).not.toHaveBeenCalled();
+});
+it("applies owner and origin checks before regeneration",async()=>{
+  s.owner=false;await teamResultAction({},regenerateForm());expect(s.rpc).not.toHaveBeenCalled();
+  s.owner=true;s.allowed=false;await teamResultAction({},regenerateForm());expect(s.rpc).not.toHaveBeenCalled();
+  s.allowed=true;s.origin="https://foreign.example.test";await teamResultAction({},regenerateForm());expect(s.rpc).not.toHaveBeenCalled();
+});
+it("explains a stale report reference without another generation request",async()=>{
+  s.rpc.mockRejectedValueOnce(new Error("team_report_changed"));
+  expect((await teamResultAction({},regenerateForm())).error).toContain("Обновите страницу");expect(s.rpc).toHaveBeenCalledTimes(1);
+});
