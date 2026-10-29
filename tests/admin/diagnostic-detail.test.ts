@@ -20,6 +20,9 @@ describe("Stage 8C diagnostic detail", () => {
     for (const title of ["Сведения о диагностике", "Профиль компании", "Результаты диагностики", "Ответы", "AI-отчёты", "PDF-артефакты"]) expect(page).toContain(title);
     expect(page).toContain("Версия {report.version}");
     expect(page).toContain("artifact.ai_report_version");
+    expect(page).toContain('data.reports.find((report) => report.status === "completed")');
+    expect(page).toContain("Готовый отчёт пользователя");
+    expect(page).toContain("AdminIndividualPdf");
     expect(page).not.toContain("Сформировать");
     expect(page).not.toContain("Пересчитать");
   });
