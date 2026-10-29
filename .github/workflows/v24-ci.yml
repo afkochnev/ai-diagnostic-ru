@@ -1,7 +1,7 @@
 name: V2.4 CI
 on:
   pull_request:
-    branches: [main]
+    branches: [main, codex/team-uat-ai-stage-diagnostic]
   push:
     branches: [main, release/v24-production-readiness]
 permissions:
@@ -29,6 +29,11 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - name: Verify inert staging CLI admission and real-process ESM cycle regression
+        run: >-
+          node --experimental-vm-modules --test
+          scripts/operator-w2/safe-stage-cli/entry-bootstrap-v2.test.mjs
+          scripts/operator-w2/safe-stage-cli/real-cli-process.test.mjs
       - run: npm run test:unit -- --maxWorkers=2
       - run: npm run build
       - name: Verify actual Docker build context and authoritative commercial contract
@@ -37,7 +42,14 @@ jobs:
         run: >-
           docker run --rm --network none --entrypoint node ai-diagnostic-web-build:ci
           --import tsx -e
-          "const f=require('node:fs');for(const p of ['scripts/controlled-team-worker.ts','scripts/controlled-team-w2-access.ts'])if(!f.lstatSync(p).isFile())throw Error('controlled_entrypoint_missing');if(f.existsSync('scripts/test-v27-team-w2-local.py'))throw Error('operator_test_in_runtime');Promise.all([import('./src/server/team/controlled-runner.ts'),import('./src/server-runtime/team-w2-access.ts')]).catch(()=>process.exit(1));"
+          "const f=require('node:fs');for(const p of ['scripts/controlled-team-worker.ts','scripts/controlled-team-w2-access.ts','scripts/controlled-team-evidence-readonly.ts','scripts/operator-w2/evidence-diagnostic.ts','scripts/operator-w2/evidence-readonly-runner.ts','scripts/operator-w2/evidence-readonly-command.ts'])if(!f.lstatSync(p).isFile())throw Error('controlled_entrypoint_missing');if(f.existsSync('scripts/test-v27-team-w2-local.py')||f.existsSync('scripts/operator-w2/operator.ts')||f.existsSync('scripts/operator-w2/safe-stage-cli'))throw Error('operator_test_or_transport_in_runtime');Promise.all([import('./src/server/team/controlled-runner.ts'),import('./src/server-runtime/team-w2-access.ts'),import('./scripts/controlled-team-evidence-readonly.ts'),import('./scripts/operator-w2/evidence-diagnostic.ts'),import('./scripts/operator-w2/evidence-readonly-runner.ts'),import('./scripts/operator-w2/evidence-readonly-command.ts')]).catch(()=>process.exit(1));"
+      - name: Verify offline CLI sources and mock ports with network disabled
+        run: |
+          docker run --rm --network none \
+            --mount type=bind,src="$PWD/scripts/operator-w2/safe-stage-cli",dst=/operator,readonly \
+            --entrypoint node ai-diagnostic-web-build:ci \
+            --experimental-vm-modules --test \
+            /operator/entry-bootstrap-v2.test.mjs /operator/real-cli-process.test.mjs
   sql:
     name: isolated-sql
     runs-on: ubuntu-latest

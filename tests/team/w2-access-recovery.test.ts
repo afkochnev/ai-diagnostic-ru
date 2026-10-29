@@ -1,9 +1,9 @@
 import {createClient} from '@supabase/supabase-js';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {sealInvitationAuthProof,openInvitationAuthProof} from '@/server/team/invitation-auth-proof';
-const s=vi.hoisted(()=>({rpc:vi.fn(),traceBegin:vi.fn(),traceFinish:vi.fn(),events:[] as string[],spent:new Set<string>()}));
+const s=vi.hoisted(()=>({rpc:vi.fn(),traceBegin:vi.fn(),traceFinish:vi.fn(),channel:vi.fn(),events:[] as string[],spent:new Set<string>()}));
 vi.mock('server-only',()=>({}));
-vi.mock('@/server-runtime/team-auth-evidence',()=>({createAuthWireEvidence:()=>({begin:s.traceBegin,finish:s.traceFinish})}));
+vi.mock('@/server-runtime/team-auth-evidence',()=>({createRuntimeEvidenceChannel:s.channel,createAuthWireEvidence:()=>({begin:s.traceBegin,finish:s.traceFinish})}));
 vi.mock('@/server-runtime/supabase/admin',()=>({createAdminClient:(fetchOverride?:typeof fetch)=>({rpc:s.rpc,auth:createClient('https://fhvxqeaujjeiflanqsbg.supabase.co','synthetic-key-only',{auth:{autoRefreshToken:false,persistSession:false},global:{fetch:fetchOverride??globalThis.fetch}}).auth})}));
 import {recoverControlledTeamAccess} from '@/server-runtime/team-w2-access';
 import {controlledTeamContext,reserveControlledTeamEffect,reserveControlledTeamW2Verification,controlledTeamPersonalMillisecondsRemaining} from '@/server-runtime/team-smoke';
@@ -15,6 +15,7 @@ const authResponse=(userId=uid,type='magiclink')=>new Response(JSON.stringify({i
 function provider(){return vi.fn<typeof fetch>().mockImplementation(async(input)=>{const url=typeof input==='string'?input:input instanceof URL?input.href:input.url;if(url.startsWith('https://fhvxqeaujjeiflanqsbg.supabase.co/')){s.events.push('auth-http');return authResponse();}if(url==='https://api.resend.com/emails'){s.events.push('email-http');return new Response(JSON.stringify({id:'synthetic-receipt'}),{status:200});}throw Error('unexpected-network-forbidden');});}
 beforeEach(()=>{
  vi.useFakeTimers({now:new Date('2026-10-24T15:00:00Z')});vi.clearAllMocks();s.events=[];s.spent.clear();
+ s.channel.mockImplementation(()=>{s.events.push('evidence-precheck');});
  s.traceBegin.mockResolvedValue(undefined);s.traceFinish.mockResolvedValue(undefined);
  for(const [k,v]of Object.entries({NODE_ENV:'production',APP_URL:'https://audit.iteam.ru',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co',SUPABASE_PUBLISHABLE_KEY:'synthetic-only',AUTH_FLOW_SECRET:secret,TEAM_ENABLED:'true',TEAM_INVITATION_EMAIL_PROVIDER:'resend',RESEND_API_KEY:'synthetic-only',EMAIL_FROM:'Audit <audit@example.test>'}))vi.stubEnv(k,v);
  s.rpc.mockImplementation(async(name,args)=>{
@@ -34,11 +35,15 @@ describe('W2 recovery uses a new slot without resetting the stopped root',()=>{
   await expect(recoverControlledTeamAccess({windowId,participantId})).rejects.toThrow('budget_consumed');
   expect(actual).toHaveBeenCalledTimes(stage==='before_wire'?0:1);
  });
+ it('fails evidence precheck before consuming an issuance slot or calling Auth',async()=>{
+  s.channel.mockImplementation(()=>{throw Error('controlled_team_evidence_unavailable');});const actual=provider();vi.stubGlobal('fetch',actual);
+  await expect(recoverControlledTeamAccess({windowId,participantId})).rejects.toThrow('controlled_team_evidence_unavailable');expect(s.spent.size).toBe(0);expect(actual).not.toHaveBeenCalled();
+ });
  it('binds same UID/hash, reserves each dispatch first and returns no credential to operator',async()=>{
   const actual=provider();vi.stubGlobal('fetch',actual);
   const result=await recoverControlledTeamAccess({windowId,participantId});
   expect(result).toEqual({windowId,participantId,status:'succeeded'});
-  expect(s.events).toEqual(['context','reserve-reauth_link','auth-http','complete-succeeded','reserve-access_email','email-http','complete-succeeded']);
+  expect(s.events).toEqual(['context','evidence-precheck','reserve-reauth_link','auth-http','complete-succeeded','reserve-access_email','email-http','complete-succeeded']);
   expect(actual).toHaveBeenCalledTimes(2);
   const authRequest=actual.mock.calls[0][0] as Request;
   expect(await authRequest.clone().json()).toEqual({type:'magiclink',email,redirectTo:'https://audit.iteam.ru/ru/team/join'});

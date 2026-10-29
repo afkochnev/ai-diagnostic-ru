@@ -93,13 +93,21 @@ export async function buildAIInput(diagnosticId: string) {
 
 const mockReport: AIReport = { summary: "Тестовое структурированное резюме.", main_diagnosis: "Требуется системное усиление управления.", manageability_index_text: "Индекс отражает текущую управляемость.", strengths: ["Сохранённая управленческая основа", "Есть потенциал развития"], key_problem_zones: ["Процессы требуют внимания", "Ритм управления нуждается в настройке"], growth_constraint: "Недостаточная системность управленческих практик.", implementation_risks: ["Рост операционной нагрузки", "Замедление решений", "Потеря прозрачности"], first_actions: ["Определить владельцев процессов", "Зафиксировать регулярный ритм встреч", "Выбрать два приоритета"], plan_30_days: ["Согласовать план изменений"], plan_60_days: ["Проверить первые результаты"], plan_90_days: ["Закрепить новые практики"], next_step: "Провести рабочую сессию руководителей." };
 
+const individualPromptFiles: Record<IndividualPromptVersion, string> = {
+  "RU-1.0": "AI_REPORT_PROMPT_RU_1_0.md",
+  "RU-1.1": "AI_REPORT_PROMPT_RU_1_1.md",
+  "RU-1.2": "AI_REPORT_PROMPT_RU_1_2.md",
+  "RU-1.3": "AI_REPORT_PROMPT_RU_1_3.md",
+  "RU-1.4": "AI_REPORT_PROMPT_RU_1_4.md",
+};
+
 export async function generateReport(input: unknown, promptVersion: IndividualPromptVersion, timeoutMs = 180000, diagnosticId?:string): Promise<{ content: AIReport; requestId?: string }> {
   assertIndividualPromptVersion(promptVersion);
   const smoke=freeSmokeConfig();if(smoke){assertFreeSmokeDiagnostic(diagnosticId);if(process.env.AI_REPORT_PROVIDER!=="openai"||(process.env.OPENAI_MODEL||"gpt-5.6-sol")!=="gpt-5.6-sol")throw Error("controlled_free_real_provider_required");}
   if (process.env.AI_REPORT_PROVIDER === "mock") return { content: mockReport };
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("openai_not_configured");
-  const promptFile = promptVersion === "RU-1.3" ? "AI_REPORT_PROMPT_RU_1_3.md" : promptVersion === "RU-1.2" ? "AI_REPORT_PROMPT_RU_1_2.md" : promptVersion === "RU-1.1" ? "AI_REPORT_PROMPT_RU_1_1.md" : "AI_REPORT_PROMPT_RU_1_0.md";
+  const promptFile = individualPromptFiles[promptVersion];
   const prompt = readFileSync(join(process.cwd(), promptFile), "utf8");
   const client = new OpenAI({ apiKey: key,...(smoke?{maxRetries:0}:{}) });
   const controller = new AbortController();

@@ -1,6 +1,6 @@
 // Pure Node contract. It never reads environment variables or exports a credential.
-import {createHmac} from 'node:crypto';
 import {z} from 'zod';
+import {assertEvidenceChannelScope,evidenceChannelMAC,type EvidenceChannelKey} from './evidence-channel-key';
 
 const uuid=z.uuid().refine(value=>value===value.toLowerCase());
 export const authWireScopeSchema=z.strictObject({
@@ -15,17 +15,18 @@ export interface AuthWireEvidence {
  finish(value:AuthWireFinish):Promise<void>;
 }
 const credential=z.string().regex(/^[A-Za-z0-9_-]{32,256}$/);
-const authorization=z.string().regex(/^Bearer [A-Za-z0-9._-]{20,4096}$/);
 const prefix='aca-w2-auth-evidence-v1';
 function scopePrefix(scope:AuthWireScope){
  const s=authWireScopeSchema.parse(scope);
  return [s.runId,s.windowId,s.participantId,s.userId].join('\n');
 }
-export function authCredentialMAC(scope:AuthWireScope,bearer:string,token:string){
- return createHmac('sha256',authorization.parse(bearer)).update(`${prefix}\ncredential\n${scopePrefix(scope)}\n${credential.parse(token)}`,'utf8').digest('hex');
+export function authCredentialMAC(scope:AuthWireScope,key:EvidenceChannelKey,token:string){
+ const s=authWireScopeSchema.parse(scope);assertEvidenceChannelScope(key,s.runId,s.planHash);
+ return evidenceChannelMAC(key,`${prefix}\ncredential\n${scopePrefix(scope)}\n${credential.parse(token)}`);
 }
-export function authChallengeMAC(scope:AuthWireScope,bearer:string,challenge:string){
- return createHmac('sha256',authorization.parse(bearer)).update(`${prefix}\nchallenge\n${scopePrefix(scope)}\n${scope.operation}\n${scope.reservationId}\n${z.string().regex(/^[a-f0-9]{64}$/).parse(challenge)}`,'utf8').digest('hex');
+export function authChallengeMAC(scope:AuthWireScope,key:EvidenceChannelKey,challenge:string){
+ const s=authWireScopeSchema.parse(scope);assertEvidenceChannelScope(key,s.runId,s.planHash);
+ return evidenceChannelMAC(key,`${prefix}\nchallenge\n${scopePrefix(scope)}\n${scope.operation}\n${scope.reservationId}\n${z.string().regex(/^[a-f0-9]{64}$/).parse(challenge)}`);
 }
 
 /** A response clone is read privately and bounded; no body/error is returned to
