@@ -10,32 +10,37 @@ function readyFor(value: unknown, reportId: string, version: number): Ready {
 export function AdminIndividualPdf({ reportId, version }: { reportId: string; version: number }) {
   const busy = useRef(false);
   const [pending, setPending] = useState(false);
-  const [needsPreparation, setNeedsPreparation] = useState(false);
   const [receipt, setReceipt] = useState<Ready | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
   const base = `/api/admin/reports/${reportId}/pdf`;
-  async function act(prepare: boolean) {
+
+  async function requestPdf() {
     if (busy.current || stopped) return;
     busy.current = true; setPending(true); setMessage(null);
     try {
-      const response = await fetch(prepare ? `${base}/prepare` : base, { ...(prepare ? { method: "POST" } : {}), cache: "no-store", redirect: "error" });
-      if (!prepare && response.status === 409) {
-        const failure = await response.json();
-        if (failure.error === "pdf_not_ready") { setNeedsPreparation(true); setMessage("PDF ещё не готов."); return; }
-        throw Error("conflict");
+      let response = await fetch(base, { cache: "no-store", redirect: "error" });
+      if (response.status === 409) {
+        const failure = await response.json().catch(() => null) as { error?: string } | null;
+        if (failure?.error !== "pdf_not_ready") throw Error("conflict");
+        response = await fetch(`${base}/prepare`, { method: "POST", cache: "no-store", redirect: "error" });
       }
       if (!response.ok) throw Error("pdf_failed");
       const ready = readyFor(await response.json(), reportId, version);
-      setReceipt(ready); setNeedsPreparation(false); setMessage("PDF готов.");
-    } catch { setStopped(true); setMessage("Не удалось подтвердить PDF. Повторную подготовку не запускайте; проверьте состояние артефакта."); }
-    finally { busy.current = false; setPending(false); }
+      setReceipt(ready);
+      setMessage("PDF готов.");
+    } catch {
+      setStopped(true);
+      setMessage("Не удалось получить PDF. Не запускайте повторную подготовку; проверьте состояние артефакта.");
+    } finally {
+      busy.current = false; setPending(false);
+    }
   }
+
   return <div className="mt-4 space-y-3" aria-label={`PDF отчёта v${version}`}>
     <p className="text-sm text-slate-600">PDF сохранённого отчёта v{version}</p>
-    {!receipt && !needsPreparation && !stopped && <button type="button" onClick={() => void act(false)} disabled={pending} className="rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-50">{pending ? "Проверяем PDF…" : "Проверить PDF"}</button>}
-    {needsPreparation && !stopped && <button type="button" onClick={() => void act(true)} disabled={pending} className="rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-50">{pending ? "Готовим PDF…" : "Подготовить PDF"}</button>}
-    {receipt && <a href={receipt.download_url} download className="inline-block rounded-lg border border-slate-300 px-3 py-2 text-sm">Скачать PDF</a>}
+    {!receipt && !stopped && <button type="button" onClick={() => void requestPdf()} disabled={pending} className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{pending ? "Получаем PDF…" : "Получить PDF-отчёт"}</button>}
+    {receipt && <a href={receipt.download_url} download className="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white">Скачать PDF-отчёт</a>}
     {message && <p role="status" className="text-sm text-slate-600">{message}</p>}
   </div>;
 }
