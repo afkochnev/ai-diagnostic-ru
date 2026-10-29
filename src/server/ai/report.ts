@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { createAdminClient } from "@/server-runtime/supabase/admin";
 import { formatDecimalRu } from "./format";
 import { deriveBlockFacts } from "./facts";
+import { assertIndividualPromptVersion, type IndividualPromptVersion } from "./prompt-version";
+export type { IndividualPromptVersion } from "./prompt-version";
 
 const reportSchema = z.object({
   summary: z.string().min(1), main_diagnosis: z.string().min(1), manageability_index_text: z.string().min(1),
@@ -91,7 +93,8 @@ export async function buildAIInput(diagnosticId: string) {
 
 const mockReport: AIReport = { summary: "Тестовое структурированное резюме.", main_diagnosis: "Требуется системное усиление управления.", manageability_index_text: "Индекс отражает текущую управляемость.", strengths: ["Сохранённая управленческая основа", "Есть потенциал развития"], key_problem_zones: ["Процессы требуют внимания", "Ритм управления нуждается в настройке"], growth_constraint: "Недостаточная системность управленческих практик.", implementation_risks: ["Рост операционной нагрузки", "Замедление решений", "Потеря прозрачности"], first_actions: ["Определить владельцев процессов", "Зафиксировать регулярный ритм встреч", "Выбрать два приоритета"], plan_30_days: ["Согласовать план изменений"], plan_60_days: ["Проверить первые результаты"], plan_90_days: ["Закрепить новые практики"], next_step: "Провести рабочую сессию руководителей." };
 
-export async function generateReport(input: unknown, promptVersion: "RU-1.0" | "RU-1.1" | "RU-1.2" | "RU-1.3" = "RU-1.0", timeoutMs = 180000, diagnosticId?:string): Promise<{ content: AIReport; requestId?: string }> {
+export async function generateReport(input: unknown, promptVersion: IndividualPromptVersion, timeoutMs = 180000, diagnosticId?:string): Promise<{ content: AIReport; requestId?: string }> {
+  assertIndividualPromptVersion(promptVersion);
   const smoke=freeSmokeConfig();if(smoke){assertFreeSmokeDiagnostic(diagnosticId);if(process.env.AI_REPORT_PROVIDER!=="openai"||(process.env.OPENAI_MODEL||"gpt-5.6-sol")!=="gpt-5.6-sol")throw Error("controlled_free_real_provider_required");}
   if (process.env.AI_REPORT_PROVIDER === "mock") return { content: mockReport };
   const key = process.env.OPENAI_API_KEY;
