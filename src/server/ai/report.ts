@@ -99,7 +99,7 @@ export async function generateReport(input: unknown, promptVersion: IndividualPr
   if (process.env.AI_REPORT_PROVIDER === "mock") return { content: mockReport };
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("openai_not_configured");
-  const promptFile = promptVersion === "RU-1.3" ? "AI_REPORT_PROMPT_RU_1_3.md" : promptVersion === "RU-1.2" ? "AI_REPORT_PROMPT_RU_1_2.md" : promptVersion === "RU-1.1" ? "AI_REPORT_PROMPT_RU_1_1.md" : "AI_REPORT_PROMPT_RU_1_0.md";
+  const promptFile = promptVersion === "RU-1.5" ? "AI_REPORT_PROMPT_RU_1_5.md" : promptVersion === "RU-1.3" ? "AI_REPORT_PROMPT_RU_1_3.md" : promptVersion === "RU-1.2" ? "AI_REPORT_PROMPT_RU_1_2.md" : promptVersion === "RU-1.1" ? "AI_REPORT_PROMPT_RU_1_1.md" : "AI_REPORT_PROMPT_RU_1_0.md";
   const prompt = readFileSync(join(process.cwd(), promptFile), "utf8");
   const client = new OpenAI({ apiKey: key,...(smoke?{maxRetries:0}:{}) });
   const controller = new AbortController();
