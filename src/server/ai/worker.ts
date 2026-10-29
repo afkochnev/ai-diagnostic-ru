@@ -2,16 +2,15 @@ import crypto from "node:crypto";
 import {assertFreeSmokeDiagnostic} from "@/server-runtime/free-smoke";
 import { createAdminClient } from "@/server-runtime/supabase/admin";
 import { buildAIInput, generateReport } from "./report";
-const promptVersionFor = (version: number) => version === 1 ? "RU-1.0" : version === 2 ? "RU-1.1" : "RU-1.3";
+import { assertIndividualPromptVersion, CURRENT_INDIVIDUAL_PROMPT_VERSION } from "./prompt-version";
 export async function enqueueAIReport(diagnosticId: string, version = 1) {
   const db = createAdminClient();
   const input = await buildAIInput(diagnosticId);
   const hash = crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex");
-  const promptVersion = promptVersionFor(version);
   const deduplicationKey = `ai_report_v${version}`;
   const { data: existing } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
   if (existing) return existing;
-  const { data: report, error } = await db.from("ai_reports").insert({ diagnostic_id: diagnosticId, version, prompt_version: promptVersion, schema_version: "RU-1.0", model: process.env.OPENAI_MODEL || "gpt-5.6-sol", status: "queued", input_snapshot: input, input_hash: hash }).select("id,version,status").single();
+  const { data: report, error } = await db.from("ai_reports").insert({ diagnostic_id: diagnosticId, version, prompt_version: CURRENT_INDIVIDUAL_PROMPT_VERSION, schema_version: "RU-1.0", model: process.env.OPENAI_MODEL || "gpt-5.6-sol", status: "queued", input_snapshot: input, input_hash: hash }).select("id,version,status").single();
   if (error || !report) {
     if (error?.code === "23505") {
       const { data: existingReport } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
@@ -42,7 +41,7 @@ export async function runAIJob(job: ClaimedAIJob) {
     return { status: "failed" };
   }
   const version = Number(versionMatch[1]);
-  const { data: report } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
+  const { data: report } = await db.from("ai_reports").select("id,version,status,prompt_version").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
   if (!report) {
     await db.from("jobs").update({ status: "failed", available_at: new Date("2099-01-01").toISOString(), attempts: 3, last_error_code: "ai_report_missing", last_error_message: "AI report row is missing", lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", lease);
     return { status: "failed" };
@@ -53,8 +52,9 @@ export async function runAIJob(job: ClaimedAIJob) {
   }
   await db.from("ai_reports").update({ status: "generating" }).eq("id", report.id).in("status", ["queued", "failed", "generating"]);
   try {
+    assertIndividualPromptVersion(report.prompt_version);
     const input = await buildAIInput(diagnosticId);
-    const generated = await generateReport(input, promptVersionFor(report.version), Number(process.env.AI_PROVIDER_TIMEOUT_MS || 180000),diagnosticId);
+    const generated = await generateReport(input, report.prompt_version, Number(process.env.AI_PROVIDER_TIMEOUT_MS || 180000),diagnosticId);
     const { error: reportError } = await db.from("ai_reports").update({ status: "completed", structured_content: generated.content, provider_request_id: generated.requestId ?? null, completed_at: new Date().toISOString(), error_code: null, error_message: null }).eq("id", report.id).eq("status", "generating");
     if (reportError) throw new Error(`ai_report_persist_failed:${reportError.message}`);
     const { error: jobError } = await db.from("jobs").update({ status: "completed", completed_at: new Date().toISOString(), lease_token: null, lease_expires_at: null, last_error_code: null, last_error_message: null }).eq("id", job.job_id).eq("lease_token", lease);
@@ -65,7 +65,7 @@ export async function runAIJob(job: ClaimedAIJob) {
     const terminal = !isRetryableAIError(message) || job.attempt_count >= 3;
     const next = new Date(Date.now() + Math.min(3600000, 30000 * 2 ** Math.max(0, job.attempt_count - 1))).toISOString();
     await db.from("ai_reports").update({ status: "failed", error_code: message.slice(0, 120), error_message: "AI report generation failed" }).eq("id", report.id).eq("status", "generating");
-    await db.from("jobs").update({ status: "failed", available_at: terminal ? new Date("2099-01-01").toISOString() : next, attempts: terminal ? 3 : job.attempt_count, last_error_code: isRetryableAIError(message) ? "provider_retryable" : "ai_failed", last_error_message: "AI report generation failed", lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", lease);
+    await db.from("jobs").update({ status: "failed", available_at: terminal ? new Date("2099-01-01").toISOString() : next, attempts: terminal ? 3 : job.attempt_count, last_error_code: message === "invalid_individual_prompt_version" ? message : isRetryableAIError(message) ? "provider_retryable" : "ai_failed", last_error_message: "AI report generation failed", lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", lease);
     return { status: "failed" };
   }
 }
