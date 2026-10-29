@@ -31,7 +31,7 @@ describe("RU-1.5 human-language editorial contract", () => {
 
   it("keeps factual caution while improving prose", () => {
     expect(prompt).toContain("заявленные пользователем сведения");
-    expect(prompt).toContain("не превращай высокий балл автоматически в доказанный факт");
+    expect(prompt).toContain("Не превращай высокий балл автоматически в доказанный факт о реальной способности компании");
     expect(prompt).toContain("Если причинная связь является выводом");
   });
 });
