@@ -34,7 +34,7 @@ type Fixture = { plan: Plan; objects: Map<string, Uint8Array> };
 function put(f: Fixture, path: string, bytes: Uint8Array): Artifact {
   const hash = sha256(bytes); f.objects.set(hash, bytes); return { path, sha256: hash };
 }
-function fixture(changeRaw?: (raw: Raw, index: number) => void): Fixture {
+function fixture(changeRaw?: (raw: Raw, index: number) => void, inputForCase?: (index: number) => unknown): Fixture {
   const f = { objects: new Map<string, Uint8Array>() } as Fixture;
   const prompt = put(f, "prompt.md", Buffer.from("Учебные инструкции для проверки доказательств.\n"));
   const schema = put(f, "schema.json", schemaBytes);
@@ -44,7 +44,7 @@ function fixture(changeRaw?: (raw: Raw, index: number) => void): Fixture {
     prompt, schema, reviewers: { facts: "reviewer-facts", depth: "reviewer-depth", boundary: "reviewer-boundary" },
     review_inventory_complete: true,
     cases: CASES.map((case_id, index) => {
-      const input = { company_snapshot: { company_name: `INVENTED-${index}`, main_goals: "Оценить готовность к учебному изменению" }, open_answers: [{ answer: "Показатели ведутся ежемесячно." }] };
+      const input = inputForCase ? inputForCase(index) : { company_snapshot: { company_name: `INVENTED-${index}`, main_goals: "Оценить готовность к учебному изменению" }, open_answers: [{ answer: "Показатели ведутся ежемесячно." }] };
       const raw: Raw = {
         case_id, synthetic_only: true, input, input_sha256: sha256(JSON.stringify(input)),
         candidate_source_commit: "a".repeat(40), host_runtime_commit: "b".repeat(40),
@@ -109,6 +109,62 @@ describe("offline evidence decision, not automatic semantic judgement", () => {
     expect(sha256(JSON.stringify(raw.input))).not.toBe(entry.input.sha256);
     expect(reviewOf(f, 0, "facts").subject.input_sha256).toBe(entry.input.sha256);
     expect(evaluate(f.plan, f.objects).decision).toBe("REVIEW_PASS");
+  });
+  it.each([
+    { label: "null", input: null },
+    { label: "array", input: [] },
+    { label: "true boolean", input: true },
+    { label: "false boolean", input: false },
+    { label: "number", input: 42 },
+    { label: "string", input: "not an input object" },
+  ])("rejects digest-consistent $label frozen and raw inputs despite rebound native PASS reviews", ({ input }) => {
+    const f = fixture(undefined, () => input);
+    const decision = evaluate(f.plan, f.objects);
+    expect(decision.decision).toBe("HOLD");
+    for (const entry of decision.cases) {
+      expect(entry.reasons).toContain("OBJECT_REQUIRED");
+      expect(entry.reasons).not.toContain("REVIEW_SUBJECT_MISMATCH");
+    }
+  });
+  it.each([
+    { label: "null", input: null },
+    { label: "array", input: [] },
+    { label: "true boolean", input: true },
+    { label: "false boolean", input: false },
+    { label: "number", input: 42 },
+    { label: "string", input: "not an input object" },
+  ])("rejects digest-consistent $label raw input against a frozen object with rebound native PASS reviews", ({ input }) => {
+    const f = fixture((raw, index) => {
+      if (index) return;
+      raw.input = input;
+      raw.input_sha256 = sha256(JSON.stringify(input));
+    });
+    const decision = evaluate(f.plan, f.objects);
+    expect(decision.decision).toBe("HOLD");
+    expect(decision.cases[0].reasons).toContain("RAW_INPUT_MISMATCH");
+    expect(decision.cases[0].reasons).not.toContain("REVIEW_SUBJECT_MISMATCH");
+  });
+  it.each([
+    { token: "9007199254740993", rounded: 9007199254740992 },
+    { token: "1e-999", rounded: 0 },
+    { token: "0.10000000000000001", rounded: 0.1 },
+  ])("rejects frozen numeric token $token instead of equating it with a rounded raw input", ({ token, rounded }) => {
+    const f = fixture(undefined, index => ({ measurement: index === 0 ? rounded : 1 }));
+    const entry = f.plan.cases[0];
+    entry.input = put(f, entry.input.path, Buffer.from(`{"measurement":${token}}\n`));
+    // The input-byte change affects the two-case context. Reauthor every mechanics
+    // review so the precision check, rather than stale review subjects, decides.
+    for (let index = 0; index < CASES.length; index++) for (const role of ROLES) {
+      const current = f.plan.cases[index];
+      changeReview(f, index, role, review => {
+        review.subject = subjectFor(f.plan, current.case_id, f.objects.get(current.raw!.sha256)!);
+      });
+    }
+    const decision = evaluate(f.plan, f.objects);
+    expect(decision.decision).toBe("HOLD");
+    expect(decision.cases[0].reasons).toContain("JSON_NUMBER_PRECISION_LOSS");
+    expect(decision.cases[0].reasons).not.toContain("REVIEW_SUBJECT_MISMATCH");
+    expect(decision.cases[1].decision).toBe("REVIEW_PASS");
   });
   it("holds a missing second raw and never substitutes a passing first case", () => {
     const f = fixture(); f.plan.cases[1].raw = null;
@@ -226,6 +282,15 @@ describe("complete review history and anchored findings", () => {
 });
 
 describe("untrusted JSON and pointers", () => {
+  it.each(["9007199254740993", "1e-999", "0.10000000000000001", "1e-324"])("rejects lossy numeric token %s before native JSON rounding", token => {
+    expect(() => parseJson(Buffer.from(`{"measurement":${token}}`))).toThrow("JSON_NUMBER_PRECISION_LOSS");
+  });
+  it("accepts ordinary decimals, equivalent exponents, subnormal values and signed zero", () => {
+    for (const token of ["0.1", "1e-1", "1.2300e2", "5e-324", "0e999999999999999999999999", "-0e-999999999999999999999999"]) {
+      const parsed = parseJson(Buffer.from(token));
+      expect(Object.is(parsed, JSON.parse(token))).toBe(true);
+    }
+  });
   it.each(['{"decision":"FAIL","decision":"PASS"}', '{"a":1,"\\u0061":2}', '{"n":1e309}', '{"a":1} trailing'])("rejects ambiguous or invalid JSON: %s", text => {
     expect(() => parseJson(Buffer.from(text))).toThrow();
   });
@@ -301,6 +366,13 @@ describe("local filesystem and offline CLI", () => {
     const heldDisk = persist(held);
     const rejected = spawnSync(process.execPath, [...base, "inspect", "--plan", heldDisk.path, "--expected-plan-sha256", heldDisk.pin], { encoding: "utf8", env });
     expect(rejected.status).toBe(1); expect(JSON.parse(rejected.stdout).decision).toBe("HOLD");
+    const malformed = persist(fixture(undefined, () => null));
+    const malformedResult = spawnSync(process.execPath, [...base, "inspect", "--plan", malformed.path, "--expected-plan-sha256", malformed.pin], { encoding: "utf8", env });
+    expect(malformedResult.status).toBe(1);
+    const malformedDecision = JSON.parse(malformedResult.stdout);
+    expect(malformedDecision.decision).toBe("HOLD");
+    for (const entry of malformedDecision.cases) expect(entry.reasons).toContain("OBJECT_REQUIRED");
+    expect(malformedResult.stdout + malformedResult.stderr).not.toMatch(/SECRET_SENTINEL|INVENTED-|TEST_NETWORK_FORBIDDEN/);
     const bad = spawnSync(process.execPath, [...base, "inspect", "--plan", disk.path + "-PRIVATE_FILENAME", "--expected-plan-sha256", disk.pin], { encoding: "utf8", env });
     expect(bad.status).toBe(1); expect(JSON.parse(bad.stdout)).toEqual({ decision: "HOLD", reasons: ["LOCAL_IO_ERROR"] });
     expect(bad.stdout + bad.stderr).not.toMatch(/SECRET_SENTINEL|PRIVATE_FILENAME|INVENTED-|TEST_NETWORK_FORBIDDEN/);

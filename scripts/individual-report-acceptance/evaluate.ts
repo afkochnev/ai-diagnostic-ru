@@ -151,7 +151,7 @@ export function evaluate(inputPlan: Plan, objects: Objects): Decision {
     let raw: Record<string, unknown> | undefined;
     let report: unknown;
     let subject: Subject | undefined;
-    attempt(() => { input = parseJson(get(objects, entry.input)); });
+    attempt(() => { input = object(get(objects, entry.input)); });
     if (!entry.raw) reasons.add("RAW_MISSING");
     else attempt(() => {
       const bytes = get(objects, entry.raw!);

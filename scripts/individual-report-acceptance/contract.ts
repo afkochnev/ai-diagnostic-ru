@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
+import Decimal from "decimal.js";
 import { z } from "zod";
+
+const ExactDecimal = Decimal.clone({ minE: -9e15, maxE: 9e15 });
 
 export const ROLES = ["facts", "depth", "boundary"] as const;
 export const SECTIONS = [
@@ -111,7 +114,7 @@ export function contextHash(plan: Plan): string {
 }
 
 // JSON.parse alone discards duplicate keys. Scan first and bound nesting/node count.
-// Strings/numbers are still decoded by the native JSON parser; no eval or reviver.
+// Check number tokens for decimal value loss before native decoding; no eval or reviver.
 export function parseJson(bytes: Uint8Array): unknown {
   if (bytes.byteLength > 1024 * 1024) throw new EvidenceError("JSON_TOO_LARGE");
   let source: string;
@@ -159,7 +162,17 @@ export function parseJson(bytes: Uint8Array): unknown {
     }
     const match = /^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(source.slice(pos));
     if (!match) bad();
-    pos += match![0].length;
+    const token = match![0];
+    if (/^-?\d/.test(token)) {
+      const native = Number(token);
+      if (!Number.isFinite(native)) bad();
+      // Inspect zero mantissas directly: Decimal also has an exponent underflow limit.
+      const lossy = native === 0
+        ? /[1-9]/.test(token.split(/[eE]/, 1)[0])
+        : !new ExactDecimal(token).equals(new ExactDecimal(String(native)));
+      if (lossy) throw new EvidenceError("JSON_NUMBER_PRECISION_LOSS");
+    }
+    pos += token.length;
   };
   value(0); space();
   if (pos !== source.length) bad();

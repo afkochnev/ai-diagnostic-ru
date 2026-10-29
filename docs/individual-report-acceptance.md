@@ -40,12 +40,19 @@ The plan contains:
   `explicit-existing-controls`, each with frozen input, nullable raw receipt,
   review descriptors and explicit heads for all three roles.
 
-Input files contain the input object itself. An artifact digest always hashes its
+Input files contain a non-null JSON object itself; arrays and scalar values cause
+HOLD even with matching receipt digests and unanimous native PASS reviews. This
+v1 checks the object shape, not the full application's diagnostic input schema.
+The operator must choose and pin the approved content of both prescribed cases.
+An artifact digest always hashes its
 **exact bytes**, including whitespace and final newline. The provider record's
 `input_sha256` instead follows the existing `SHA256(JSON.stringify(raw.input))`
-convention, preserving property insertion order. The validator also compares the
-parsed raw input and frozen input recursively with sorted object keys. These are
-three separate checks; do not substitute one digest convention for another.
+convention, preserving property insertion order. Numeric tokens that change
+decimal value when parsed and serialized by JavaScript (including underflow to
+zero) cause HOLD instead of being silently rounded into a match. Ordinary decimal
+and exponent forms with the same value remain valid. The validator also compares
+the parsed raw input and frozen input recursively with sorted object keys. Keep
+these digest and comparison conventions separate.
 
 A raw receipt retains its original `output_text` string and provenance fields:
 `case_id`, `input`, `input_sha256`, `candidate_source_commit`, `prompt_sha256`,
