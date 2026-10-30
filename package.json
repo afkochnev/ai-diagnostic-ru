@@ -13,6 +13,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test:e2e": "playwright test",
     "test:unit": "vitest run",
+    "acceptance:individual": "node --import tsx scripts/individual-report-acceptance.ts",
     "worker:consultation": "node --env-file=.env.local --import tsx scripts/consultation-worker.ts",
     "worker": "exec node --env-file-if-exists=.env.local --import tsx scripts/worker.ts"
   },
