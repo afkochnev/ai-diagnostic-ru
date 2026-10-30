@@ -51,7 +51,7 @@ describe("V24 password-policy regression without live Auth writes or mail", () =
     expect(result.error).toBeTruthy(); expect(JSON.stringify(result)).not.toContain("private"); expect(m.clear).not.toHaveBeenCalled();
   });
   it("preserves existing password login and rejects unconfirmed login", async () => {
-    await expect(loginAction({}, registration())).rejects.toThrow("redirect:/ru");
+    await expect(loginAction({}, registration())).rejects.toThrow("redirect:/ru/account");
     m.signInWithPassword.mockResolvedValue({ error: { code: "email_not_confirmed" } });
     expect((await loginAction({}, registration())).error).toContain("email");
   });

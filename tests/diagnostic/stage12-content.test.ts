@@ -19,10 +19,14 @@ describe("Stage 12.1 content compatibility", () => {
     expect(migration).toContain("score_value");
   });
 
-  it("shows transient save success and keeps save errors persistent", () => {
+  it("keeps a visible saved or unsaved state and persistent save errors", () => {
     expect(runner).toContain('setSaving("saving")');
-    expect(runner).toContain('setSaving("saved")');
-    expect(runner).toContain('setTimeout(() => { setSaving("idle")');
+    expect(runner).toContain('setSaving("unsaved")');
+    expect(runner).toContain('setSaving(answersHash(answersRef.current) === currentHash ? "saved" : "unsaved")');
+    expect(runner).toContain('"Все ответы сохранены"');
+    expect(runner).toContain('"Есть несохранённые ответы…"');
     expect(runner).toContain('setSaving("error")');
+    expect(runner).toContain('"Ошибка сохранения"');
+    expect(runner).not.toContain('setTimeout(() => { setSaving("idle")');
   });
 });

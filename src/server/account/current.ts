@@ -14,5 +14,6 @@ export function selectCurrentAccount<T extends { id: string; legacy_origin_user_
 }
 
 export async function getCurrentAccount(userId: string, requested?: string) {
-  return selectCurrentAccount(await listAccessibleAccounts(userId), userId, requested);
+  const accounts = await listAccessibleAccounts(userId);
+  return { ...selectCurrentAccount(accounts, userId, requested), accounts };
 }

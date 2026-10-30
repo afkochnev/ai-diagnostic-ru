@@ -8,7 +8,7 @@ vi.mock("@/server/team/service",()=>({listTeamHistory:vi.fn(async()=>data.teams)
 vi.mock("@/server/team/capabilities",()=>({teamFoundationEnabled:()=>data.enabled}));
 vi.mock("@/features/company/company-navigation",()=>({CompanyNavigation:()=>null}));
 import { CompanyDashboard } from "@/features/company/company-dashboard";
-import { RecentDiagnostics, recentDiagnostics } from "@/features/company/recent-diagnostics";
+import { RecentDiagnostics, recentDiagnostics, companyNextAction } from "@/features/company/recent-diagnostics";
 import { listTeamHistory } from "@/server/team/service";
 vi.stubGlobal("React",React);
 const individual=(id="individual",day="2026-10-17",status="completed")=>({diagnostic:{id,status,started_at:day,completed_at:status==="completed"?day:null,submitted_at:null},result:status==="completed"?{display_manageability_index:54.6,maturity_label:"Зона развития"}:null});
@@ -31,5 +31,20 @@ describe("Company dashboard recent combined history",()=>{
   });
   it("shows neutral empty copy only if neither type exists and does not query disabled Team",async()=>{
     data.enabled=false;const html=renderToStaticMarkup(await CompanyDashboard({company,userId:"owner"}));expect(html).toContain("Диагностик пока нет.");expect(listTeamHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe("dashboard next action",()=>{
+  it("prioritizes saved work over starting again or an older completed result",()=>{
+    expect(companyNextAction("company","active",[individual()],[])).toMatchObject({href:"/ru/diagnostics/active",label:"Продолжить диагностику"});
+  });
+  it("opens an existing result and distinguishes waiting for a team",()=>{
+    expect(companyNextAction("company",undefined,[individual()],[])).toMatchObject({href:"/ru/diagnostics/individual/result",label:"Открыть результаты и отчёт"});
+    expect(companyNextAction("company",undefined,[],[{...team(),completedParticipants:2}])).toMatchObject({label:"Посмотреть готовность команды"});
+    expect(companyNextAction("company",undefined,[],[team()])).toMatchObject({label:"Открыть командный результат"});
+  });
+  it("keeps processing diagnostics on the result route without starting another",()=>{
+    expect(companyNextAction("company",undefined,[individual("pending","2026-10-18","submitted")],[])).toMatchObject({href:"/ru/diagnostics/pending/result",label:"Посмотреть статус результата"});
+    expect(companyNextAction("company",undefined,[],[])).toMatchObject({href:"/ru/companies/company/diagnostics?new=1",label:"Начать диагностику"});
   });
 });

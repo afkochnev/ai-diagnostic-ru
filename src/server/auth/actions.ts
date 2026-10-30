@@ -65,7 +65,20 @@ export async function loginAction(_: AuthState, form: FormData): Promise<AuthSta
   await clearRecovery();
   revalidatePath("/", "layout");
   if (value(form, "next") === "team-invitation") redirect("/ru/team/join");
-  redirect("/ru");
+  redirect("/ru/account");
+}
+
+export async function emailLoginAction(_: AuthState, form: FormData): Promise<AuthState> {
+  const parsed = emailSchema.safeParse(value(form, "email").trim());
+  if (!parsed.success) return { error: text.badEmail };
+  const client = await actionClient();
+  const { error } = await client.auth.signInWithOtp({
+    email: parsed.data,
+    options: { shouldCreateUser: false, emailRedirectTo: `${authConfig().APP_URL}/auth/confirm` },
+  });
+  if (error && !["otp_disabled", "user_not_found", "signup_disabled"].includes(error.code ?? "")) return failure(error);
+  // The same acknowledgment covers existing and unknown accounts.
+  return { success: "Если этот email зарегистрирован, мы отправили ссылку для входа. Проверьте входящие и папку «Спам»." };
 }
 
 export async function logoutAction() {
@@ -137,7 +150,7 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
       if (current.user?.email_confirmed_at) {
         await clearRecovery();
         revalidatePath("/", "layout");
-        redirect("/ru?welcome=1");
+        redirect("/ru/verification-complete");
       }
     }
     return { error: text.invalidLink };
@@ -151,7 +164,7 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
   }
   await clearRecovery();
   revalidatePath("/", "layout");
-  redirect("/ru?welcome=1");
+  redirect(type === "signup" ? "/ru/verification-complete" : "/ru/account");
 }
 
 export async function resetAction(_: AuthState, form: FormData): Promise<AuthState> {
