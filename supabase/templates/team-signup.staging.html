@@ -4,6 +4,11 @@
 <p><a style="display:inline-block;padding:14px 22px;background:#315c73;color:white;text-decoration:none;border-radius:8px" href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=email">Подтвердить email и начать диагностику</a></p>
 <p>Откройте кнопку в том же браузере, где дали согласие на странице приглашения.</p>
 <p>Не пересылайте это письмо: кнопка предназначена только для вас. Если вы не запрашивали вход, проигнорируйте письмо.</p>
+{{ else if eq .RedirectTo "https://ai-diagnostic-staging-web.onrender.com/auth/confirm" }}
+<h2>Подтвердите email для AI-аудита компании</h2>
+<p>Чтобы завершить регистрацию и продолжить диагностику, подтвердите адрес электронной почты.</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=signup">Подтвердить email и продолжить</a></p>
+<p>Ссылка одноразовая. Если вы не регистрировались, проигнорируйте это письмо.</p>
 {{ else }}
 <section>
   <h2>Вход в командную диагностику без пароля</h2>
