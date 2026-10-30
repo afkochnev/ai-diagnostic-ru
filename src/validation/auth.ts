@@ -11,4 +11,4 @@ export const registrationSchema = z.object({
   marketing_consent: z.boolean(),
 }).refine((data) => data.password === data.confirm_password, { path: ["confirm_password"], message: "Passwords do not match" });
 export const loginSchema = z.object({ email: emailSchema, password: z.string().min(1).max(1024) });
-export type AuthState = { error?: string; success?: string; factorId?: string; secret?: string; uri?: string };
+export type AuthState = { error?: string; code?: "invalid_link"; success?: string; factorId?: string; secret?: string; uri?: string };

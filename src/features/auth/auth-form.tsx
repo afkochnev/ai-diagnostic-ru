@@ -4,21 +4,22 @@ import { useActionState, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { emailSchema, loginSchema, passwordSchema, registrationSchema, type AuthState } from "@/validation/auth";
 import { getMessages } from "@/i18n/messages";
+import { ConfirmationRecovery } from "./confirmation-recovery";
 
 type Mode = "register" | "login" | "email-login" | "forgot" | "resend" | "reset" | "confirm" | "mfa";
 type Policy = { versions: Record<string, string>; temporary: boolean; dataUrl: string; marketingUrl: string; policyUrl?: string };
-type Props = { action: (state: AuthState, form: FormData) => Promise<AuthState>; mode: Mode; policy?: Policy; hidden?: Record<string, string> };
+type Props = { action: (state: AuthState, form: FormData) => Promise<AuthState>; mode: Mode; policy?: Policy; hidden?: Record<string, string>; signedIn?: boolean };
 const copy = getMessages("ru").auth;
 const inputClass = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
 
-export function AuthForm({ action, mode, policy, hidden = {} }: Props) {
+export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
   const [localError, setLocalError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const hasEmail = ["register", "login", "email-login", "forgot", "resend"].includes(mode);
   const hasPassword = ["register", "login", "reset"].includes(mode);
-  const labels: Record<Mode, string> = { register: copy.register, login: copy.login, "email-login": "Получить ссылку для входа", forgot: copy.sendReset, resend: copy.resend, reset: copy.savePassword, confirm: hidden.type === "recovery" ? copy.confirmRecovery : copy.confirm, mfa: copy.mfaVerify };
+  const labels: Record<Mode, string> = { register: copy.register, login: copy.login, "email-login": "Получить ссылку для входа", forgot: copy.sendReset, resend: copy.resend, reset: copy.savePassword, confirm: hidden.type === "recovery" ? copy.confirmRecovery : hidden.type === "email" ? "Войти в кабинет" : copy.confirm, mfa: copy.mfaVerify };
 
   function validate(event: FormEvent<HTMLFormElement>) {
     if (["resend", "email-login"].includes(mode) && resendCooldown > 0) { event.preventDefault(); return; }
@@ -44,8 +45,11 @@ export function AuthForm({ action, mode, policy, hidden = {} }: Props) {
     return () => window.clearInterval(timer);
   }, [mode, resendCooldown]);
 
+  if (mode === "confirm" && state.code === "invalid_link") return <ConfirmationRecovery type={hidden.type ?? "email"} signedIn={signedIn} />;
+
   return (
     <form action={formAction} onSubmit={validate} noValidate className="space-y-5">
+      {mode === "confirm" && <p>{hidden.type === "email" ? "Нажмите кнопку, чтобы войти в кабинет. Ссылка одноразовая." : copy.confirmText}</p>}
       {Object.entries(hidden).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
       {policy && Object.entries(policy.versions).map(([kind, version]) => <input key={kind} type="hidden" name={`${kind}_version`} value={version} />)}
       {mode === "register" && <label className="block text-sm font-medium">{copy.name}<input className={inputClass} name="full_name" autoComplete="name" required maxLength={200} /></label>}

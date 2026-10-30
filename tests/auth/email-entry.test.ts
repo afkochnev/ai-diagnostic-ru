@@ -43,6 +43,13 @@ describe("email sign-in and confirmation continuation", () => {
   });
   it("never continues an invalid email link", async () => {
     m.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: { code: "otp_expired" } });
-    expect((await confirmAction({}, confirmation("email"))).error).toBeTruthy(); expect(m.clear).not.toHaveBeenCalled();
+    expect(await confirmAction({}, confirmation("email"))).toMatchObject({ error: expect.any(String), code: "invalid_link" }); expect(m.clear).not.toHaveBeenCalled();
+  });
+  it.each([{ code: "unexpected_failure", status: 503 }, { status: 429 }, { name: "AuthRetryableFetchError" }])("allows retrying temporary provider failures without labeling the token invalid: %j", async (error) => {
+    m.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error });
+    const result = await confirmAction({}, confirmation("email"));
+    expect(result.error).toBeTruthy();
+    expect(result.code).toBeUndefined();
+    expect(m.clear).not.toHaveBeenCalled();
   });
 });
