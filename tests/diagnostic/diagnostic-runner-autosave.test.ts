@@ -133,6 +133,32 @@ describe("diagnostic runner autosave", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ current_block_id: "block-2", answers_dirty: false, answers: [] });
   });
 
+  it("preserves partial answers when Next finds a missing required answer", async () => {
+    const partialData = {
+      ...data,
+      blocks: [{ ...data.blocks[0], questions: [...data.blocks[0].questions, { id: "missing-text", prompt: "Required text", answer_type: "text", is_required: true, answer: null }] }, data.blocks[1]],
+    } as unknown as DiagnosticPageData;
+    const renderPartial = () => hooks.render(() => DiagnosticRunner({ data: partialData }));
+    edit(renderPartial(), 3);
+    const next = elements(renderPartial()).find((element) => element.type === "button" && element.props.children === "Далее");
+    (next?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ current_block_id: "block-1", answers: [{ question_id: "question-1", value: 3 }] });
+    expect(elements(renderPartial()).some((element) => element.props["data-testid"] === "required-answer-error")).toBe(true);
+  });
+
+  it("flushes the last edit before returning to the cabinet", async () => {
+    edit(render(), 4);
+    const leave = elements(render()).find((element) => element.props.children === "Сохранить и выйти в кабинет");
+    const preventDefault = vi.fn();
+    (leave?.props.onClick as (event: { preventDefault: () => void }) => void)({ preventDefault });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ answers: [{ question_id: "question-1", value: 4 }] });
+  });
+
   it("keeps the explicit save and submit sequence", async () => {
     const finalBlockData = { ...data, diagnostic: { ...data.diagnostic, current_block_id: "block-2" } };
     const tree = hooks.render(() => DiagnosticRunner({ data: finalBlockData }));

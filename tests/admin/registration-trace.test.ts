@@ -17,8 +17,8 @@ describe("registration action", () => {
     expect(form).not.toContain("/ru/verify-email");
   });
 
-  it("sends successful signup confirmation to the existing landing route", () => {
-    expect(action).toContain('redirect("/ru?welcome=1")');
+  it("sends successful signup confirmation to a clear continuation screen", () => {
+    expect(action).toContain('redirect("/ru/verification-complete")');
     const confirmation = action.slice(action.indexOf("export async function confirmAction"), action.indexOf("export async function resetAction"));
     expect(confirmation).not.toContain('redirect("/ru/company-profile")');
     const landing = readFileSync("src/app/[locale]/(public)/page.tsx", "utf8");
@@ -26,8 +26,8 @@ describe("registration action", () => {
     expect(landing).toContain("LandingPage");
   });
 
-  it("preserves identity validation and landing confirmation flow", () => {
+  it("preserves identity validation before confirmation continuation", () => {
     expect(action).toContain("hasCreatedAuthUser(data)");
-    expect(action).toContain('redirect("/ru?welcome=1")');
+    expect(action).toContain('redirect("/ru/verification-complete")');
   });
 });

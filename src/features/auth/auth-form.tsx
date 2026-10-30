@@ -4,24 +4,25 @@ import { useActionState, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { emailSchema, loginSchema, passwordSchema, registrationSchema, type AuthState } from "@/validation/auth";
 import { getMessages } from "@/i18n/messages";
+import { ConfirmationRecovery } from "./confirmation-recovery";
 
-type Mode = "register" | "login" | "forgot" | "resend" | "reset" | "confirm" | "mfa";
+type Mode = "register" | "login" | "email-login" | "forgot" | "resend" | "reset" | "confirm" | "mfa";
 type Policy = { versions: Record<string, string>; temporary: boolean; dataUrl: string; marketingUrl: string; policyUrl?: string };
-type Props = { action: (state: AuthState, form: FormData) => Promise<AuthState>; mode: Mode; policy?: Policy; hidden?: Record<string, string> };
+type Props = { action: (state: AuthState, form: FormData) => Promise<AuthState>; mode: Mode; policy?: Policy; hidden?: Record<string, string>; signedIn?: boolean };
 const copy = getMessages("ru").auth;
 const inputClass = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
 
-export function AuthForm({ action, mode, policy, hidden = {} }: Props) {
+export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
   const [localError, setLocalError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
-  const hasEmail = ["register", "login", "forgot", "resend"].includes(mode);
+  const hasEmail = ["register", "login", "email-login", "forgot", "resend"].includes(mode);
   const hasPassword = ["register", "login", "reset"].includes(mode);
-  const labels: Record<Mode, string> = { register: copy.register, login: copy.login, forgot: copy.sendReset, resend: copy.resend, reset: copy.savePassword, confirm: hidden.type === "recovery" ? copy.confirmRecovery : copy.confirm, mfa: copy.mfaVerify };
+  const labels: Record<Mode, string> = { register: copy.register, login: copy.login, "email-login": "Получить ссылку для входа", forgot: copy.sendReset, resend: copy.resend, reset: copy.savePassword, confirm: hidden.type === "recovery" ? copy.confirmRecovery : hidden.type === "email" ? "Войти в кабинет" : copy.confirm, mfa: copy.mfaVerify };
 
   function validate(event: FormEvent<HTMLFormElement>) {
-    if (mode === "resend" && resendCooldown > 0) { event.preventDefault(); return; }
+    if (["resend", "email-login"].includes(mode) && resendCooldown > 0) { event.preventDefault(); return; }
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
@@ -34,17 +35,21 @@ export function AuthForm({ action, mode, policy, hidden = {} }: Props) {
       if (!result.success) error = result.error.issues.some((issue) => issue.path[0] === "confirm_password") ? copy.passwordMismatch : copy.required;
     }
     if (error) event.preventDefault();
+    else if (["resend", "email-login"].includes(mode)) setResendCooldown(60);
     setLocalError(error);
   }
 
   useEffect(() => {
-    if (mode !== "resend" || resendCooldown <= 0) return;
+    if (!["resend", "email-login"].includes(mode) || resendCooldown <= 0) return;
     const timer = window.setInterval(() => setResendCooldown((value) => Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(timer);
   }, [mode, resendCooldown]);
 
+  if (mode === "confirm" && state.code === "invalid_link") return <ConfirmationRecovery type={hidden.type ?? "email"} signedIn={signedIn} />;
+
   return (
     <form action={formAction} onSubmit={validate} noValidate className="space-y-5">
+      {mode === "confirm" && <p>{hidden.type === "email" ? "Нажмите кнопку, чтобы войти в кабинет. Ссылка одноразовая." : copy.confirmText}</p>}
       {Object.entries(hidden).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
       {policy && Object.entries(policy.versions).map(([kind, version]) => <input key={kind} type="hidden" name={`${kind}_version`} value={version} />)}
       {mode === "register" && <label className="block text-sm font-medium">{copy.name}<input className={inputClass} name="full_name" autoComplete="name" required maxLength={200} /></label>}
@@ -62,8 +67,8 @@ export function AuthForm({ action, mode, policy, hidden = {} }: Props) {
       </>}
       {(localError || state.error) && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{localError || state.error}</p>}
       {state.success && <p role="status" className="rounded-xl bg-tint p-3 text-sm">{state.success}</p>}
-      <button type="submit" disabled={pending || (mode === "resend" && resendCooldown > 0)} onClick={() => { if (mode === "resend") setResendCooldown(30); }} className="min-h-12 w-full cursor-pointer rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-60">{pending ? copy.pending : labels[mode]}</button>
-      {mode === "resend" && resendCooldown > 0 && <p className="text-xs text-muted" role="status">Повторить отправку можно через {resendCooldown} сек.</p>}
+      <button type="submit" disabled={pending || (["resend", "email-login"].includes(mode) && resendCooldown > 0)} className="min-h-12 w-full cursor-pointer rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-60">{pending ? copy.pending : labels[mode]}</button>
+      {["resend", "email-login"].includes(mode) && resendCooldown > 0 && <p className="text-xs text-muted" role="status">Повторить отправку можно через {resendCooldown} сек.</p>}
     </form>
   );
 }

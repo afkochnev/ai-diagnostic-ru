@@ -10,7 +10,7 @@ test("Russian landing, both CTAs, registration entry and responsive layout", asy
   await page.goto("/");
   await expect(page).toHaveURL("/ru");
   await expect(page.locator("html")).toHaveAttribute("lang", "ru");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Определите уровень управления вашей компании и ограничения для её роста.");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Узнайте, что ограничивает рост вашей компании");
   for (const name of ["Что я получу?", "Что оценивается?", "Как это работает?"]) {
     await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
   }
@@ -18,7 +18,7 @@ test("Russian landing, both CTAs, registration entry and responsive layout", asy
   await expect(page.locator("#steps li")).toHaveCount(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("landing.png"), fullPage: true });
-  const ctas = page.getByRole("link", { name: "Перейти к диагностике" });
+  const ctas = page.getByRole("link", { name: "Зарегистрироваться и начать" });
   await expect(ctas).toHaveCount(2);
   for (let index = 0; index < 2; index++) {
     await ctas.nth(index).click();
@@ -43,9 +43,9 @@ test("direct entry, keyboard navigation and localized missing pages", async ({ p
   await expect(page.getByRole("link", { name: "Перейти к содержимому" })).toBeFocused();
   for (let index = 0; index < 8; index++) {
     await page.keyboard.press("Tab");
-    if (await page.getByRole("link", { name: "Перейти к диагностике" }).first().evaluate((element) => element === document.activeElement)) break;
+    if (await page.getByRole("link", { name: "Зарегистрироваться и начать" }).first().evaluate((element) => element === document.activeElement)) break;
   }
-  await expect(page.getByRole("link", { name: "Перейти к диагностике" }).first()).toBeFocused();
+  await expect(page.getByRole("link", { name: "Зарегистрироваться и начать" }).first()).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/ru/register");
   for (const path of ["/ru/missing", "/en"]) {

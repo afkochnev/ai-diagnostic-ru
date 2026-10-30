@@ -12,7 +12,8 @@ import {emailSchema,shortProfileSchema,safeAttribution,acquisitionCookie} from '
 import {requestAccess,accessProof} from './email';
 import {reserveFreeSmoke} from './smoke';
 import {acquisitionStartEnabled} from '@/server-runtime/launch-gates';
-export type AcquisitionState={error?:string;sent?:boolean};
+import {RateLimitExceeded} from '@/server/rate-limit';
+export type AcquisitionState={error?:string;sent?:boolean;retryAfter?:number};
 const message=(e:unknown)=>e instanceof Error && e.message.includes('conflict')?'Данные изменились в другой вкладке. Обновите страницу.':e instanceof Error && e.message.includes('consent')?'Условия обновились. Подтвердите действующее согласие.':e instanceof Error && e.message.includes('advanced_required')?'В тарифе Free можно работать с одной компанией. Выберите существующую компанию или подключите Advanced.':e instanceof Error && e.message.includes('expired')?'Срок хранения диагностики истёк. Начните новую диагностику.':'Не удалось продолжить. Ваши сохранённые ответы остаются доступными до окончания срока хранения.';
 export async function startAnonymous(_:AcquisitionState,form:FormData):Promise<AcquisitionState>{
  let id:string;
@@ -61,7 +62,14 @@ export async function sendAccess(_:AcquisitionState,form:FormData):Promise<Acqui
   stage='request';
   await requestAccess(c.id,c.hash,input);
   return {sent:true};
- }catch(e){const code=e instanceof Error && /^(acquisition_[a-z_]+|rate_limit[a-z_]+)$/.test(e.message)?e.message:'unavailable';console.warn('[acquisition]',{event:'access_request_failed',stage,code});return {sent:true};} // Identical safe external state for new/existing identities and provider failures; no automatic resend.
+ }catch(e){
+  const code=e instanceof Error && /^(acquisition_[a-z_]+|rate_limit[a-z_]+)$/.test(e.message)?e.message:'unavailable';
+  console.warn('[acquisition]',{event:'access_request_failed',stage,code});
+  if(e instanceof RateLimitExceeded)return {error:'Слишком много попыток отправки. Повторите запрос после паузы; ответы сохранены.',retryAfter:e.retryAfter};
+  if(e instanceof Error&&e.message==='acquisition_email_cooldown')return {error:'Повторный запрос можно отправить через минуту. Если письмо уже пришло, используйте ссылку в нём.',retryAfter:60};
+  // The same technical error for every address; never disclose account existence.
+  return {error:'Не удалось отправить письмо. Ваши ответы сохранены. Повторите попытку через минуту.',retryAfter:60};
+ }
 }
 export async function confirmAccess(_:AcquisitionState,form:FormData):Promise<AcquisitionState>{
  void _;void form;

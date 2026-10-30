@@ -14,14 +14,14 @@ export type TeamSynthesisV2 = z.infer<typeof teamSynthesisV2Schema>;
 export const teamReportV2Schema = z.strictObject({
   participant_count: z.number().int().min(3),
   summary: text, main_diagnosis: text, manageability_index_text: text,
-  strengths: z.array(text).min(3).max(5), key_problem_zones: z.array(text).min(3).max(5),
-  growth_constraint: text, implementation_risks: z.array(text).min(4).max(6),
-  first_actions: z.array(text).min(4).max(6),
-  plan_30_days: z.array(text).min(5).max(7), plan_60_days: z.array(text).min(5).max(7), plan_90_days: z.array(text).min(5).max(7),
+  strengths: z.array(text).max(5), key_problem_zones: z.array(text).max(5),
+  growth_constraint: text, implementation_risks: z.array(text).max(6),
+  first_actions: z.array(text).min(1).max(6),
+  plan_30_days: z.array(text).min(1).max(7), plan_60_days: z.array(text).min(1).max(7), plan_90_days: z.array(text).min(1).max(7),
   next_step: text,
   team_analysis: z.strictObject({
-    alignment: z.array(text).min(1).max(12), divergence: z.array(text).max(12),
-    qualitative_signals: z.array(text).max(12), discussion_questions: z.array(text).min(5).max(8),
+    alignment: z.array(text).max(12), divergence: z.array(text).max(12),
+    qualitative_signals: z.array(text).max(12), discussion_questions: z.array(text).min(1).max(8),
   }),
 });
 export type TeamReportV2 = z.infer<typeof teamReportV2Schema>;

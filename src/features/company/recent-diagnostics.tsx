@@ -14,6 +14,17 @@ export function recentDiagnostics(individual: Individual[], teams: Team[]) {
   const timestamp=(value:string)=>Date.parse(value)||0;
   return rows.sort((a,b)=>timestamp(b.date)-timestamp(a.date)||a.id.localeCompare(b.id)||a.type.localeCompare(b.type)).slice(0,5);
 }
+export function companyNextAction(companyId:string, activeId:string|undefined, individual:Individual[], teams:Team[]) {
+  if(activeId) return {href:`/ru/diagnostics/${activeId}`,label:"Продолжить диагностику",description:"Ваши сохранённые ответы уже на месте. Продолжите с того места, где остановились."};
+  const latest=recentDiagnostics(individual,teams)[0];
+  if(!latest) return {href:`/ru/companies/${companyId}/diagnostics?new=1`,label:"Начать диагностику",description:"Выберите индивидуальную или командную диагностику."};
+  if(latest.type==="team") return {
+    href:`/ru/companies/${companyId}/teams/${latest.id}`,
+    label:latest.item.completedParticipants>=3?"Открыть командный результат":latest.item.status==="open"?"Посмотреть готовность команды":"Открыть командную диагностику",
+    description:latest.item.completedParticipants>=3?"Ответили минимум три участника. Проверьте командные результаты и отчёт.":latest.item.status==="open"?`Завершили: ${latest.item.completedParticipants} из необходимых 3. Проверьте участников и приглашения.`:"Сбор ответов завершён. Для командного результата необходимо минимум три завершивших участника.",
+  };
+  return {href:`/ru/diagnostics/${latest.id}${latest.item.diagnostic.status==="in_progress"?"":"/result"}`,label:latest.item.diagnostic.status==="in_progress"?"Продолжить диагностику":latest.item.result?"Открыть результаты и отчёт":"Посмотреть статус результата",description:latest.item.result?"Ваши оценки рассчитаны. Откройте анализ и план действий.":"Проверьте готовность результата. Повторно отвечать на вопросы не нужно."};
+}
 const statuses: Record<string,string>={in_progress:"В процессе",submitted:"Расчёт результатов",scoring:"Расчёт результатов",scoring_failed:"Ошибка расчёта",completed:"Завершена"};
 const date=(value:string)=>Number.isNaN(Date.parse(value))?"—":new Date(value).toLocaleDateString("ru-RU");
 const badge="rounded-full bg-tint px-3 py-1 text-sm font-semibold";

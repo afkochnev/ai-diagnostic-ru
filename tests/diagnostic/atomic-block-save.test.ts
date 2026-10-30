@@ -6,9 +6,10 @@ const migration = readFileSync("supabase/migrations/20260917000100_atomic_diagno
 
 describe("atomic diagnostic block save", () => {
   it("uses one authenticated RPC instead of per-answer network writes", () => {
-    expect(service).toContain('client.rpc("save_diagnostic_block"');
-    expect(service).not.toContain('client.from("answers").upsert');
-    expect(service).not.toContain('client.from("answers").delete');
+    const save = service.slice(service.indexOf("export async function saveDiagnosticAnswers"));
+    expect(save).toContain('client.rpc("save_diagnostic_block"');
+    expect(save).not.toContain('client.from("answers").upsert');
+    expect(save).not.toContain('client.from("answers").delete');
   });
 
   it("keeps ownership, revision, idempotency and set-based writes in one function", () => {

@@ -101,6 +101,39 @@ describe("result viewer passive requests", () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
+  it("keeps a slow existing AI job pending beyond ninety seconds",async()=>{
+    fetchMock.mockImplementation(async()=>Response.json({status:"generating"}));
+    const component=()=>AIReportSection({diagnosticId:"existing",initial:{status:"generating"}});
+    render(component);mountEffects();
+    await vi.advanceTimersByTimeAsync(100_000);
+    const tree=render(component);
+    expect(elements(tree).some(node=>node.props.children==="Готовим аналитический AI-отчёт")).toBe(true);
+    expect(elements(tree).some(node=>node.props.children==="Не удалось подготовить AI-отчёт")).toBe(false);
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(60);
+    expect(fetchMock.mock.calls.every(call=>call[1].method==="GET")).toBe(true);
+  });
+
+  it("distinguishes a failed status read and retries only the read",async()=>{
+    fetchMock.mockRejectedValueOnce(new Error("offline")).mockResolvedValue(Response.json({status:"generating"}));
+    const initial={status:"generating"};const component=()=>AIReportSection({diagnosticId:"existing",initial});
+    render(component);mountEffects();await vi.advanceTimersByTimeAsync(0);
+    let tree=render(component);
+    expect(elements(tree).some(node=>node.props.children==="Сейчас не удалось проверить готовность. Это не означает, что подготовка отчёта остановилась.")).toBe(true);
+    click(tree,"Проверить статус");tree=render(component);mountEffects();await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.every(call=>call[1].method==="GET")).toBe(true);
+  });
+
+  it("shows a real server failure without automatically creating a report",async()=>{
+    fetchMock.mockResolvedValue(Response.json({status:"failed"}));
+    const initial={status:"generating"};const component=()=>AIReportSection({diagnosticId:"existing",initial});
+    render(component);mountEffects();await vi.advanceTimersByTimeAsync(0);
+    const tree=render(component);
+    expect(elements(tree).some(node=>node.props.children==="Не удалось подготовить AI-отчёт")).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1].method).toBe("GET");
+  });
+
   it.each(["completed", "failed"])("does not poll a terminal AI report (%s)", (status) => {
     render(() => AIReportSection({ diagnosticId: "existing", initial: { status, structured_content: {} } }));
     mountEffects();

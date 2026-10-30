@@ -10,8 +10,7 @@ describe("AI report generation progress UX", () => {
     expect(progress).toContain('role="dialog"');
     expect(progress).toContain('aria-modal="true"');
     expect(progress).toContain("Формируем отчёт");
-    expect(progress).toContain("Готовим отчёт о результатах диагностики.");
-    expect(progress).toContain("Это займёт примерно 1–2 минуты.");
+    expect(progress).toContain("Подготовка отчёта займёт от 1 до 2 минут.");
     expect(progress).toContain("Прошло: {elapsed} сек.");
     expect(progress).toContain("elapsed > 120");
     expect(progress).not.toContain("progressbar");

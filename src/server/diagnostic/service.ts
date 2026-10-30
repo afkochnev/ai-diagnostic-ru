@@ -2,6 +2,7 @@ import "server-only";
 import { createAuthClient } from "@/server/supabase/server";
 import { AccountAccessError, requireCompanyRead, requireCompanyWrite, requireDiagnosticRead, requireDiagnosticWrite } from "@/server/account/authorization";
 import { getOwnCompany } from "@/server/company/queries";
+import { profileAnswerPrefill } from "./profile-prefill";
 
 export type DiagnosticAnswerInput = { question_id: string; value: number | string | null };
 export type SaveDiagnosticResult = { revision: number; current_block_id: string };
@@ -55,6 +56,13 @@ export async function createDiagnostic(userId: string, companyId?: string) {
     if (retry) return { id: retry.id, existing: true };
   }
   if (error || !data) throw new DiagnosticError("invalid", "Diagnostic could not be created");
+  const { data: contextQuestions } = await client.from("questions").select("id,key,answer_type").eq("version_id", version.id).eq("is_active", true).in("key", ["main_management_problem", "main_company_goal"]);
+  const prefill = profileAnswerPrefill(contextQuestions ?? [], company);
+  if (prefill.length) {
+    // Only a newly created diagnostic is seeded. A concurrent answer always wins.
+    const { error: prefillError } = await client.from("answers").upsert(prefill.map((answer) => ({ ...answer, diagnostic_id: data.id, version_id: version.id })), { onConflict: "diagnostic_id,question_id", ignoreDuplicates: true });
+    if (prefillError) console.warn("[diagnostic]", { event: "profile_prefill_unavailable" });
+  }
   return { id: data.id, existing: false };
 }
 

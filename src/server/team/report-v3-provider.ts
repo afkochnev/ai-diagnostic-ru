@@ -9,14 +9,17 @@ import { TEAM_REPORT_V3, mainTeamReportInputV3, teamReportV3Schema, teamSynthesi
 import { repairResponseSchema, type RepairField } from "./synthesis-repair";
 import { currentControlledTeamAI } from "./controlled-ai-transport";
 import {controlledTeamRequired} from '@/server-runtime/team-smoke';
+import { reportEditorialStyle } from "./quality/editorial-style";
 
 async function structured<T>(kind:"synthesis"|"report"|"repair"|"report_repair",input:unknown,schema:z.ZodType<T>,counts:TeamCallCounts) {
   if(controlledTeamRequired()&&!currentControlledTeamAI())throw Error('controlled_team_claim_required');
   const config=teamAIProvider(TEAM_REPORT_V3);
   const promptFile=kind==="synthesis"?"TEAM_SYNTHESIS_PROMPT_RU_3.md":kind==="report"?"TEAM_REPORT_PROMPT_RU_3.md":kind==="repair"?"TEAM_SYNTHESIS_REPAIR_PROMPT_RU_2.md":"TEAM_REPORT_REPAIR_PROMPT_RU_2.md";
   counts[kind==="synthesis"?"synthesis_call_count":kind==="report"?"report_call_count":"repair_call_count"]++;
+  const sourcePrompt=readFileSync(join(process.cwd(),promptFile),"utf8");
+  const prompt=kind==="report"?`${sourcePrompt}\n\n## Редакторские правила\n${reportEditorialStyle}`:sourcePrompt;
   const body={model:config.model,store:false,max_output_tokens:kind==="report"?14000:6000,
-    input:[{role:"system" as const,content:readFileSync(join(process.cwd(),promptFile),"utf8")},{role:"user" as const,content:`<UNTRUSTED_TEAM_EVIDENCE>\n${JSON.stringify(input)}\n</UNTRUSTED_TEAM_EVIDENCE>`}],
+    input:[{role:"system" as const,content:prompt},{role:"user" as const,content:`<UNTRUSTED_TEAM_EVIDENCE>\n${JSON.stringify(input)}\n</UNTRUSTED_TEAM_EVIDENCE>`}],
     text:{format:{type:"json_schema" as const,name:`team_${kind}_ru_3`,strict:true as const,schema:z.toJSONSchema(schema)}}};
   const controlled=currentControlledTeamAI();
   const response=controlled?await controlled.create(kind==="report"?"main_report":kind==="repair"?"synthesis_repair":kind,body):await new OpenAI({apiKey:process.env.OPENAI_API_KEY,maxRetries:0,timeout:180000,fetch:(input,init)=>fetch(input,{...init,redirect:"error"})}).responses.create(body);

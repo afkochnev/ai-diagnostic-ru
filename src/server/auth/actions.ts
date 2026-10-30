@@ -65,7 +65,20 @@ export async function loginAction(_: AuthState, form: FormData): Promise<AuthSta
   await clearRecovery();
   revalidatePath("/", "layout");
   if (value(form, "next") === "team-invitation") redirect("/ru/team/join");
-  redirect("/ru");
+  redirect("/ru/account");
+}
+
+export async function emailLoginAction(_: AuthState, form: FormData): Promise<AuthState> {
+  const parsed = emailSchema.safeParse(value(form, "email").trim());
+  if (!parsed.success) return { error: text.badEmail };
+  const client = await actionClient();
+  const { error } = await client.auth.signInWithOtp({
+    email: parsed.data,
+    options: { shouldCreateUser: false, emailRedirectTo: `${authConfig().APP_URL}/auth/confirm` },
+  });
+  if (error && !["otp_disabled", "user_not_found", "signup_disabled"].includes(error.code ?? "")) return failure(error);
+  // The same acknowledgment covers existing and unknown accounts.
+  return { success: "Если этот email зарегистрирован, мы отправили ссылку для входа. Проверьте входящие и папку «Спам»." };
 }
 
 export async function logoutAction() {
@@ -100,7 +113,7 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
   const type = value(form, "type");
   const token_hash = value(form, "token_hash");
   const code = value(form, "code");
-  if (!["signup", "recovery", "email"].includes(type)) return { error: text.invalidLink };
+  if (!["signup", "recovery", "email"].includes(type)) return { error: text.invalidLink, code: "invalid_link" };
   const requestHeaders = await headers();
   const requestCookies = await cookies();
   const cookieNames = requestCookies.getAll().map((cookie) => cookie.name);
@@ -131,27 +144,28 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
     console.info("[auth-confirm]", { checkpoint: "verify_otp_result", verify_success: Boolean(data.user), session_present: Boolean(data.session), user_present: Boolean(data.user), safe_error_name: exchangeError?.name ?? null, safe_error_code: exchangeError?.code ?? null, safe_error_status: exchangeError?.status ?? null, safe_failure_category: exchangeError ? "otp_verification_failed" : null });
     console.info("[auth-confirm]", { checkpoint: "session_persisted", session_cookie_present: Boolean(data.session) });
   }
+  if (exchangeError?.status === 429 || (exchangeError?.status ?? 0) >= 500 || exchangeError?.name === "AuthRetryableFetchError") return failure(exchangeError);
   if (!data?.user) {
     if (type === "signup") {
       const { data: current } = await client.auth.getUser();
       if (current.user?.email_confirmed_at) {
         await clearRecovery();
         revalidatePath("/", "layout");
-        redirect("/ru?welcome=1");
+        redirect("/ru/verification-complete");
       }
     }
-    return { error: text.invalidLink };
+    return { error: text.invalidLink, code: "invalid_link" };
   }
   if (type === "recovery") {
     const { data: claims } = await client.auth.getClaims();
     const sessionId = claims?.claims.session_id;
-    if (typeof sessionId !== "string") return { error: text.invalidLink };
+    if (typeof sessionId !== "string") return { error: text.invalidLink, code: "invalid_link" };
     await setRecovery(data.user.id, sessionId);
     redirect("/ru/reset-password");
   }
   await clearRecovery();
   revalidatePath("/", "layout");
-  redirect("/ru?welcome=1");
+  redirect(type === "signup" ? "/ru/verification-complete" : "/ru/account");
 }
 
 export async function resetAction(_: AuthState, form: FormData): Promise<AuthState> {

@@ -6,13 +6,14 @@ const scale = { id: "scale", answer_type: "scale_0_4", is_required: true } as co
 const text = { id: "text", answer_type: "text", is_required: true } as const;
 
 describe("diagnostic runner required-answer validation", () => {
-  it("renders a visible validation alert and cancels pending autosave", () => {
+  it("renders a visible validation alert and saves partial answers immediately", () => {
     const source = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "utf8");
     expect(source).toContain('data-testid="required-answer-error"');
     expect(source).toContain("Ответьте на все обязательные вопросы, чтобы продолжить.");
     const validationBranch = source.indexOf("if (validateRequired && missing.length)");
     expect(validationBranch).toBeGreaterThan(-1);
     expect(source.indexOf("clearTimeout(timer.current); timer.current = null;", validationBranch)).toBeLessThan(source.indexOf("setValidationError", validationBranch));
+    expect(source.indexOf("void save(currentBlock.id);", validationBranch)).toBeLessThan(source.indexOf("setValidationError", validationBranch));
   });
 
   it("serializes autosave and explicit block saves", () => {
