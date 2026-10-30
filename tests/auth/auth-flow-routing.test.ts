@@ -21,8 +21,8 @@ describe("staging auth flow contract", () => {
     expect(action).toContain("return { error: text.invalidLink }");
   });
 
-  it("routes normal login to the landing page and makes its CTA onboarding-aware", () => {
-    expect(action).toContain('redirect("/ru");');
+  it("continues normal login into the workspace and keeps the public CTA onboarding-aware", () => {
+    expect(action).toContain('redirect("/ru/account");');
     expect(landing).toContain("authenticated={Boolean(identity)}");
     expect(landingView).toContain('authenticated ? "/account" : "/register"');
   });

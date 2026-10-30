@@ -17,7 +17,7 @@ export async function requestAccess(id:string,secretHash:string,input:z.infer<ty
  await reserveFreeSmoke('email');
  const nonce=newSecret();
  const reserved=await sessionRpc<{reserved:boolean;create_user?:boolean;generation?:number}>('email',id,secretHash,{...input,nonce_hash:hash(nonce)});
- if(!reserved.reserved)return;
+ if(!reserved.reserved)throw Error('acquisition_email_cooldown');
  const admin=createAdminClient(),type=reserved.create_user?'invite':'magiclink';
  const generated=await admin.auth.admin.generateLink({type,email:input.email,options:{redirectTo:`${authConfig().APP_URL}/ru/free/confirm`,...(reserved.create_user?{data:{anonymous_pending_nonce:nonce}}:{})}});
  if(generated.error)console.warn('[acquisition]',{event:'access_generation_failed',status:generated.error.status??null,code:/^[a-z_]+$/.test(generated.error.code??'')?generated.error.code:'unavailable'});

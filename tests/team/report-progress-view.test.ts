@@ -20,6 +20,14 @@ function view(status: string) {
   return reportsView([report(status)]);
 }
 describe("Team result report lifecycle", () => {
+  it("puts the ready report, plans and PDF before detailed statistics without losing history",()=>{
+    const html=reportsView([report("completed",{id:"ready",version:2}),report("completed",{id:"older",version:1})]);
+    expect(html.indexOf("AI-отчёт команды")).toBeLessThan(html.indexOf('id="team-statistics"'));
+    expect(html.indexOf("Скачать PDF")).toBeLessThan(html.indexOf('id="team-statistics"'));
+    for(const days of [30,60,90])expect(html).toContain(`href="#report-ready-plan_${days}_days"`);
+    expect(html).toContain('id="report-older"');
+    expect(html).toContain('id="team-statistics-details"');
+  });
   it.each(["queued", "generating"])("monitors %s and does not offer another report request", status => {
     const html = view(status);
     expect(html).toContain("Автоматическая проверка и таймер");
@@ -58,7 +66,7 @@ describe("Team result report lifecycle", () => {
     expect(html).toContain('data-intent="regenerate"');
     expect(html).toContain('data-previous-report-id="real"');
     expect(html).not.toContain("Можно подготовить реальный AI-отчёт");
-    expect(html).toMatch(/<details open=""[^>]*><summary[^>]*>Версия 1 /);
+    expect(html).toMatch(/<details[^>]* open=""[^>]*><summary[^>]*>Версия 1 /);
     expect(html).toContain("Версия 2");
     expect(html.match(/Скачать PDF/g)).toHaveLength(2);
   });
@@ -67,7 +75,7 @@ describe("Team result report lifecycle", () => {
     expect(html).toContain("Автоматическая проверка и таймер");
     expect(html).not.toContain("Обновить AI-отчёт");
     expect(html).toContain("Версия 1");
-    expect(html).toMatch(/<details open=""[^>]*><summary[^>]*>Версия 1 /);
+    expect(html).toMatch(/<details[^>]* open=""[^>]*><summary[^>]*>Версия 1 /);
   });
   it.each(["queued","generating"])("keeps the old real report open while monitoring its newer real %s attempt",status=>{
     const html=reportsView([
@@ -77,7 +85,7 @@ describe("Team result report lifecycle", () => {
     ]);
     expect(html).toContain("Автоматическая проверка и таймер");
     expect(html).toContain("Сохранённый анализ команды");
-    expect(html).toMatch(/<details open=""[^>]*><summary[^>]*>Версия 1 /);
+    expect(html).toMatch(/<details[^>]* open=""[^>]*><summary[^>]*>Версия 1 /);
     expect(html).toContain("Версия 3");
     expect(html.match(/Скачать PDF/g)).toHaveLength(2);
     expect(html).not.toContain("Обновить AI-отчёт");
@@ -94,7 +102,7 @@ describe("Team result report lifecycle", () => {
     expect(html).not.toContain("data-previous-report-id");
     expect(html).not.toContain("Автоматическая проверка и таймер");
     expect(html).toContain("Сохранённый анализ команды");
-    expect(html).toMatch(/<details open=""[^>]*><summary[^>]*>Версия 1 /);
+    expect(html).toMatch(/<details[^>]* open=""[^>]*><summary[^>]*>Версия 1 /);
     expect(html).toContain("Скачать PDF");
   });
 });

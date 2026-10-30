@@ -48,8 +48,10 @@ test("registration, verification, login, password recovery, logout and role isol
   const confirm = await emailLink(request, email, "Подтвердите email");
   await page.goto(confirm);
   await page.getByRole("button", { name: "Подтвердить email", exact: true }).click();
-  await expect(page).toHaveURL("/ru?welcome=1");
-  await expect(page.getByRole("heading", { name: "Определите уровень управления вашей компании и ограничения для её роста.", exact: true })).toBeVisible();
+  await expect(page).toHaveURL("/ru/verification-complete");
+  await expect(page.getByRole("heading", { name: "Email подтверждён", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Рассказать о компании и начать", exact: true }).click();
+  await expect(page).toHaveURL("/ru/company-profile");
   await page.goto("/ru/admin");
   await expect(page).toHaveURL("/ru/access-denied");
   await page.getByRole("button", { name: "Выйти", exact: true }).click();
@@ -63,7 +65,7 @@ test("registration, verification, login, password recovery, logout and role isol
   await page.locator('input[name="email"]:visible').first().fill(email);
   await page.locator('input[name="password"]').fill(password);
   await page.getByRole("button", { name: "Вход", exact: true }).click();
-  await expect(page).toHaveURL("/ru");
+  await expect(page).toHaveURL("/ru/company-profile");
   await page.getByRole("button", { name: "Выйти", exact: true }).click();
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Создание профиля компании", exact: true })).toHaveCount(0);

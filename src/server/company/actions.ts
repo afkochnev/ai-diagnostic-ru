@@ -77,10 +77,10 @@ async function saveProfile(form: FormData, creationSource?: string | null, creat
   const client = await createAuthClient();
   const [{ data: industry }, { data: revenue }] = await Promise.all([
     client.from("industry_translations").select("industry_key").eq("industry_key", parsed.data.industry_key).eq("locale", "ru").maybeSingle(),
-    client.from("revenue_range_translations").select("revenue_key").eq("revenue_key", parsed.data.annual_revenue_key).eq("locale", "ru").maybeSingle(),
+    parsed.data.annual_revenue_key ? client.from("revenue_range_translations").select("revenue_key").eq("revenue_key", parsed.data.annual_revenue_key).eq("locale", "ru").maybeSingle() : Promise.resolve({ data: null }),
   ]);
   if (!industry) return { error: copy.invalidIndustry, fieldErrors: { industry_key: copy.invalidIndustry }, values };
-  if (!revenue) return { error: copy.invalidRevenue, fieldErrors: { annual_revenue_key: copy.invalidRevenue }, values };
+  if (parsed.data.annual_revenue_key && !revenue) return { error: copy.invalidRevenue, fieldErrors: { annual_revenue_key: copy.invalidRevenue }, values };
   const expectedRevision = Number(value(form, "revision") || "0");
   if (existing && (!Number.isInteger(expectedRevision) || expectedRevision !== existing.revision)) return { error: copy.conflictError, values };
   const payload = { ...parsed.data, revision: existing ? existing.revision + 1 : 1 };
@@ -93,5 +93,5 @@ async function saveProfile(form: FormData, creationSource?: string | null, creat
   revalidatePath("/ru/companies");
   revalidatePath(`/ru/companies/${result.data.id}`);
   revalidatePath(`/ru/companies/${result.data.id}/profile`);
-  redirect(creationSource !== undefined ? `/ru/companies/${result.data.id}/profile` : destination(form, result.data.id));
+  redirect(!existing ? `/ru/companies/${result.data.id}/diagnostics?new=1#choose` : destination(form, result.data.id));
 }

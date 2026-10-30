@@ -105,7 +105,11 @@ describe("flat current-Account Companies page", () => {
   it("does not aggregate several memberships without a valid default workspace", async () => {
     state.accounts = state.accounts.map(a => ({ ...a, legacy_origin_user_id: null }));
     const html = renderToStaticMarkup(await CompanyList({ userId: "owner" }));
-    expect(html).toContain("Не удалось определить текущую рабочую область");
+    expect(html).toContain("Выберите рабочую область");
+    expect(html).toContain('href="/ru/accounts/advanced/companies"');
+    expect(html).toContain('href="/ru/accounts/personal/companies"');
+    expect(html).not.toContain("Чужая компания");
+    expect(html).not.toContain("/ru/accounts/foreign/");
     expect(state.listCompanies).not.toHaveBeenCalled(); expect(state.getPlan).not.toHaveBeenCalled();
   });
   it("passes the explicit Companies URL scope through to the page", async () => {

@@ -27,7 +27,7 @@ describe('V25 one passwordless access email',()=>{
   const req=state.generate.mock.calls[0][0];expect(req.type).toBe('invite');expect(Object.keys(req.options.data)).toEqual(['anonymous_pending_nonce']);expect(req.options.data.anonymous_pending_nonce).toMatch(/^[a-f0-9]{64}$/);expect(req.options.data).not.toHaveProperty('role');
  });
  it('atomic cooldown reservation blocks double sends before Auth link generation',async()=>{
-  state.reserve.mockResolvedValueOnce({reserved:false});await requestAccess('10000000-0000-4000-8000-000000000001','a'.repeat(64),input);expect(state.generate).not.toHaveBeenCalled();expect(state.sent).not.toHaveBeenCalled();
+  state.reserve.mockResolvedValueOnce({reserved:false});await expect(requestAccess('10000000-0000-4000-8000-000000000001','a'.repeat(64),input)).rejects.toThrow('acquisition_email_cooldown');expect(state.generate).not.toHaveBeenCalled();expect(state.sent).not.toHaveBeenCalled();
  });
  it('mismatched Auth identity fails before any provider call',async()=>{
   state.generate.mockResolvedValueOnce({data:{properties:{verification_type:'magiclink',hashed_token:'a'.repeat(64)},user:{email:'other@example.test'}},error:null});await expect(requestAccess('10000000-0000-4000-8000-000000000001','a'.repeat(64),input)).rejects.toThrow('email_unavailable');expect(state.sent).not.toHaveBeenCalled();

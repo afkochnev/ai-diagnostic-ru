@@ -142,7 +142,7 @@ function companyForm(extra: Record<string, string>) {
 describe("company profile mutations", () => {
   it("creates another company in the explicit account and retains existing company IDs", async () => {
     const form = companyForm({ account_id: ACCOUNT, return_to: "https://untrusted.example" });
-    await expect(createCompanyProfileAction(COMPANY, {}, form)).rejects.toThrow("redirect:/ru/companies/60000000-0000-4000-8000-000000000006/profile");
+    await expect(createCompanyProfileAction(COMPANY, {}, form)).rejects.toThrow("redirect:/ru/companies/60000000-0000-4000-8000-000000000006/diagnostics?new=1#choose");
     expect(state.tables.company_profiles[0].id).toBe(COMPANY);
     expect(state.writes).toHaveLength(1);
     expect(state.writes[0]).toMatchObject({ table: "company_profiles", values: { account_id: ACCOUNT, owner_user_id: USER, revision: 1 } });
@@ -355,7 +355,7 @@ describe("V21B authoritative multi-company creation", () => {
   it("creates the first Company in an explicitly server-bound accessible Account", async () => {
     state.tables.company_profiles = [];
     state.tables.account_memberships.push({ account_id: OTHER_ACCOUNT, user_id: USER, role: "owner", status: "active" });
-    await expect(createCompanyForAccountAction(ACCOUNT, null, {}, companyForm({ account_id: ACCOUNT }))).rejects.toThrow("/profile");
+    await expect(createCompanyForAccountAction(ACCOUNT, null, {}, companyForm({ account_id: ACCOUNT }))).rejects.toThrow("/diagnostics?new=1#choose");
     expect(state.writes.map(write => write.table)).toEqual(["company_profiles"]);
     expect(state.writes[0].values.account_id).toBe(ACCOUNT);
   });
@@ -377,7 +377,7 @@ describe("V21B authoritative multi-company creation", () => {
   it("derives the sole account for a first company without inserting an account or membership", async () => {
     state.tables.company_profiles = [];
     const before = JSON.stringify([state.tables.accounts, state.tables.account_memberships]);
-    await expect(createCompanyProfileAction(null, {}, companyForm({}))).rejects.toThrow("/profile");
+    await expect(createCompanyProfileAction(null, {}, companyForm({}))).rejects.toThrow("/diagnostics?new=1#choose");
     expect(state.writes.map((write) => write.table)).toEqual(["company_profiles"]);
     expect(state.writes[0].values).toMatchObject({ account_id: ACCOUNT, owner_user_id: USER });
     expect(JSON.stringify([state.tables.accounts, state.tables.account_memberships])).toBe(before);
@@ -410,7 +410,7 @@ describe("V21B authoritative multi-company creation", () => {
     expect(await createCompanyProfileAction(COMPANY, {}, companyForm({}))).toHaveProperty("error");
     expect(state.writes).toEqual([]);
     state.tables.company_profiles = [];
-    await expect(createCompanyProfileAction(null, {}, companyForm({}))).rejects.toThrow("/profile");
+    await expect(createCompanyProfileAction(null, {}, companyForm({}))).rejects.toThrow("/diagnostics?new=1#choose");
   });
 
   it("does not use the global administrator role as a company membership substitute", async () => {

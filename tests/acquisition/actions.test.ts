@@ -11,6 +11,7 @@ vi.mock('@/server/supabase/server',()=>({createAuthClient:async()=>({auth:s.auth
 vi.mock('@/server/supabase/config',()=>({authConfig:()=>({APP_URL:'https://example.test',secure:true})}));
 vi.mock('@/server/auth/session',()=>({getIdentity:s.identity}));
 vi.mock('@/server/auth/legal',()=>({registrationPolicy:s.policy}));
+import {RateLimitExceeded} from '@/server/rate-limit';
 import {startAnonymous,sendAccess,confirmAccess,finishClaim} from '@/server/acquisition/actions';
 const form=(values:Record<string,string>)=>{const f=new FormData();Object.entries(values).forEach(([k,v])=>f.set(k,v));return f;};
 beforeEach(()=>{vi.clearAllMocks();s.guard.mockResolvedValue(undefined);s.identity.mockResolvedValue(null);s.context.mockResolvedValue({id:'session',hash:'hash',secret:'secret'});s.policy.mockResolvedValue({versions:{data_processing:'current',marketing:'current'}});s.session.mockResolvedValue({consent_version:'current',marketing_version:'current'});s.rpc.mockResolvedValue({id:'new-session',consent_version:'current',marketing_version:'current'});s.request.mockResolvedValue(undefined);s.jarGet.mockImplementation((k:string)=>({value:k==='aca-access'?'envelope':'session'}));});
@@ -29,6 +30,19 @@ describe('V25 server actions preserve authority before external work',()=>{
  it('validates name/email and leaves marketing optional',async()=>{
   expect((await sendAccess({},form({email:'invalid',display_name:'Name',marketing_version:'current'}))).error).toContain('email');expect(s.request).not.toHaveBeenCalled();
   expect(await sendAccess({},form({email:'synthetic@example.test',display_name:'Name',marketing_version:'current'}))).toEqual({sent:true});expect(s.request).toHaveBeenCalledWith('session','hash',expect.objectContaining({marketing_granted:false}));
+ });
+ it('reports provider failures honestly without disclosing identity details',async()=>{
+  const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});
+  s.request.mockRejectedValue(Error('provider_private_detail'));
+  const result=await sendAccess({},form({email:'synthetic@example.test',display_name:'Name',marketing_version:'current'}));
+  expect(result.sent).toBeUndefined();expect(result.error).toContain('Не удалось отправить');expect(result.error).not.toContain('provider_private_detail');expect(result.retryAfter).toBe(60);
+  warn.mockRestore();
+ });
+ it('preserves the explicit retry time and does not invoke the provider when rate limited',async()=>{
+  const warn=vi.spyOn(console,'warn').mockImplementation(()=>{});
+  s.limit.mockRejectedValueOnce(new RateLimitExceeded(120));
+  const result=await sendAccess({},form({email:'synthetic@example.test',display_name:'Name',marketing_version:'current'}));
+  expect(result).toMatchObject({retryAfter:120});expect(result.sent).toBeUndefined();expect(s.request).not.toHaveBeenCalled();warn.mockRestore();
  });
  it('requires updated data consent before any new access email',async()=>{
   s.session.mockResolvedValue({consent_version:'old'});const result=await sendAccess({},form({email:'synthetic@example.test',display_name:'Name',marketing_version:'current'}));expect(result.error).toContain('согласие');expect(s.request).not.toHaveBeenCalled();

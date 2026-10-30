@@ -13,7 +13,7 @@ export async function CompanyList({ userId, accountId }: { userId: string; accou
   if (context.kind === "denied") redirect("/ru/access-denied");
   if (context.kind !== "selected") return <main id="main-content" className="min-h-[70vh] py-10 sm:py-14"><Container>
     <h1 className="text-3xl font-semibold tracking-tight">Компании</h1>
-    <p className="mt-6 text-muted">{context.kind === "missing" ? "Нет доступной рабочей области. Обратитесь в поддержку." : "Не удалось определить текущую рабочую область. Откройте компании по ссылке вашей рабочей области."}</p>
+    {context.kind === "missing" ? <p className="mt-6 text-muted">Нет доступной рабочей области. Обратитесь в поддержку.</p> : <><p className="mt-6 text-muted">Выберите рабочую область, чтобы открыть её компании и диагностики.</p><ul className="mt-6 grid gap-4 sm:grid-cols-2">{context.accounts.map(account => <li key={account.id}><Card><h2 className="text-xl font-semibold">{account.name}</h2><Link href={`/ru/accounts/${account.id}/companies`} className="mt-4 inline-flex min-h-12 items-center rounded-xl border border-line px-5 py-3 font-semibold hover:bg-tint">Открыть компании</Link></Card></li>)}</ul></>}
   </Container></main>;
   const { account } = context;
   const [plan, scopedCompanies, references] = await Promise.all([getAccountPlan(account.id), listAccessibleCompanies(userId, account.id), getReferenceData()]);
