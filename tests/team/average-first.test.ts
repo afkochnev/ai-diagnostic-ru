@@ -53,6 +53,18 @@ describe("TEAM-RU-3 average-first",()=>{
     expect(()=>validateCoreQuality({...r,main_diagnosis:r.summary},"openai",s)).toThrow("team_quality_rejected");
     expect(()=>validateCoreQuality({...r,summary:"Тестовый отчёт компании"},"openai",s)).toThrow("team_quality_rejected");
   });
+  it("does not require prescribed source words to accept an explanation based on participant responses",()=>{
+    const r=reportFixture(),s=mockTeamSynthesisV3(qualitativeFixture());
+    const withoutLabels={...r};
+    for(const key of Object.keys(r) as (keyof typeof r)[]) {
+      if(key==="team_analysis"||key==="participant_count")continue;
+      const rewrite=(text:string)=>text.replace(/качествен\S*|открыт\S*|описан\S*/giu,"анкетные");
+      const value=r[key];
+      Object.assign(withoutLabels,{[key]:Array.isArray(value)?value.map(rewrite):rewrite(value)});
+    }
+    expect(coreText(withoutLabels)).not.toMatch(/качествен|открыт|описан/iu);
+    expect(()=>validateCoreQuality(withoutLabels,"openai",s)).not.toThrow();
+  });
   it("mock templates pass the complete raw corpus gate without copying open answers",()=>{
     const q=qualitativeFixture(),report=reportFixture();
     expect(inspectReportPrivacy(report,{threshold:32,answers:q.groups[0].texts.map(text=>({question_index:1,text})),identifiers:["Анна","member@example.test"]}).violations).toEqual([]);

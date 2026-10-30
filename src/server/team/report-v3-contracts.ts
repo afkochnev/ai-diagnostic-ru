@@ -37,10 +37,12 @@ export function coreText(report: TeamReportV2) {
   return Object.values(core).flat().join("\n");
 }
 export function validateCoreQuality(report: TeamReportV2, provider: "mock"|"openai", synthesis: TeamSynthesisV2) {
+  // Coverage is checked before generation. Prescribed source words cannot
+  // establish whether the report actually uses the anonymous evidence.
+  void synthesis;
   const text=coreText(report);
   if(/stddev|variance|distribution|дисперси|разброс|поляризац|расхождени|разных? картин|противоположн.{0,20}оцен|среднее скрывает|по-разному оценива/iu.test(text)) throw new Error("team_quality_rejected");
   if(provider==="openai" && /тестовый отчёт|тестовая гипотеза|тестовое ограничение/iu.test(text)) throw new Error("team_quality_rejected");
-  if(managementKeys.some(k=>synthesis[k].length) && !/качествен|открыт.{0,12}ответ|описан.{0,12}ситуац/iu.test(text)) throw new Error("team_qualitative_insufficient");
   const paragraphs=Object.values(report).flat().filter((x):x is string=>typeof x==="string");
   if(new Set(paragraphs).size!==paragraphs.length) throw new Error("team_quality_rejected");
 }
