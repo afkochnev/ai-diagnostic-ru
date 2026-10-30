@@ -22,7 +22,7 @@ export async function teamRpc<T>(name: string, args: Record<string, unknown>): P
   const { client } = await teamClient();
   const { data, error } = await (client as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: T; error: { message: string } | null }> }).rpc(name, args);
   if (error) {
-    const safe = ["advanced_required", "team_not_found", "team_closed", "team_invalid_input", "team_already_invited", "team_participant_limit", "team_invitation_unavailable", "team_response_unavailable", "team_revision_conflict", "team_response_completed", "team_invalid_answers", "team_required_answers_missing", "team_methodology_missing", "team_policy_changed", "team_report_changed", "team_report_in_progress", "team_aggregate_pending"];
+    const safe = ["advanced_required", "team_not_found", "team_closed", "team_invalid_input", "team_already_invited", "team_participant_limit", "team_invitation_unavailable", "team_response_unavailable", "team_result_incomplete", "team_result_unavailable", "team_revision_conflict", "team_response_completed", "team_invalid_answers", "team_required_answers_missing", "team_methodology_missing", "team_policy_changed", "team_report_changed", "team_report_in_progress", "team_aggregate_pending"];
     throw new Error(safe.includes(error.message) ? error.message : "team_request_failed");
   }
   return data;
