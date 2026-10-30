@@ -10,6 +10,7 @@ import { repairResponseSchema, type RepairField } from "./synthesis-repair";
 import { currentControlledTeamAI } from "./controlled-ai-transport";
 import {controlledTeamRequired} from '@/server-runtime/team-smoke';
 import { logTeamAIStageFailure, type TeamAIStage, type TeamAIPhase } from "./ai-stage-diagnostics";
+import { reportEditorialStyle } from "./quality/editorial-style";
 
 async function structured<T>(kind:TeamAIPhase,input:unknown,schema:z.ZodType<T>,counts:TeamCallCounts) {
   const requiresControlled=controlledTeamRequired();
@@ -21,7 +22,8 @@ async function structured<T>(kind:TeamAIPhase,input:unknown,schema:z.ZodType<T>,
   const controlled=currentControlledTeamAI();
   let stage:TeamAIStage="prompt_read";
   try {
-    const prompt=readFileSync(join(process.cwd(),promptFile),"utf8");
+    const sourcePrompt=readFileSync(join(process.cwd(),promptFile),"utf8");
+    const prompt=kind==="report"?`${sourcePrompt}\n\n## Редакторские правила\n${reportEditorialStyle}`:sourcePrompt;
     stage="serialization";
     const evidence=`<UNTRUSTED_TEAM_EVIDENCE>\n${JSON.stringify(input)}\n</UNTRUSTED_TEAM_EVIDENCE>`;
     stage="schema_conversion";

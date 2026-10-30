@@ -13,7 +13,7 @@ const logo=()=>`data:image/png;base64,${readFileSync(path.join(process.cwd(),TEA
 const escape=(v:unknown)=>normalizePdfText(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
 const narrativeHeadings=new Set(["Стратегия","Организационная структура","Процессы и операционная эффективность","Цели и показатели","Управленческий ритм","Зрелость команды","Инновации и развитие","Корпоративная культура","Как связаны выявленные проблемы"]);
 const paragraph=(v:string)=>v.split(/\n\s*\n/u).map(p=>narrativeHeadings.has(p.trim())?`<h3>${escape(p)}</h3>`:`<p>${escape(p).replaceAll("\n","<br>")}</p>`).join("");
-const body=(v:string|string[])=>Array.isArray(v)?`<ol>${v.map(p=>`<li>${paragraph(p)}</li>`).join("")}</ol>`:paragraph(v);
+const body=(v:string|string[])=>Array.isArray(v)?v.length?`<ol>${v.map(p=>`<li>${paragraph(p)}</li>`).join("")}</ol>`:"<p>Недостаточно допустимых свидетельств для отдельного вывода.</p>":paragraph(v);
 const level=(sd:number,scale:4|100)=>{const l=classifyDispersion(sd,scale);return `<span class="dispersion" data-dispersion-level="${l.key}">${formatDispersionPercent(sd,scale)}<br><small>${l.label}</small></span>`;};
 function legend(){return `<section class="legend"><h2>Как читать разброс оценок</h2><p>${dispersionDisclaimer}</p><dl>${Object.values(dispersionDescriptions).map(l=>`<dt>${l.label}</dt><dd>${l.description}</dd>`).join("")}</dl><p>${smallGroupDispersionNote}</p><p class="note">Версия интерпретации ${DISPERSION_INTERPRETATION_VERSION}. Во всех таблицах разброс указан в % от диапазона шкалы. Разброс делится на диапазон шкалы и умножается на 100: для индекса и блоков диапазон 100, для вопросов — 4. Низкий уровень — до 10% включительно; умеренный — свыше 10% до 20%; высокий — свыше 20% до 30%; очень высокий — свыше 30%. Границы являются продуктовой интерпретацией, а не универсальным статистическим законом. Уровень определяется до округления: одинаково отображаемые числа могут относиться к разным уровням.</p></section>`;}
 function summary(input:TeamPdfInput){
@@ -22,7 +22,7 @@ function summary(input:TeamPdfInput){
 }
 function dynamicsAnnotation(profile:DispersionProfile|undefined,descending:boolean){
  if(!profile?.questions.length)return "";
- return `<aside class="evidence"><h3>Программные показатели к разделу</h3><p class="note">Среднее не определяет степень согласованности. Здесь показаны ${descending?"наибольшие":"наименьшие"} показатели разброса; при равенстве используется порядок вопросов.</p><ul>${orderedDispersionQuestions(profile.questions,descending).slice(0,5).map(q=>`<li>${escape(q.question)}<br><span class="note">Среднее ${number(q.mean)} из 4 · Разброс ${formatDispersionPercent(q.stddev,4)} — ${classifyDispersion(q.stddev,4).label.toLocaleLowerCase("ru-RU")}</span></li>`).join("")}</ul></aside>`;
+ return `<aside class="evidence"><h3>${descending?"Наибольший разброс оценок":"Наименьший разброс оценок"}</h3><p class="note">Здесь показаны до пяти вопросов с ${descending?"наибольшим":"наименьшим"} разбросом оценок участников. При одинаковом разбросе вопросы идут в порядке анкеты.</p><ul>${orderedDispersionQuestions(profile.questions,descending).slice(0,5).map(q=>`<li>${escape(q.question)}<br><span class="note">Среднее ${number(q.mean)} из 4 · Разброс ${formatDispersionPercent(q.stddev,4)} — ${classifyDispersion(q.stddev,4).label.toLocaleLowerCase("ru-RU")}</span></li>`).join("")}</ul></aside>`;
 }
 function appendix(profile:DispersionProfile|undefined){
  if(!profile?.questions.length)return "";

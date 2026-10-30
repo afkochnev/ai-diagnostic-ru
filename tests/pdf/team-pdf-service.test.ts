@@ -40,11 +40,11 @@ describe("Team PDF artifact boundary",()=>{
   });
 });
 
-it.each(["team-report-v1","team-report-v2","team-report-v3"])("creates a percent-display artifact without returning or overwriting cached %s",async(template)=>{
+it.each(["team-report-v1","team-report-v2","team-report-v3","team-report-v3-dispersion-percent-v1"])("creates the current presentation artifact without returning or overwriting cached %s",async(template)=>{
  const old={team_report_id:id,format:"pdf",team_report_version:3,template_version:template,status:"ready",content_base64:Buffer.from("historical").toString("base64"),checksum:"historical-checksum"},before=JSON.stringify(old),rows:Record<string,unknown>[]=[old];
  mocks.admin.mockReturnValue({from:()=>{const filters:Record<string,unknown>={};const chain={select:()=>chain,eq:(key:string,value:unknown)=>{filters[key]=value;return chain;},maybeSingle:async()=>({data:rows.find(r=>Object.entries(filters).every(([k,v])=>r[k]===v))??null,error:null}),upsert:async(row:Record<string,unknown>,options:{ignoreDuplicates:boolean})=>{expect(options.ignoreDuplicates).toBe(true);rows.push(row);return {error:null};}};return chain;}});
  await expect(getTeamPdf(id,"owner")).rejects.toThrow("team_pdf_not_ready");await prepareTeamPdf(id,"owner");
- expect(rows).toHaveLength(2);expect(rows[1].template_version).toBe("team-report-v3-dispersion-percent-v1");expect(JSON.stringify(old)).toBe(before);expect((await getTeamPdf(id,"owner")).bytes.toString()).toContain("%PDF");
+ expect(rows).toHaveLength(2);expect(rows[1].template_version).toBe("team-report-v3-dispersion-percent-v2");expect(JSON.stringify(old)).toBe(before);expect((await getTeamPdf(id,"owner")).bytes.toString()).toContain("%PDF");
 });
 
 function profileClient(fingerprint="same",questionCount=80){

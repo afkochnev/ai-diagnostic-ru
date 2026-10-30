@@ -78,6 +78,19 @@ describe("rich Team V2 contract and privacy boundary", () => {
     expect(html.match(/<section/g)).toHaveLength(16);expect(html).toContain("Командная динамика");
     expect(html).not.toContain("&lt;script");
   });
+  it("accepts concise plans without padding and retains the complete existing report", async () => {
+    vi.stubEnv("TEAM_AI_PROVIDER","mock");
+    const previous=await generateTeamReportV2(v2Evidence(),summary());
+    const concise={...previous,strengths:[],key_problem_zones:previous.key_problem_zones.slice(0,1),implementation_risks:[],
+      first_actions:previous.first_actions.slice(0,1),plan_30_days:previous.plan_30_days.slice(0,2),
+      plan_60_days:previous.plan_60_days.slice(0,2),plan_90_days:previous.plan_90_days.slice(0,1),
+      team_analysis:{...previous.team_analysis,alignment:[],discussion_questions:previous.team_analysis.discussion_questions.slice(0,1)}};
+    expect(teamReportV2Schema.safeParse(previous).success).toBe(true);
+    expect(teamReportV2Schema.safeParse(concise).success).toBe(true);
+    expect(renderToStaticMarkup(createElement(RichTeamReport,{content:concise}))).toContain(concise.plan_30_days[0]);
+    expect(teamReportV2Schema.safeParse({...concise,plan_30_days:[]}).success).toBe(false);
+    expect(teamReportV2Schema.safeParse({...concise,plan_30_days:Array(8).fill("Действие")}).success).toBe(false);
+  });
   it("keeps the legacy renderer readable without forcing regeneration", () => {
     const legacy=mockTeamReport({participant_count:3,company_context:{},overall:{mean:50,stddev:0,min:50,max:50,maturity:null},blocks:[{title:"Процессы",position:1,mean:50,stddev:0,min:50,max:50}],questions:[]},{themes:[],strengths:[],risks:[],alignment_signals:[],divergence_signals:[]});
     expect(renderToStaticMarkup(createElement(LegacyTeamReport,{content:legacy}))).toContain("Тестовый командный отчёт");

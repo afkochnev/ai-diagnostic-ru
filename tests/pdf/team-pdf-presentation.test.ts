@@ -5,8 +5,9 @@ const input=():TeamPdfInput=>({companyName:"FoodTech",teamTitle:"Система 
 describe("branded Team PDF presentation",()=>{
  it("uses new template, canonical logo, site links, legend and normalized dispersion units",()=>{
   const value=input(),before=JSON.stringify(value),html=buildTeamPdfHtml(value);
-  expect(TEAM_PDF_TEMPLATE_VERSION).toBe("team-report-v3-dispersion-percent-v1");expect(html).toContain('alt="iTeam"');expect(html).toContain('src="data:image/png;base64,');expect(html).toContain('<a class="site" href="https://iteam.ru">iteam.ru</a>');
-  for(const s of ["Командная диагностика","Как читать разброс оценок","Умеренный","Высокий","Очень высокий","Приложение с результатами оценки","не являются статистическим доказательством конфликта"])expect(html).toContain(s);
+  expect(TEAM_PDF_TEMPLATE_VERSION).toBe("team-report-v3-dispersion-percent-v2");expect(html).toContain('alt="iTeam"');expect(html).toContain('src="data:image/png;base64,');expect(html).toContain('<a class="site" href="https://iteam.ru">iteam.ru</a>');
+  for(const s of ["Командная диагностика","Как читать разброс оценок","Умеренный","Высокий","Очень высокий","Приложение с результатами оценки","не являются статистическим доказательством конфликта","Наименьший разброс оценок","Наибольший разброс оценок"])expect(html).toContain(s);
+  expect(html).not.toContain("Программные показатели к разделу");
   expect(html.indexOf('class="results"')).toBeLessThan(html.indexOf('class="report-section"'));expect(html).toContain('data-dispersion-level="very_high">31,2%');expect(JSON.stringify(value)).toBe(before);
  });
  it("preserves every substantive string without calling a provider or rewriting text",()=>{
@@ -15,6 +16,18 @@ describe("branded Team PDF presentation",()=>{
    const escaped=paragraph.normalize("NFC").replace(/[\u2010-\u2013]/g,"-").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
    for(const part of escaped.split(/\n+/).filter(Boolean))expect(html).toContain(part);
   }
+ });
+ it("renders compact plans and explains empty evidence lists without changing report content",()=>{
+  const v=input(),report=reportFixture();
+  report.strengths=[];report.key_problem_zones=[];report.implementation_risks=[];
+  report.team_analysis.alignment=[];report.team_analysis.divergence=[];report.team_analysis.qualitative_signals=[];
+  report.first_actions=report.first_actions.slice(0,1);report.plan_30_days=report.plan_30_days.slice(0,1);
+  report.plan_60_days=report.plan_60_days.slice(0,1);report.plan_90_days=report.plan_90_days.slice(0,1);
+  report.team_analysis.discussion_questions=report.team_analysis.discussion_questions.slice(0,1);
+  v.content=report;const before=JSON.stringify(v),html=buildTeamPdfHtml(v);
+  expect(html.match(/Недостаточно допустимых свидетельств для отдельного вывода\./g)).toHaveLength(6);
+  expect(html).not.toContain("<ol></ol>");expect(html.match(/class="report-section"/g)).toHaveLength(16);
+  expect(JSON.stringify(v)).toBe(before);
  });
 });
 

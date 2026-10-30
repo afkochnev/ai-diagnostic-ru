@@ -7,6 +7,7 @@ import { generateTeamReportV3, mockTeamSynthesisV3, repairV3Fields, synthesizeTe
 import { teamSynthesisV3Schema } from "@/server/team/report-v3-contracts";
 import { processTeamJob } from "@/server/team/worker";
 import { meanEvidence, qualitativeFixture } from "./v3-fixtures";
+import { reportEditorialStyle } from "@/server/team/quality/editorial-style";
 
 const ports = vi.hoisted(() => ({ prompt: vi.fn(), schema: vi.fn(), construct: vi.fn(), create: vi.fn(), controlled: vi.fn() }));
 vi.mock("node:fs", async original => ({ ...await original<typeof import("node:fs")>(), readFileSync: ports.prompt }));
@@ -168,6 +169,9 @@ describe("ordinary Team AI finite diagnostic boundary", () => {
       : repairV3Fields([{ path: "summary", value: "synthetic generated field" }], counts, phase === "report_repair");
     await expect(run).rejects.toBe(error);
     expectFailure("dispatch", "http_error", 400, phase); expect(ports.create).toHaveBeenCalledOnce();
+    const system=ports.create.mock.calls[0][0].input[0].content;
+    if(phase==="report")expect(system).toContain(reportEditorialStyle);
+    else expect(system).toBe(prompt);
     expect(ports.create.mock.calls[0][0].max_output_tokens).toBe(phase === "report" ? 14000 : 6000);
   });
 

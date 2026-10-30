@@ -2,7 +2,7 @@ import {describe,it,expect,vi} from "vitest";
 import * as React from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {classifyDispersion,formatDispersionPercent,DISPERSION_INTERPRETATION_VERSION,type DispersionProfile} from "@/shared/analytics/dispersion";
-import {DispersionSummary,DispersionValue} from "@/features/team/dispersion";
+import {DispersionSummary,DispersionValue,DynamicsEvidence} from "@/features/team/dispersion";
 vi.stubGlobal("React",React);
 describe("dispersion interpretation v1",()=>{
  it.each([[0,4,"low"],[.4,4,"low"],[.5,4,"moderate"],[.8,4,"moderate"],[.9,4,"high"],[1.2,4,"high"],[1.4,4,"very_high"],[1.7,4,"very_high"],[10,100,"low"],[14.3,100,"moderate"],[20,100,"moderate"],[22.5,100,"high"],[30,100,"high"],[31,100,"very_high"]] as const)("classifies %s on scale %s",(sd,range,key)=>expect(classifyDispersion(sd,range).key).toBe(key));
@@ -20,6 +20,8 @@ describe("dispersion interpretation v1",()=>{
   expect(DISPERSION_INTERPRETATION_VERSION).toBe("v1");expect(JSON.stringify(profile)).toBe(before);
   expect(html).toContain("не означает автоматически высокий уровень практики");expect(html).toContain("не являются статистическим доказательством конфликта");expect(html).toContain("не как статистическую оценку всей компании");
   expect(html).not.toContain("является сильной стороной");expect(html).not.toContain("Выявлен конфликт");expect(html).toContain("Низкий");expect(html).toContain("Очень высокий");
+  expect(renderToStaticMarkup(React.createElement(DynamicsEvidence,{profile}))).toContain("Наименьший разброс оценок");
+  expect(renderToStaticMarkup(React.createElement(DynamicsEvidence,{profile,descending:true}))).toContain("Наибольший разброс оценок");
  });
 });
 
