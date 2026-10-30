@@ -21,14 +21,13 @@ describe("Stage 9B PDF download boundary", () => {
     expect(adminDownload).not.toContain("upsert(");
   });
 
-  it("keeps preparation separate from read-only download", () => {
+  it("keeps preparation on POST while the download click coordinates both endpoints", () => {
     expect(prepare).toContain('export async function POST');
     expect(prepare).toContain("requireIdentity");
     expect(prepare).toContain("preparePdfForReport");
-    const downloadAction = button.slice(button.indexOf("async function download()"), button.indexOf("async function prepare()"));
-    expect(downloadAction).not.toContain('method: "POST"');
-    expect(downloadAction).not.toContain("/pdf/prepare");
-    expect(button).toContain("Подготовить PDF");
+    expect(button).toContain('method: "POST"');
+    expect(button).toContain("`${base}/prepare`");
+    expect(button).toContain("Готовим PDF…");
     expect(service).toContain("preparationLocks");
     expect(service).toContain("preparePdfForReportUnlocked");
   });

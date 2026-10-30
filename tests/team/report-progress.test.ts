@@ -52,6 +52,7 @@ describe("Team report waiting status", () => {
 
   it("counts from the server request time, including time before opening the page", () => {
     render(); mount();
+    expect(text(render())).toContain("Подготовка отчёта займёт от 1 до 2 минут.");
     expect(text(render())).toContain("Прошло с запроса: 84 сек.");
     vi.advanceTimersByTime(2000);
     expect(text(render())).toContain("Прошло с запроса: 86 сек.");

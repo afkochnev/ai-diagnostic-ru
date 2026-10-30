@@ -2,12 +2,14 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ReportGenerationProgress } from "@/features/ai/report-generation-progress";
 
 export function TeamReportProgress({ createdAt, status }: { createdAt: string; status: "queued" | "generating" }) {
   const router = useRouter();
   const [elapsed, setElapsed] = useState(0);
   const [paused, setPaused] = useState(false);
   const [cycle, setCycle] = useState(0);
+  const [hidden, setHidden] = useState(false);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -32,7 +34,9 @@ export function TeamReportProgress({ createdAt, status }: { createdAt: string; s
   }, [router, paused, pending, cycle]);
 
   return <div className="mt-3">
+    {!hidden && <ReportGenerationProgress state="generating" elapsedSeconds={elapsed} onClose={() => setHidden(true)} />}
     <p role="status">{status === "queued" ? "Запрос принят. Ожидаем подготовки отчёта." : "Отчёт готовится."}</p>
+    <p className="mt-2 text-sm text-muted">Подготовка отчёта займёт от 1 до 2 минут.</p>
     <p role="timer" aria-live="off" className="mt-3 font-medium tabular-nums">Прошло с запроса: {elapsed} сек.</p>
     <p className="mt-2 text-sm text-muted">{paused ? "Автоматическая проверка приостановлена. Обновите статус, чтобы продолжить ожидание." : "Готовый отчёт появится автоматически. Можно оставаться на этой странице."}</p>
     {elapsed >= 120 && !paused && <p className="mt-2 text-sm text-muted">Подготовка занимает больше времени. Продолжаем проверять статус.</p>}
