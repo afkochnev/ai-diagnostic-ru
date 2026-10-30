@@ -1,0 +1,17 @@
+{{ if eq .RedirectTo "https://audit.iteam.ru/ru/team/confirm" }}
+<h2>Продолжите командную диагностику</h2>
+<p>Вы запросили вход по личному приглашению. Пароль не нужен.</p>
+<p><a style="display:inline-block;padding:14px 22px;background:#315c73;color:white;text-decoration:none;border-radius:8px" href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=email">Продолжить командную диагностику</a></p>
+<p>Откройте кнопку в том же браузере, где дали согласие на странице приглашения.</p>
+<p>Не пересылайте это письмо: кнопка предназначена только для вас. Если вы не запрашивали вход, проигнорируйте письмо.</p>
+{{ else if eq .RedirectTo "https://audit.iteam.ru/auth/confirm" }}
+<h2>Войдите в AI-аудит компании</h2>
+<p>Вы запросили ссылку для входа. Пароль не нужен.</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email">Войти и открыть мои результаты</a></p>
+<p>Ссылка одноразовая. Если вы не запрашивали вход, проигнорируйте это письмо.</p>
+{{ else }}
+<h2>Your sign-in link</h2>
+
+<p>Follow the link below to sign in. This link expires shortly and can only be used once.</p>
+<p><a href="{{ .ConfirmationURL }}">Sign in</a></p>
+{{ end }}
