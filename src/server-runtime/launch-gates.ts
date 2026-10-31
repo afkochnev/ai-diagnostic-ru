@@ -9,3 +9,6 @@ export function launchEnvironment(feature:'team'|'acquisition',env:Env=process.e
 export function acquisitionStartEnabled(env:Env=process.env){return launchEnvironment('acquisition',env)&&env.ACQUISITION_START_ENABLED!=='false';}
 export function teamCreationEnabled(env:Env=process.env){return launchEnvironment('team',env)&&env.TEAM_CREATION_ENABLED!=='false';}
 export function teamInvitationsEnabled(env:Env=process.env){return launchEnvironment('team',env)&&env.TEAM_INVITATIONS_ENABLED!=='false';}
+
+/** An ordinary production launch is independent of historical controlled runs. */
+export function teamProductEnabled(env:Env=process.env){return env.NODE_ENV==='production'&&env.APP_URL==='https://audit.iteam.ru'&&env.SUPABASE_URL==='https://fhvxqeaujjeiflanqsbg.supabase.co'&&env.TEAM_ENABLED==='true'&&env.TEAM_PRODUCT_ENABLED==='true';}

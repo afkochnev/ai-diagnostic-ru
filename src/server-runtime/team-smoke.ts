@@ -1,16 +1,17 @@
 // Node-safe shared boundary. Importing this module does not read credentials or
 // open a connection; ordinary worker entry points can use the pure environment check.
 import {z} from 'zod';
+import {teamProductEnabled} from './launch-gates';
 import {createAdminClient} from '@/server-runtime/supabase/admin';
 
 type Env=Record<string,string|undefined>;
 const productionOrigin='https://audit.iteam.ru';
 const productionDatabase='https://fhvxqeaujjeiflanqsbg.supabase.co';
-/** Every production Team mutation/effect requires the DB-controlled run. */
+/** Production remains controlled until its ordinary product release is explicit. */
 export function controlledTeamRequired(env:Env=process.env){
  if(env.APP_URL!==productionOrigin && env.SUPABASE_URL!==productionDatabase)return false;
  if(env.NODE_ENV!=='production'||env.APP_URL!==productionOrigin||env.SUPABASE_URL!==productionDatabase)throw Error('controlled_team_unavailable');
- return true;
+ return !teamProductEnabled(env);
 }
 
 const optionalWindow={window_id:z.uuid().nullable().optional(),continuation_window_id:z.uuid().nullable().optional()};

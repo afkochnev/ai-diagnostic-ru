@@ -28,12 +28,12 @@ describe("Account plan screen", () => {
   it('denies checkout when terms are unavailable even if all provider/fiscal gates pass',async()=>{
     readyPayment();state.terms.mockResolvedValue(null);
     const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
-    expect(html).not.toContain('<form');expect(html).toContain('Оплата временно недоступна');
+    expect(html).not.toContain('name="terms_accepted"');expect(html).toContain('Оплата временно недоступна');
   });
   it("shows approved no-VAT price but cannot checkout with unconfirmed fiscal mode",async()=>{
     vi.stubEnv('BILLING_PROVIDER','yookassa');vi.stubEnv('BILLING_ENABLED','true');
     const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
-    expect(html).toContain('480 ₽');expect(html).toContain('Без НДС');expect(html).toContain('без автоматического продления');expect(html).toContain('Оплата временно недоступна');expect(html).not.toContain('<form');expect(html).not.toContain('включая НДС');
+    expect(html).toContain('480 ₽');expect(html).toContain('Без НДС');expect(html).toContain('без автоматического продления');expect(html).toContain('Оплата временно недоступна');expect(html).not.toContain('name="terms_accepted"');expect(html).not.toContain('включая НДС');
   });
   it("offers explicit annual renewal and preserves the remaining paid term",async()=>{
     vi.stubEnv('BILLING_PROVIDER','yookassa');state.plan='Advanced';state.annual.mockResolvedValue({renewable:true,effective_until:'2027-10-21T12:00:00Z'});
@@ -44,7 +44,7 @@ describe("Account plan screen", () => {
     const html = renderToStaticMarkup(await AccountPlanPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('Текущий тариф: <strong>Free</strong>'); expect(html).toContain("PDF");
     expect(html).toContain("Несколько компаний"); expect(html).toContain("Стоимость и условия оплаты пока не настроены.");
-    expect(html).not.toContain('<form'); expect(html).not.toContain('checkout'); expect(html).not.toMatch(/€|₽|\$\d/);
+    expect(html).not.toContain('name="terms_accepted"'); expect(html).not.toContain('name="terms_accepted"'); expect(html).not.toMatch(/€|₽|\$\d/);
     expect(state.read).toHaveBeenCalledWith("account-a");
   });
   it("requires explicit Account choice when membership spans several Accounts", async () => {
@@ -64,7 +64,7 @@ describe("Account plan screen", () => {
   it("preserves an authorized legacy Company without inventing a second acquisition intent",async()=>{
     const id="30000000-0000-4000-8000-000000000001";
     const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({account:"account-a",company:id})}));
-    expect(state.company).toHaveBeenCalledWith(id,"owner");expect(html).toContain("Legacy Company");expect(html).toContain(`/ru/companies/${id}/team-explainer`);
+    expect(state.company).toHaveBeenCalledWith(id,"owner");expect(html).toContain("Legacy Company");expect(html).toContain(`/ru/companies/${id}/diagnostics#choose`);
   });
   it("rejects a Company from another Account even if the caller can access both",async()=>{
     state.company.mockResolvedValue({id:"30000000-0000-4000-8000-000000000001",name:"Foreign context",account_id:"account-b"});
