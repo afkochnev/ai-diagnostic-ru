@@ -6,6 +6,7 @@ are read. The finite-plan model, rate limiter and billing guard are loaded from
 their actual existing migrations; only the minimal Auth shell is a fixture.
 """
 import concurrent.futures
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -83,10 +84,16 @@ def main():
             def plan(account, owner):
                 return actor(f"public.read_account_plan({literal(account)})", owner)["plan"]
 
-            def create_promo(limit=5, deadline="clock_timestamp()+interval '1 day'", code=None, label="Local promo"):
+            def create_promo(limit=5, deadline="clock_timestamp()+interval '1 day'", code=None, label="Local promo", ciphertext=None, new_api=False):
                 code = code or "ITEAM-" + secrets.token_hex(12).upper()
-                created = actor(f"public.admin_create_advanced_promo({literal(code)},{literal(label)},{limit},{deadline})", admin)
+                extra = "," + (literal(ciphertext) if ciphertext is not None else "null::text") if new_api else ""
+                created = actor(f"public.admin_create_advanced_promo({literal(code)},{literal(label)},{limit},{deadline}{extra})", admin)
                 return code, created
+
+            def cipher_fixture():
+                # The server owns authenticated encryption; SQL only stores the
+                # bounded versioned envelope and must never reinterpret it.
+                return "v1." + secrets.token_hex(12) + "." + secrets.token_hex(30) + "." + secrets.token_hex(16)
 
             def redeem(account, code, owner):
                 return actor(f"public.redeem_advanced_promo({literal(account)},{literal(code)})", owner)
@@ -118,11 +125,59 @@ def main():
             assert code not in json.dumps(issued) and "code_hash" not in json.dumps(issued)
             stored = sql("select code_hash from private.advanced_promo_codes where id=" + literal(issued["id"]))
             assert re.fullmatch("[a-f0-9]{64}", stored)
+            sql((MIGRATIONS / "20261031180515_advanced_promo_admin_management.sql").read_text())
+            assert count("private.advanced_promo_codes") == 1 and count("private.advanced_promo_redemptions") == 0
+            legacy = actor("public.admin_list_advanced_promos()", admin)["rows"][0]
+            assert legacy["id"] == issued["id"] and legacy["code_hash"] == stored and legacy["code_ciphertext"] is None
+            assert sql("select code_hash from private.advanced_promo_codes where id=" + literal(issued["id"])) == stored
+            old_code = "ITEAM-" + secrets.token_hex(12).upper()
+            compatible = actor(f"public.admin_create_advanced_promo(p_code=>{literal(old_code)},p_label=>'Old caller',p_max_redemptions=>1,p_redeem_until=>clock_timestamp()+interval '1 day')", admin)
+            assert set(compatible) == set(issued)
+            assert sql("select code_ciphertext is null from private.advanced_promo_codes where id=" + literal(compatible["id"])) == "t"
+            _, explicit_null = create_promo(new_api=True)
+            assert sql("select code_ciphertext is null from private.advanced_promo_codes where id=" + literal(explicit_null["id"])) == "t"
+            check("rolling migration preserves legacy hashes and both positional/named four-argument callers")
+
+            ciphertext = cipher_fixture()
+            encrypted_code, encrypted = create_promo(ciphertext=ciphertext, new_api=True)
+            row = json.loads(sql("select to_jsonb(p) from private.advanced_promo_codes p where id=" + literal(encrypted["id"])))
+            assert len(ciphertext) == 121 and row["code_ciphertext"] == ciphertext
+            assert row["code_hash"] == hashlib.sha256(encrypted_code.encode()).hexdigest()
+            assert row["created_by_user_id"] == admin and encrypted_code not in json.dumps(row)
+            encrypted_list = next(item for item in actor("public.admin_list_advanced_promos()", admin)["rows"] if item["id"] == encrypted["id"])
+            assert encrypted_list["code_ciphertext"] == ciphertext and encrypted_list["code_hash"] == row["code_hash"]
+            assert encrypted_code not in json.dumps(encrypted_list) and set(encrypted) == set(issued)
+            check("new issuance stores exact encrypted envelope and hash; only admin listing returns ciphertext/hash")
+
+            before_invalid = count("private.advanced_promo_codes")
+            for invalid in ("", encrypted_code, ciphertext + "0", ciphertext.replace("v1.", "v2.", 1), "v1." + "A" * 24 + "." + "b" * 60 + "." + "c" * 32, ciphertext[:-1], "x" * 1000):
+                candidate = "ITEAM-" + secrets.token_hex(12).upper()
+                actor(f"public.admin_create_advanced_promo({literal(candidate)},'Invalid envelope',1,clock_timestamp()+interval '1 day',{literal(invalid)})", admin, error="promo_invalid_input")
+            assert count("private.advanced_promo_codes") == before_invalid
+            sql(f"update private.advanced_promo_codes set code_ciphertext={literal(encrypted_code)} where id={literal(encrypted['id'])}", error="advanced_promo_ciphertext_shape")
+            check("invalid, plaintext and oversized encrypted payloads fail before issuance and at the column constraint")
             actor(f"public.admin_create_advanced_promo({literal(code.lower())},'Duplicate',1,clock_timestamp()+interval '1 day')", admin, error="promo_code_exists")
             for call in ("public.admin_list_advanced_promos()", f"public.admin_revoke_advanced_promo({literal(issued['id'])})"):
                 actor(call, owner, error="admin_access_denied")
                 actor(call, admin, session=str(uuid.uuid4()), error="admin_access_denied")
             check("admin issuance is live-session-bound, ASCII-canonical and returns safe metadata")
+
+            unauthorized_calls = (
+                f"public.admin_create_advanced_promo({literal('ITEAM-' + 'E' * 24)},'Unauthorized',1,clock_timestamp()+interval '1 day')",
+                f"public.admin_create_advanced_promo({literal('ITEAM-' + 'E' * 24)},'Unauthorized',1,clock_timestamp()+interval '1 day',{literal(ciphertext)})",
+                "public.admin_list_advanced_promos()",
+                f"public.admin_delete_advanced_promo({literal(encrypted['id'])})",
+            )
+            protected = sql("select to_jsonb(p) from private.advanced_promo_codes p where id=" + literal(encrypted["id"]))
+            for call in unauthorized_calls:
+                actor(call, owner, error="admin_access_denied")
+                actor(call, unconfirmed, error="admin_access_denied")
+                actor(call, admin, session=str(uuid.uuid4()), error="admin_access_denied")
+                for role in ("anon", "service_role"):
+                    actor(call, admin, role=role, error="permission denied")
+            assert sql("select to_jsonb(p) from private.advanced_promo_codes p where id=" + literal(encrypted["id"])) == protected
+            assert count("private.advanced_promo_codes") == before_invalid
+            check("create/list/archive require a real live admin; anon, service-role and stale sessions cannot access encrypted fields")
 
             account = fresh_account(owner)
             actor(f"public.redeem_advanced_promo({literal(account)},{literal(code)})", outsider, error="promo_not_found")
@@ -184,6 +239,31 @@ def main():
             assert redeem(fresh_account(owner), revoke_code, owner)["status"] == "invalid"
             check("revocation stops new redemptions while preserving existing grants and retries")
 
+            archive_code, archive = create_promo(ciphertext=cipher_fixture(), new_api=True)
+            archive_account = fresh_account(owner)
+            archive_access = redeem(archive_account, archive_code, owner)
+            subscriptions_before = active_snapshot(archive_account)
+            redemption_before = sql("select to_jsonb(r) from private.advanced_promo_redemptions r where promo_id=" + literal(archive["id"]))
+            row_count_before = count("private.advanced_promo_codes")
+            archived = actor(f"public.admin_delete_advanced_promo({literal(archive['id'])})", admin)
+            assert set(archived) == {"id", "deleted_at"} and archived["id"] == archive["id"] and archived["deleted_at"]
+            assert actor(f"public.admin_delete_advanced_promo({literal(archive['id'])})", admin) == archived
+            assert count("private.advanced_promo_codes") == row_count_before
+            assert active_snapshot(archive_account) == subscriptions_before and plan(archive_account, owner) == "advanced"
+            assert sql("select to_jsonb(r) from private.advanced_promo_redemptions r where promo_id=" + literal(archive["id"])) == redemption_before
+            assert redeem(archive_account, archive_code, owner) == {**archive_access, "status": "already_redeemed"}
+            assert redeem(fresh_account(owner), archive_code, owner)["status"] == "invalid"
+            assert archive["id"] not in {item["id"] for item in actor("public.admin_list_advanced_promos()", admin)["rows"]}
+            assert sql("select deleted_at=revoked_at and code_ciphertext is not null from private.advanced_promo_codes where id=" + literal(archive["id"])) == "t"
+            sql("update private.advanced_promo_codes set revoked_at=null where id=" + literal(archive["id"]), error="advanced_promo_deleted_state")
+            actor(f"public.admin_delete_advanced_promo({literal(str(uuid.uuid4()))})", admin, error="promo_not_found")
+            check("archive is idempotent, hidden and non-physical; prior grant/history/retry stay exact and new redemptions stop")
+
+            revoked_before_archive = sql("select revoked_at::text from private.advanced_promo_codes where id=" + literal(revoke["id"]))
+            actor(f"public.admin_delete_advanced_promo({literal(revoke['id'])})", admin)
+            assert sql("select revoked_at::text from private.advanced_promo_codes where id=" + literal(revoke["id"])) == revoked_before_archive
+            check("archival preserves an earlier explicit revocation timestamp")
+
             expired_code, expired = create_promo()
             sql(f"update private.advanced_promo_codes set created_at=clock_timestamp()-interval '2 days',redeem_until=clock_timestamp()-interval '1 day' where id={literal(expired['id'])}")
             assert redeem(fresh_account(owner), expired_code, owner)["status"] == "invalid"
@@ -224,13 +304,27 @@ def main():
             assert results[0]["effective_until"] == results[1]["effective_until"]
             check("concurrent capacity and same-account replay cannot duplicate or extend access")
 
+            archive_race_code, archive_race = create_promo(ciphertext=cipher_fixture(), new_api=True)
+            archive_race_account = fresh_account(owner)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+                redeem_future = pool.submit(redeem, archive_race_account, archive_race_code, owner)
+                delete_future = pool.submit(actor, f"public.admin_delete_advanced_promo({literal(archive_race['id'])})", admin)
+                race_redemption, race_archive = redeem_future.result(), delete_future.result()
+            assert race_archive["deleted_at"] and race_redemption["status"] in ("activated", "invalid")
+            assert count("private.advanced_promo_redemptions", "promo_id=" + literal(archive_race["id"])) == (1 if race_redemption["status"] == "activated" else 0)
+            assert plan(archive_race_account, owner) == ("advanced" if race_redemption["status"] == "activated" else "free")
+            assert redeem(archive_race_account, archive_race_code, owner)["status"] == ("already_redeemed" if race_redemption["status"] == "activated" else "invalid")
+            check("archive/redemption race either grants once before archival or rejects; no granted access is removed")
+
             for index in range(26):
-                create_promo(label=f"Safe list {index}")
+                _, newest = create_promo(label=f"Safe list {index}")
+            actor(f"public.admin_delete_advanced_promo({literal(newest['id'])})", admin)
             listed = actor("public.admin_list_advanced_promos()", admin)
             assert len(listed["rows"]) == 25
-            assert all(set(row) == set(issued) for row in listed["rows"])
-            assert "code_hash" not in json.dumps(listed) and code not in json.dumps(listed)
-            check("admin list is limited to 25 safe rows")
+            assert all(set(row) == set(issued) | {"code_ciphertext", "code_hash"} for row in listed["rows"])
+            assert all(re.fullmatch("[a-f0-9]{64}", row["code_hash"]) for row in listed["rows"])
+            assert newest["id"] not in {row["id"] for row in listed["rows"]} and code not in json.dumps(listed)
+            check("admin list fills 25 unarchived rows with bounded admin-only encrypted fields and no plaintext")
             print(f"PASS {len(CHECKS)} isolated PostgreSQL promo scenarios; no remote operations", flush=True)
         finally:
             subprocess.run([binaries["pg_ctl"], "-D", str(data), "-m", "immediate", "-w", "stop"], env=clean_env, capture_output=True, text=True, check=False)

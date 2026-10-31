@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-const state = vi.hoisted(() => ({ accounts: [{ id: "account-a", name: "Аккаунт A" }], plan: "Free", read: vi.fn(), company: vi.fn(), annual:vi.fn(),terms:vi.fn() }));
+const state = vi.hoisted(() => ({ accounts: [{ id: "account-a", name: "Аккаунт A" }], plan: "Free", identity: vi.fn(), read: vi.fn(), company: vi.fn(), annual:vi.fn(),terms:vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ redirect: (p: string) => { throw Error(`redirect:${p}`); } }));
-vi.mock("@/server/auth/session", () => ({ requireIdentity: async () => ({ user: { id: "owner" } }) }));
+vi.mock("@/server/auth/session", () => ({ requireIdentity: state.identity }));
 vi.mock("@/server/account/queries", () => ({ listAccessibleAccounts: async () => state.accounts }));
 vi.mock("@/server/entitlements", () => ({ getAccountPlan: state.read }));
 vi.mock("@/server/account/authorization",()=>({requireCompanyRead:state.company}));
@@ -12,6 +12,7 @@ vi.mock('@/server/billing/legal',()=>({currentCommercialTerms:state.terms}));
 vi.mock('@/server/acquisition/service',()=>({conversionContinuation:async()=>null}));
 import AccountPlanPage from "@/app/[locale]/(workspace)/account/plan/page";
 beforeEach(() => {
+  state.identity.mockReset().mockResolvedValue({user: {id: "owner"}});
   state.terms.mockReset();state.terms.mockResolvedValue(null);
   state.accounts = [{ id: "account-a", name: "Аккаунт A" }]; state.plan = "Free";
   state.annual.mockReset();state.annual.mockResolvedValue(null);state.company.mockReset();state.company.mockResolvedValue({id:"30000000-0000-4000-8000-000000000001",name:"Legacy Company",account_id:"account-a"});
@@ -20,6 +21,13 @@ beforeEach(() => {
 afterEach(()=>vi.unstubAllEnvs());
 describe("Account plan screen", () => {
   function readyPayment(){for(const [k,v]of Object.entries({APP_URL:'https://ai-diagnostic-staging-web.onrender.com',SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co',BILLING_PROVIDER:'yookassa',BILLING_ENABLED:'true',YOOKASSA_TEST_MODE:'true',YOOKASSA_SHOP_ID:'123456',YOOKASSA_SECRET_KEY:'test_synthetic',YOOKASSA_RECEIPT_CONFIG_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE:'full_payment',YOOKASSA_RECEIPT_SOLUTION:'external',YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE:'false'}))vi.stubEnv(k,v);}
+  it("keeps the exact Account and Company context when MFA is required before loading the plan", async () => {
+    const account="10000000-0000-4000-8000-000000000001",company="20000000-0000-4000-8000-000000000001";
+    state.identity.mockRejectedValue(Error("redirect:/ru/mfa"));
+    await expect(AccountPlanPage({searchParams:Promise.resolve({account,company})})).rejects.toThrow("redirect:/ru/mfa");
+    expect(state.identity).toHaveBeenCalledExactlyOnceWith(`/ru/account/plan?account=${account}&company=${company}`);
+    expect(state.read).not.toHaveBeenCalled();expect(state.company).not.toHaveBeenCalled();
+  });
   it('shows an exact version link and explicit acceptance with the document digest before checkout',async()=>{
     readyPayment();state.terms.mockResolvedValue({version:'advanced-terms-ru-v1',content_sha256:'a'.repeat(64)});
     const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));

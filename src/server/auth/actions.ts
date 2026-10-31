@@ -9,6 +9,7 @@ import { clearRecovery, hasRecovery, setRecovery } from "./recovery";
 import { emailSchema, loginSchema, passwordSchema, registrationSchema, type AuthState } from "@/validation/auth";
 import { getMessages } from "@/i18n/messages";
 import { buildSignupMetadata, hasCreatedAuthUser, isDuplicateSignup } from "./registration-contract";
+import {safeMfaReturnTo} from "./mfa-return";
 import type { EmailOtpType } from "@supabase/supabase-js";
 
 const text = getMessages("ru").auth;
@@ -215,7 +216,8 @@ export async function verifyMfaAction(_: AuthState, form: FormData): Promise<Aut
   const { error } = await client.auth.mfa.challengeAndVerify({ factorId, code });
   if (error) return { error: text.mfaBad };
   revalidatePath("/", "layout");
-  // Administrator access is gated by the verified role and aal2 in requireAdmin.
-  // The role was resolved server-side above; ordinary users retain onboarding flow.
+  // The configured factor has passed Supabase's challenge. Return context grants no access.
+  const returnTo = safeMfaReturnTo(value(form, "next"));
+  if (returnTo) redirect(returnTo);
   redirect(role?.role === "administrator" ? "/ru/admin" : "/ru/company-profile");
 }
