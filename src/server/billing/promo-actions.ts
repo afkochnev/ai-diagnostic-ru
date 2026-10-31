@@ -5,6 +5,7 @@ import {revalidatePath} from "next/cache";
 import {redirect} from "next/navigation";
 import {z} from "zod";
 import {requireIdentity} from "@/server/auth/session";
+import {accountPlanMfaReturnTo} from "@/server/auth/mfa-return";
 import {requireAccountWrite, requireCompanyWrite} from "@/server/account/authorization";
 import {createAuthClient} from "@/server/supabase/server";
 import {authConfig} from "@/server/supabase/config";
@@ -26,7 +27,7 @@ export async function redeemAdvancedPromo(_: PromoActionState, form: FormData): 
   if ((await headers()).get("origin") !== authConfig().APP_URL) {
     return {error: "Не удалось подтвердить источник запроса. Обновите страницу."};
   }
-  const identity = await requireIdentity();
+  const identity = await requireIdentity(accountPlanMfaReturnTo(form.get("account"), form.get("company")));
   const parsed = inputSchema.safeParse({account: form.get("account"), company: form.get("company") || null, code: form.get("code")});
   if (!parsed.success) return {error: "Проверьте промокод и попробуйте ещё раз."};
   const {account, company, code} = parsed.data;

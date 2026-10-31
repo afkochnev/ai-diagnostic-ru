@@ -38,6 +38,6 @@ describe("Stage 8A admin boundary", () => {
     expect(page).toContain("await requireAdmin()");
     expect(guard).toContain('identity.role !== "administrator"');
     const session = readFileSync("src/server/auth/session.ts", "utf8");
-    expect(session).toContain('identity.role === "administrator" && identity.aal !== "aal2"');
+    expect(session).toContain('identity.role === "administrator" && identity.nextAal === "aal2" && identity.aal !== "aal2"');
   });
 });

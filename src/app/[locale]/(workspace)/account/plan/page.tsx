@@ -12,15 +12,16 @@ import {conversionContinuation} from "@/server/acquisition/service";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireIdentity } from "@/server/auth/session";
+import {accountPlanMfaReturnTo} from "@/server/auth/mfa-return";
 import { listAccessibleAccounts } from "@/server/account/queries";
 import { getAccountPlan } from "@/server/entitlements";
 import { Card } from "@/components/ui/card";
 import { Container } from "@/components/ui/container";
 
 export default async function AccountPlanPage({ searchParams }: { searchParams: Promise<{ account?: string; company?: string; billingError?: string }> }) {
-  const identity = await requireIdentity();
-  const accounts = await listAccessibleAccounts(identity.user.id);
   const { account: requested, company: requestedCompany, billingError } = await searchParams;
+  const identity = await requireIdentity(accountPlanMfaReturnTo(requested, requestedCompany));
+  const accounts = await listAccessibleAccounts(identity.user.id);
   const account = requested ? accounts.find(a => a.id === requested) : accounts.length === 1 ? accounts[0] : null;
   if (requested && !account) redirect("/ru/access-denied");
   if (!account) return <main id="main-content" className="py-10"><Container><h1 className="text-3xl font-semibold">Выберите аккаунт</h1><ul className="mt-6 space-y-4">{accounts.map(a => <li key={a.id}><Link className="underline" href={`/ru/account/plan?account=${a.id}`}>{a.name}</Link></li>)}</ul><Link className="mt-6 inline-block underline" href="/ru/companies">Компании</Link></Container></main>;

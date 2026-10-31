@@ -2,6 +2,8 @@ import "server-only";
 import {z} from "zod";
 import {requireAdmin} from "@/server/auth/admin";
 import {createAuthClient} from "@/server/supabase/server";
+import {authConfig} from "@/server/supabase/config";
+import {openAdminPromoCode} from "./promo-code-envelope";
 
 const dayMs = 86400000;
 const isoDate = (timestamp: number) => new Date(timestamp).toISOString().slice(0, 10);
@@ -26,7 +28,11 @@ export const adminPromoRowSchema = z.object({
   max_redemptions: z.number().int().min(1).max(1000), redemptions: z.number().int().nonnegative(),
   redeem_until: z.iso.datetime({offset: true}), revoked_at: z.iso.datetime({offset: true}).nullable(), created_at: z.iso.datetime({offset: true}),
 });
-export type AdminPromoRow = z.infer<typeof adminPromoRowSchema>;
+const storedPromoRowSchema = adminPromoRowSchema.extend({
+  code_hash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  code_ciphertext: z.string().max(256).nullable().optional(),
+});
+export type AdminPromoRow = z.infer<typeof adminPromoRowSchema> & {code: string | null; codeStatus: "available" | "legacy" | "unavailable"};
 type PromoRpc = {rpc(name: string, args?: Record<string, unknown>): Promise<{data: unknown; error: unknown}>};
 
 export async function listAdminPromos() {
@@ -34,6 +40,13 @@ export async function listAdminPromos() {
   const client = await createAuthClient() as unknown as PromoRpc;
   const {data, error} = await client.rpc("admin_list_advanced_promos");
   if (error) throw new Error("admin_promos_unavailable");
-  // Unknown fields are stripped. Full codes are never passed to the list UI.
-  return {rows: z.object({rows: z.array(adminPromoRowSchema).max(25)}).parse(data).rows, readAt: Date.now()};
+  const stored = z.object({rows: z.array(storedPromoRowSchema).max(25)}).parse(data).rows;
+  const secret = authConfig().AUTH_FLOW_SECRET;
+  // Only verified administrators receive the decrypted display code. Neither the
+  // hash nor the encrypted payload crosses the server/client boundary.
+  const rows: AdminPromoRow[] = stored.map(({code_ciphertext, code_hash, ...row}) => {
+    const code = openAdminPromoCode(code_ciphertext, code_hash, secret);
+    return {...row, code, codeStatus: code ? "available" : code_ciphertext ? "unavailable" : "legacy"};
+  });
+  return {rows, readAt: Date.now()};
 }

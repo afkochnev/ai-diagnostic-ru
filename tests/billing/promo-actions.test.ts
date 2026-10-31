@@ -54,6 +54,7 @@ describe("Advanced promo redemption", () => {
   });
   it("canonicalizes the code, rate limits, rereads entitlement, and returns to the same company", async () => {
     await expect(redeemAdvancedPromo({}, form())).rejects.toThrow(`redirect:/ru/companies/${company}/diagnostics?new=1&type=team#team-create`);
+    expect(state.identity).toHaveBeenCalledExactlyOnceWith(`/ru/account/plan?account=${account}&company=${company}`);
     expect(state.rpc).toHaveBeenCalledExactlyOnceWith("redeem_advanced_promo", {p_account_id: account, p_code: "ITEAM-1234567890ABCDEF12345678"});
     expect(state.rate).toHaveBeenCalledWith("promo:owner", 10, 900);
     expect(state.plan).toHaveBeenCalledWith(account);
