@@ -7,6 +7,7 @@ vi.mock("server-only",()=>({}));
 vi.mock("@/server/acquisition/contracts",()=>({acquisitionEnabled:()=>false}));
 vi.mock("@/features/company/company-navigation",()=>({CompanyNavigation:()=>null}));
 vi.mock("@/server/diagnostic/service",()=>({getActiveDiagnostic:async()=>state.active,getLatestDiagnostics:async()=>state.individual}));
+vi.mock("@/server/entitlements",()=>({hasEntitlement:async()=>false}));
 vi.mock("@/server/team/capabilities",()=>({teamFoundationEnabled:()=>false}));
 vi.mock("@/server/team/service",()=>({listTeamHistory:async()=>[]}));
 import { CompanyDashboard } from "@/features/company/company-dashboard";
@@ -35,5 +36,7 @@ describe("active diagnostic dashboard controls",()=>{
     expect(primary[0]).toContain("Продолжить диагностику");
     expect(html).toContain('href="/ru/companies/company/diagnostics?new=1"');
     expect(html).toContain("Новая диагностика");
+    expect(html).toContain("Начать командную диагностику");
+    expect(html).toContain('href="/ru/account/plan?account=account&amp;company=company"');
   });
 });

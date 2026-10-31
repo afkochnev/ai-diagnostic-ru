@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type {ReactNode} from "react";
 import type {AdminFilters,AdminMetrics,AdminRow,AdminSection} from "@/server/admin/console";
-export const adminNavigation=[["Обзор",""],["Аккаунты","accounts"],["Пользователи","users"],["Компании","companies"],["Диагностики","diagnostics"],["Заявки","leads"],["Обратная связь","feedback"],["Метрики","metrics"],["Состояние системы","system"]] as const;
+export const adminNavigation=[["Обзор",""],["Аккаунты","accounts"],["Пользователи","users"],["Компании","companies"],["Диагностики","diagnostics"],["Заявки","leads"],["Обратная связь","feedback"],["Метрики","metrics"],["Промокоды","promos"],["Состояние системы","system"]] as const;
 export const adminTitles:Record<AdminSection,string>={accounts:"Аккаунты",users:"Пользователи",companies:"Компании",diagnostics:"Диагностики",leads:"Заявки",feedback:"Обратная связь"};
 export function AdminNavigation(){return <nav aria-label="Разделы администрирования" className="border-b border-line bg-white"><div className="mx-auto flex max-w-7xl flex-wrap gap-x-5 gap-y-3 px-5 py-4 text-sm">{adminNavigation.map(([label,path])=><Link key={label} className="underline underline-offset-4" href={`/ru/admin${path?`/${path}`:""}`}>{label}</Link>)}</div><Link className="rounded-lg px-3 py-2 underline" href="/ru/admin/billing">Оплаты</Link></nav>;}
 export function AdminPage({title,children}:{title:string;children:ReactNode}){return <main id="main-content" className="min-h-[70vh] bg-tint py-8"><div className="mx-auto max-w-7xl space-y-6 px-5 sm:px-8"><h1 className="text-3xl font-semibold">{title}</h1>{children}</div></main>;}

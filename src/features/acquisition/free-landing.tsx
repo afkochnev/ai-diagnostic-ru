@@ -38,6 +38,10 @@ export function LandingFormats() {
   </Container></section>;
 }
 
+export function LandingPreviewLabel() {
+  return <span className="inline-flex items-center gap-2 text-sm font-semibold text-muted">Пример отчёта<span aria-hidden="true"><span className="lg:hidden">↓</span><span className="hidden lg:inline">→</span></span></span>;
+}
+
 export function FreeLanding({authenticated, attribution}: {authenticated: boolean; attribution: Record<string, string>}) {
   const href = authenticated ? '/ru/account' : `/ru/free${Object.keys(attribution).length ? '?' + new URLSearchParams(attribution) : ''}`;
   const cta = <AcquisitionCTA href={href}>{authenticated ? 'Открыть кабинет' : 'Начать бесплатную диагностику'}</AcquisitionCTA>;
@@ -49,7 +53,7 @@ export function FreeLanding({authenticated, attribution}: {authenticated: boolea
         <p className="text-sm font-medium text-muted">Для собственников и руководителей компаний</p>
         <h1 id="hero-title" className="mt-3 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl lg:text-[2.65rem]">Узнайте, что ограничивает рост вашей компании</h1>
         <p className="mt-5 max-w-xl text-base leading-relaxed text-muted sm:text-lg">Оцените восемь областей управления. Получите объяснение ключевых проблем и план действий на 30 / 60 / 90 дней.</p>
-        <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">{cta}<a href="#report-example" className="rounded text-sm font-semibold underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand">Посмотреть пример</a></div>
+        <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">{cta}<LandingPreviewLabel/></div>
         <p className="mt-4 text-sm font-medium">Без регистрации до вопросов · Бесплатный отчёт и PDF</p>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">80 вопросов с оценкой 1–5 и 4 открытых вопроса (2 можно пропустить). Можно сделать паузу и продолжить в том же браузере в течение 7 дней.</p>
         <p className="mt-2 text-sm leading-relaxed text-muted">После вопросов понадобятся сведения о компании, имя и email для доступа к результату.</p>

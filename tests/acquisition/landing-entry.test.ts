@@ -10,7 +10,7 @@ describe('registration-first landing stays honest about its next step', () => {
     expect(html).toContain('href="/ru/register"');
     expect(html).toContain('Зарегистрироваться и начать');
     expect(html).not.toContain('href="/ru/free');
-    expect(html).toContain('href="#report-example"');
+    expect(html).toContain('Пример отчёта');
     expect(html).toContain('id="report-example"');
     expect(html).toContain('не результат реальной диагностики');
     expect(html).toContain('80 вопросов с оценкой 1–5');
