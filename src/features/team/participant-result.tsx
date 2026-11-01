@@ -8,7 +8,7 @@ export function ParticipantResultView({ result }: { result: ParticipantResult })
   return <div className="mx-auto max-w-3xl">
     <p className="text-sm font-medium text-brand">{result.team_title}</p>
     <h1 className="mt-2 text-3xl font-semibold sm:text-4xl">Ваш результат командной диагностики</h1>
-    <p className="mt-4 text-muted">{result.display_name}, спасибо за участие. Это ваша оценка системы управления компании, не личная оценка профессиональных качеств.</p>
+    <p className="mt-4 text-muted">Это ваша оценка системы управления компании.</p>
     <p className="mt-2 text-sm text-muted">Диагностика завершена {new Date(result.completed_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</p>
     <Card className="mt-8">
       <h2 className="text-lg font-semibold">Индекс управляемости по вашим ответам</h2>
@@ -25,6 +25,14 @@ export function ParticipantResultView({ result }: { result: ParticipantResult })
         <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={block.display_score} aria-label={`${block.title}: ${score(block.display_score)} из 100`} className="mt-2 h-2 w-full overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand" style={{ width: `${block.display_score}%` }} /></div>
       </li>)}</ul>
     </Card>
+    {Boolean(result.open_answers?.length) && <Card className="mt-6">
+      <h2 className="text-2xl font-semibold">Ваши ответы на открытые вопросы</h2>
+      <div className="mt-6 space-y-6">{result.open_answers.map(item => <section key={item.question_id}>
+        <p className="text-sm text-muted">{item.block_title}</p>
+        <h3 className="mt-2 font-medium">{item.prompt}</h3>
+        <p className="mt-3 whitespace-pre-wrap break-words">{item.answer ?? "Ответ не указан."}</p>
+      </section>)}</div>
+    </Card>}
     <div className="mt-6 rounded-2xl bg-tint p-6 text-sm leading-relaxed text-muted">
       <h2 className="font-semibold text-brand">Конфиденциальность результата</h2>
       <p className="mt-2">Ваши ответы и индивидуальные оценки доступны только вам. Организатор видит статус прохождения, а результаты команды получает в сводном виде.</p>

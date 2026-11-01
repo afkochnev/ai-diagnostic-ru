@@ -12,5 +12,5 @@ export default async function ResetPasswordPage() {
  const { data } = await client.auth.getClaims();
  const sessionId = data?.claims.session_id;
  const valid = user && typeof sessionId === "string" && await hasRecovery(user.id, sessionId);
- return <AuthShell title={copy.resetTitle}>{valid ? <AuthForm mode="reset" action={resetAction} /> : <><p role="alert">{copy.invalidLink}</p><Link className="mt-5 block underline" href="/ru/forgot-password">{copy.forgotTitle}</Link></>}</AuthShell>;
+ return <AuthShell title={copy.resetTitle}>{valid ? <><p className="mb-5 text-sm leading-relaxed">Вы устанавливаете новый пароль для <strong className="break-all">{user.email}</strong>.</p><AuthForm mode="reset" action={resetAction} /></> : <><p role="alert">{copy.invalidLink}</p><Link className="mt-5 block underline" href="/ru/forgot-password">{copy.forgotTitle}</Link></>}</AuthShell>;
 }

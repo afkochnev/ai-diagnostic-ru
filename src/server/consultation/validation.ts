@@ -1,14 +1,13 @@
 import { z } from "zod";
 
-export const consultationSchema = z.object({
-  diagnostic_id: z.uuid(),
-  report_id: z.uuid(),
+const consultationFields = z.object({
   name: z.string().trim().min(2).max(100),
   contact_type: z.enum(["phone", "telegram"]).nullable().optional(),
   contact_value: z.string().trim().max(100).nullable().optional(),
   comment: z.string().trim().max(3000).nullable().optional(),
   idempotency_key: z.uuid(),
-}).superRefine((value, ctx) => {
+});
+function validateContact(value: z.infer<typeof consultationFields>, ctx: z.RefinementCtx) {
   const contact = value.contact_value?.trim() || null;
   if ((value.contact_type && !contact) || (!value.contact_type && contact)) ctx.addIssue({ code: "custom", path: ["contact_value"], message: "Укажите способ связи и значение контакта." });
   if (value.contact_type === "phone" && contact) {
@@ -19,9 +18,11 @@ export const consultationSchema = z.object({
     const username = contact.replace(/^https?:\/\/(www\.)?t\.me\//i, "").replace(/^@/, "");
     if (!/^[A-Za-z0-9_]{5,32}$/.test(username)) ctx.addIssue({ code: "custom", path: ["contact_value"], message: "Введите корректный Telegram username." });
   }
-});
+}
+export const consultationSchema = consultationFields.extend({diagnostic_id: z.uuid(), report_id: z.uuid()}).superRefine(validateContact);
+export const teamConsultationSchema = consultationFields.extend({team_diagnostic_id: z.uuid(), team_report_id: z.uuid()}).superRefine(validateContact);
 
-export function normalizeConsultationInput(value: z.infer<typeof consultationSchema>) {
+export function normalizeConsultationInput<T extends z.infer<typeof consultationFields>>(value: T) {
   const contact = value.contact_value?.trim() || null;
   return {
     ...value,

@@ -32,7 +32,7 @@ def literal(value):
     return "'" + json.dumps(value, ensure_ascii=False).replace("'", "''") + "'::jsonb"
 
 def actor(user, query, error=None, setup="", rollback=False, role="authenticated"):
-    claims = literal({"sub": user, "role": role, "aal": "aal2" if user == uid(4) else "aal1"})
+    claims = literal({"sub": user, "role": role, "aal": "aal2" if user == uid(4) else "aal1", "session_id": user})
     return sql("begin;" + setup + ";set local request.jwt.claims=" + claims.removesuffix("::jsonb")
         + ";set local role " + role + ";" + query + ";" + ("rollback;" if rollback else "commit;"), error)
 
@@ -44,9 +44,10 @@ def result(participant, user=2):
 
 def parity(participant):
     output = result(participant)
-    source = json.loads(sql(f"select jsonb_build_object('snapshot',s.snapshot,'answers',r.answers) "
+    source = json.loads(sql(f"select jsonb_build_object('snapshot',s.snapshot,'answers',r.answers,'questionnaire',q.questions) "
         f"from private.team_scoring_snapshots s join public.team_participants p on p.team_diagnostic_id=s.team_diagnostic_id "
-        f"join private.team_responses r on r.participant_id=p.id where p.id='{participant}'"))
+        f"join private.team_responses r on r.participant_id=p.id "
+        f"join private.team_questionnaires q on q.team_diagnostic_id=p.team_diagnostic_id where p.id='{participant}'"))
     code = """import {calculateBlockScore,calculateOverall,classifyMaturity} from './src/server/scoring/engine.ts';
 let text='';for await(const chunk of process.stdin)text+=chunk;const {snapshot:s,answers:a}=JSON.parse(text);
 const blocks=s.blocks.filter(b=>Number(b.weight)>0).map(b=>({...calculateBlockScore({block_id:b.id,block_weight:b.weight,
@@ -59,7 +60,11 @@ maturity:s.maturity[classifyMaturity(overall.raw)-1].label,blocks:blocks.map(b=>
     assert abs(Decimal(str(output["overall_raw"])) - Decimal(oracle["raw"])) < Decimal("1e-12")
     assert Decimal(str(output["overall_display"])) == Decimal(oracle["display"])
     assert output["maturity_label"] == oracle["maturity"]
-    assert set(output) == {"participant_id", "display_name", "team_title", "status", "completed_at", "overall_raw", "overall_display", "maturity_label", "blocks"}
+    assert set(output) == {"participant_id", "display_name", "team_title", "status", "completed_at", "overall_raw", "overall_display", "maturity_label", "blocks", "open_answers"}
+    expected_open = [{"question_id": q["id"], "position": index + 1, "block_title": q["block_title"], "prompt": q["prompt"],
+        "answer": source["answers"].get(q["id"]) if str(source["answers"].get(q["id"]) or "").strip() else None}
+        for index, q in enumerate(source["questionnaire"]) if q["answer_type"] == "text"]
+    assert output["open_answers"] == expected_open
     assert output["status"] == "completed" and output["participant_id"] == participant
     assert [b["position"] for b in output["blocks"]] == sorted(b["position"] for b in output["blocks"])
     for block in output["blocks"]:
@@ -70,14 +75,15 @@ maturity:s.maturity[classifyMaturity(overall.raw)-1].label,blocks:blocks.map(b=>
         assert set(block) == {"block_id", "title", "position", "raw_score", "display_score", "question_count"}
     return output
 
-def complete(team, offset=0, check_incomplete=True):
+def complete(team, offset=0, check_incomplete=True, user=2, text="Собственный ответ: уточнить роли.\nСогласовать общий план."):
     # Test data only: do not configure or exercise historical launch-control runs.
-    participant = sql(f"insert into public.team_participants(team_diagnostic_id,email,display_name) values('{team}','account-fixture-2@example.test','Own result') returning id")
-    sql(f"insert into private.team_responses(participant_id,user_id) values('{participant}','{uid(2)}')")
+    email = sql(f"select email from auth.users where id='{uid(user)}'")
+    participant = sql(f"insert into public.team_participants(team_diagnostic_id,email,display_name) values('{team}','{email}','Own result') returning id")
+    sql(f"insert into private.team_responses(participant_id,user_id) values('{participant}','{uid(user)}')")
     if check_incomplete:
-        actor(uid(2), f"select public.read_team_participant_result('{participant}')", "team_result_incomplete")
-    response = json.loads(actor(uid(2), f"select public.read_team_response('{participant}')"))
-    answers = {q["id"]: ((index + offset) % 5 if q["answer_type"] == "scale_0_4" else "Private text excluded from result")
+        actor(uid(user), f"select public.read_team_participant_result('{participant}')", "team_result_incomplete")
+    response = json.loads(actor(uid(user), f"select public.read_team_response('{participant}')"))
+    answers = {q["id"]: ((index + offset) % 5 if q["answer_type"] == "scale_0_4" else text if q["required"] else "")
         for index, q in enumerate(response["questions"])}
     sql(f"update private.team_responses set answers={literal(answers)},revision=1,completed_at=now() where participant_id='{participant}';"
         f"update public.team_participants set status='completed',started_at=now(),completed_at=now() where id='{participant}'")
@@ -96,12 +102,14 @@ try:
         "create table auth.sessions(id uuid primary key,user_id uuid not null references auth.users(id));"
         "create schema extensions;create extension pgcrypto with schema extensions;")
     candidate = next((ROOT / "supabase/migrations").glob("*_team_participant_own_result.sql"))
+    open_candidate = next((ROOT / "supabase/migrations").glob("*_team_participant_open_answers.sql"))
     for migration in sorted((ROOT / "supabase/migrations").glob("*.sql")):
-        if migration == candidate:
+        if migration in (candidate, open_candidate):
             continue
         if "account_foundation.sql" in migration.name:
             sql((ROOT / "supabase/tests/fixtures/account-foundation-local-history.sql").read_text())
         sql(migration.read_text())
+    sql("insert into auth.sessions(id,user_id) select id,id from auth.users on conflict do nothing")
     sql("update private.launch_controls set team_creation_enabled=true,team_invitations_enabled=true;")
     account = sql("select id from public.accounts where legacy_origin_user_id='" + uid(1) + "'")
     actor(None, f"select public.assign_account_plan('{account}','advanced')", role="service_role")
@@ -110,10 +118,19 @@ try:
     participant = complete(team, check_incomplete=False)
     before = sql("select md5(string_agg(to_jsonb(r)::text,',' order by participant_id)) from private.team_responses r")
     sql(candidate.read_text())
+    old_result = result(participant)
+    assert "open_answers" not in old_result
+    sql(open_candidate.read_text())
     initial = parity(participant)
+    assert {key: value for key, value in initial.items() if key != "open_answers"} == old_result
+    assert any(item["answer"] is None for item in initial["open_answers"])
     assert len(initial["blocks"]) == 8
     assert before == sql("select md5(string_agg(to_jsonb(r)::text,',' order by participant_id)) from private.team_responses r")
     print("PASS existing completed participant gets own result; 8-block scores match unchanged Individual engine", flush=True)
+    other = complete(team, user=3, text="Чужой конфиденциальный ответ не раскрывается")
+    assert "Чужой конфиденциальный" not in json.dumps(result(participant), ensure_ascii=False)
+    assert result(other, user=3)["open_answers"] != initial["open_answers"]
+    actor(uid(2), f"select public.read_team_participant_result('{other}')", "team_response_unavailable")
     for number in (1, 3, 4, 5):
         actor(uid(number), f"select public.read_team_participant_result('{participant}')", "team_response_unavailable")
     actor(None, f"select public.read_team_participant_result('{participant}')", "permission denied", role="anon")
@@ -125,7 +142,7 @@ try:
         actor(uid(2), f"select public.read_team_participant_result('{participant}')", "team_response_unavailable", setup=setup)
     sql(f"update public.team_diagnostics set status='closed' where id='{team}'")
     assert result(participant) == initial
-    print("PASS owner/admin/other/unverified/anon denied; revoked/email mismatch/inactive denied; closed Team preserves own result", flush=True)
+    print("PASS own pinned text/blank optional answers only; owner/admin/other/unverified/anon denied; closed Team preserves own result and answers", flush=True)
     # Unequal question/block weights and reverse scoring; no premature block rounding.
     sql((ROOT / "supabase/tests/fixtures/team-scoring-golden.sql").read_text())
     for offset in range(5):
@@ -134,6 +151,54 @@ try:
         assert len(parity(own)["blocks"]) == 2
     print("PASS five weighted/reversed vectors match Individual raw, one-decimal half-up display and maturity", flush=True)
     assert sql("select count(*) from public.team_ai_reports") == "0"
-    print("PASS own-result reads enqueue no AI and return no answers, aggregates or other participant fields", flush=True)
+    print("PASS own-result reads enqueue no AI and return no raw answer map, aggregates or other participant fields", flush=True)
+
+    # Follow-up actions use only completed aggregate reports, never participant text.
+    report = sql(f"insert into public.team_ai_reports(team_diagnostic_id,version,source_fingerprint,completed_participant_count,status,company_context_snapshot,completed_at) "
+        f"values('{team}',1,'local-followup',3,'completed','{{}}',now()) returning id")
+    pending = sql(f"insert into public.team_ai_reports(team_diagnostic_id,version,source_fingerprint,completed_participant_count,status,company_context_snapshot) "
+        f"values('{team}',2,'local-pending',3,'queued','{{}}') returning id")
+    def lead_call(team_id=team, report_id=report, key=None):
+        key = key or sql("select gen_random_uuid()")
+        return f"select public.create_team_lead_request('{team_id}','{report_id}','Тестовый организатор',null,null,'Обсудить общий результат','{key}')"
+    for user in (2, 3, 4, 5):
+        actor(uid(user), lead_call(), "unauthorized" if user == 5 else "diagnostic_not_owned_or_completed")
+    actor(None, lead_call(), "permission denied", role="anon")
+    actor(uid(1), lead_call(report_id=pending), "report_not_owned_or_completed")
+    actor(uid(1), lead_call(team_id=weighted_team), "report_not_owned_or_completed")
+    key = sql("select gen_random_uuid()")
+    lead = json.loads(actor(uid(1), lead_call(key=key)))
+    replay = json.loads(actor(uid(1), lead_call(key=key)))
+    duplicate = json.loads(actor(uid(1), lead_call()))
+    assert lead["lead_id"] == replay["lead_id"] == duplicate["lead_id"] and replay["duplicate"] and duplicate["duplicate"]
+    saved = json.loads(sql(f"select to_jsonb(l) from public.lead_requests l where id='{lead['lead_id']}'"))
+    assert saved["diagnostic_id"] is None and saved["report_id"] is None and saved["team_diagnostic_id"] == team and saved["team_report_id"] == report
+    assert "Собственный ответ" not in json.dumps(saved, ensure_ascii=False)
+    feedback_call = f"select public.create_team_feedback('{team}','{report}',5,'Полезный общий план',null)"
+    actor(uid(2), feedback_call, "diagnostic_not_owned_or_completed")
+    actor(uid(1), feedback_call.replace(report, pending), "report_not_owned_or_completed")
+    feedback = json.loads(actor(uid(1), feedback_call))
+    assert not feedback["duplicate"] and json.loads(actor(uid(1), feedback_call))["duplicate"]
+    claim = json.loads(actor(None, "select coalesce(jsonb_agg(j),'[]') from public.claim_consultation_notification_jobs(100,5,300) j", role="service_role"))
+    assert sum(item["lead_request_id"] == lead["lead_id"] for item in claim) == 1
+    lead_projection = json.loads(actor(uid(4), f"select public.read_admin_console('leads','{lead['lead_id']}','{{}}')"))["item"]
+    feedback_projection = json.loads(actor(uid(4), f"select public.read_admin_console('feedback','{feedback['feedback_id']}','{{}}')"))["item"]
+    assert lead_projection["diagnostic_type"] == feedback_projection["diagnostic_type"] == "team"
+    assert lead_projection["team_diagnostic_id"] == feedback_projection["team_diagnostic_id"] == team
+    assert "answers" not in json.dumps(lead_projection) + json.dumps(feedback_projection)
+    sql(f"insert into public.jobs(kind,team_diagnostic_id,deduplication_key) values('ai_report','{team}','denied')", "jobs_subject_check")
+    sql("insert into public.jobs(kind,deduplication_key) values('consultation_notification','missing-subject')", "jobs_subject_check")
+    print("PASS Team follow-up owner/completed-report checks, dedupe, private Admin subject and existing notification claim", flush=True)
+
+    diagnostic = '30000000-0000-4000-8000-000000000001'
+    individual_report = sql(f"select id from public.ai_reports where diagnostic_id='{diagnostic}' order by version desc limit 1")
+    actor(uid(1), f"select public.create_lead_request('{diagnostic}','{individual_report}','Individual caller',null,null,null,'{key}')", "report_not_owned_or_completed")
+    individual_key = sql("select gen_random_uuid()")
+    individual = json.loads(actor(uid(1), f"select public.create_lead_request('{diagnostic}','{individual_report}','Individual caller',null,null,null,'{individual_key}')"))
+    assert individual["ok"]
+    actor(uid(1), lead_call(key=individual_key), "report_not_owned_or_completed")
+    assert json.loads(actor(uid(1), f"select public.create_feedback('{diagnostic}',4,null,null)"))["ok"]
+    assert sql(f"select team_diagnostic_id is null and diagnostic_id='{diagnostic}' from public.lead_requests where id='{individual['lead_id']}'") == "t"
+    print("PASS original Individual consultation/feedback RPC contracts remain compatible", flush=True)
 finally:
     sql("drop database if exists " + database + " with(force)", db="postgres")

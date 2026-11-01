@@ -64,10 +64,10 @@ export async function sendControlledTeamW2AccessEmail(context:ControlledTeamCont
  }
 }
 const escape=(value:string)=>value.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]!);
-export function teamInvitationMessage(input:{company:string;team:string;inviter:string;url:string;singleEmail?:boolean}) {
+export function teamInvitationMessage(input:{company:string;team:string;inviter:string;url:string;singleEmail?:boolean;accessExpiresAt?:number}) {
   const intro=`${input.inviter} / ${input.company} приглашает вас пройти командную диагностику AI Company Audit.`;
   const privacy="Организатор видит статус прохождения, но не ваши индивидуальные ответы.";
-  const expiry=input.singleEmail?"Ссылка для входа действует 30 минут. Пароль не нужен: после согласия откроется ваша анкета.":"Ссылка приглашения действует 7 дней.";
+  const expiry=input.accessExpiresAt?`Ссылка для входа действует до ${new Date(input.accessExpiresAt).toLocaleString("ru-RU",{timeZone:"Europe/Moscow"})} (по московскому времени). Пароль не нужен: после согласия откроется ваша анкета.`:input.singleEmail?"Ссылка для входа действует 30 минут. Пароль не нужен: после согласия откроется ваша анкета.":"Ссылка приглашения действует 7 дней.";
   return {
     subject:`Приглашение в командную диагностику — ${input.company}`,
     text:`${intro}\n\n${input.team}\n\n${privacy}\n\nПринять приглашение: ${input.url}\n\n${expiry} Не пересылайте письмо. Если вы не ожидали приглашение, проигнорируйте его.`,

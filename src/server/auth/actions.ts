@@ -97,7 +97,7 @@ export async function forgotAction(_: AuthState, form: FormData): Promise<AuthSt
   const client = await actionClient();
   const { error } = await client.auth.resetPasswordForEmail(parsed.data, { redirectTo: `${authConfig().APP_URL}/auth/confirm?type=recovery` });
   if (error) return failure(error);
-  return { success: text.sent };
+  return { success: "Если этот email зарегистрирован, мы отправили письмо для восстановления пароля. Проверьте входящие и папку «Спам»." };
 }
 
 export async function resendAction(_: AuthState, form: FormData): Promise<AuthState> {
@@ -178,6 +178,7 @@ export async function resetAction(_: AuthState, form: FormData): Promise<AuthSta
   const sessionId = claims?.claims.session_id;
   if (!user || typeof sessionId !== "string" || !await hasRecovery(user.id, sessionId)) return { error: text.invalidLink };
   const { error } = await client.auth.updateUser({ password: parsed.data });
+  if (error?.code === "same_password") return { error: "Новый пароль совпадает с текущим. Введите другой пароль." };
   if (error) return failure(error);
   await clearRecovery();
   await client.auth.signOut({ scope: "global" });

@@ -60,6 +60,17 @@ const job = () => state.tables.jobs[0];
 const delivery = () => state.tables.consultation_notification_deliveries[0];
 
 describe("consultation delivery lifecycle", () => {
+  it("delivers a Team consultation through the same queue without an Individual diagnostic or private answers", async () => {
+    vi.stubEnv("EMAIL_PROVIDER", "mock");
+    Object.assign(state.tables.lead_requests[0], {diagnostic_id: null, report_id: null, team_diagnostic_id: "team", team_report_id: "team-report"});
+    Object.assign(job(), {diagnostic_id: null, team_diagnostic_id: "team"});
+    expect((await runPendingConsultationNotifications(1)).results).toEqual([{status: "sent"}]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(MockConsultationProvider.sent).toHaveLength(1);
+    expect(job().status).toBe("completed");
+    expect(delivery()).toMatchObject({status: "sent", provider: "mock"});
+    expect(JSON.stringify(MockConsultationProvider.sent)).not.toContain("answers");
+  });
   it("calls the real adapter once with the configured recipient, safe content and stable idempotency key", async () => {
     expect((await runPendingConsultationNotifications(1)).results).toEqual([{ status: "sent" }]);
     expect(fetchMock).toHaveBeenCalledTimes(1);

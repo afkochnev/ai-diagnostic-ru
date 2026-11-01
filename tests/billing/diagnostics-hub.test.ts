@@ -38,6 +38,9 @@ describe("unified Diagnostics entry", () => {
   it("opens the existing creation form only on explicit Team choice", async () => {
     state.entitled = true;
     const html = await view("team"); expect(html).toContain('data-company="company-a"');
+    expect(html).toContain("формируете список участников, приглашаете их и отслеживаете прохождение");
+    expect(html).toContain("Индивидуальные ответы участников вам недоступны");
+    expect(html).toContain("Чтобы заполнить анкету самостоятельно, добавьте себя в список участников");
     expect(state.start).not.toHaveBeenCalled();
   });
   it("does not let a query parameter unlock the Free Team form", async () => {

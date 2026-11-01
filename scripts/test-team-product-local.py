@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Ordinary Team RPC flow in a disposable local database; no remote or provider calls."""
 import argparse
+import concurrent.futures
 import json
 import secrets
 import subprocess
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--container', required=True, choices=['supabase_db_aca-v25-local-e2e', 'supabase_db_ai-diagnostic-ru'])
 a = p.parse_args()
-info = json.loads(subprocess.check_output(['docker', 'inspect', a.container]))[0]
-if not info['Config']['Image'].startswith('public.ecr.aws/supabase/postgres:'):
+image = subprocess.check_output(['docker', 'inspect', '--format', '{{.Config.Image}}', a.container], text=True).strip()
+if not image.startswith('public.ecr.aws/supabase/postgres:'):
     raise SystemExit('Local Supabase PostgreSQL required')
 database = 'team_product_' + secrets.token_hex(6)
 
@@ -77,6 +79,7 @@ try:
         if 'account_foundation.sql' in migration.name:
             sql((ROOT / 'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
         sql(migration.read_text())
+    sql((ROOT / 'supabase/migrations/20261101163343_team_invitation_day_access.sql').read_text())
     company = '20000000-0000-4000-8000-000000000001'
     other_company = '20000000-0000-4000-8000-000000000002'
     account = sql(f"select account_id from public.company_profiles where id='{company}'")
@@ -91,6 +94,76 @@ try:
     team = actor(1, f"select public.create_team_diagnostic('{company}','Ordinary product Team')")
     print('PASS default closed, service-only activation, verified owner + Advanced required', flush=True)
     policy = json.loads(sql('select jsonb_object_agg(kind,version) from public.consent_documents'))
+    day_team = actor(1, f"select public.create_team_diagnostic('{company}','Day invitation fixture')")
+    def day_invite(address):
+        value = secrets.token_hex(32)
+        digest = sql(f"select encode(sha256(convert_to('{value}','UTF8')),'hex')")
+        participant = actor(1, f"select public.invite_team_participant('{day_team}','{address}','Day participant','{digest}')")
+        return value, digest, participant
+    def day_rpc(operation, digest):
+        return json.loads(service(f"select public.team_invitation_day_access('{operation}','{digest}')"))
+    day_token, day_hash, day_pid = day_invite('account-fixture-2@example.test')
+    for role in ('anon', 'authenticated'):
+        actor(1, f"select public.team_invitation_day_access('issue','{day_hash}')", 'permission denied', role)
+    issued = day_rpc('issue', day_hash)
+    assert issued['status'] == 'issued' and issued['email'] == 'account-fixture-2@example.test'
+    assert sql(f"select expires_at>clock_timestamp()+interval '23 hours 59 minutes' and expires_at<=clock_timestamp()+interval '24 hours' from private.team_invitations where participant_id='{day_pid}'") == 't'
+    assert day_rpc('issue', day_hash)['expires_at'] == issued['expires_at']
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        claimed = list(pool.map(lambda _: day_rpc('claim', day_hash), range(2)))
+    assert sorted(row['status'] for row in claimed) == ['busy', 'claimed']
+    assert sql(f"select redeemed_at is null from private.team_invitations where participant_id='{day_pid}'") == 't'
+    # Simulated provider failure/crash: the lease expires; it never consumes acceptance.
+    sql(f"update private.team_invitations set auth_claimed_at=clock_timestamp()-interval '121 seconds' where participant_id='{day_pid}'")
+    assert day_rpc('claim', day_hash)['status'] == 'claimed'
+    day_finalize = f"select public.finalize_team_invitation_identity('{day_token}',true,'{policy['data_processing']}','{policy['marketing']}')"
+    assert actor(2, day_finalize) == day_pid
+    assert day_rpc('claim', day_hash)['status'] == 'spent'
+    replacement = secrets.token_hex(32)
+    actor(1, f"select public.renew_team_invitation('{day_pid}','{replacement}')")
+    assert sql(f"select auth_claimed_at is null and redeemed_at is null from private.team_invitations where participant_id='{day_pid}'") == 't'
+    service(f"select public.team_invitation_day_access('claim','{day_hash}')", 'team_invitation_unavailable')
+    assert day_rpc('issue', replacement)['status'] == 'issued'
+    _, revoked_hash, revoked_pid = day_invite('day-revoked@example.test')
+    day_rpc('issue', revoked_hash)
+    actor(1, f"select public.revoke_team_participant('{revoked_pid}')")
+    service(f"select public.team_invitation_day_access('claim','{revoked_hash}')", 'team_invitation_unavailable')
+    _, expired_hash, expired_pid = day_invite('day-expired@example.test')
+    day_rpc('issue', expired_hash)
+    sql(f"update private.team_invitations set expires_at=clock_timestamp()-interval '1 second' where participant_id='{expired_pid}'")
+    service(f"select public.team_invitation_day_access('claim','{expired_hash}')", 'team_invitation_unavailable')
+    _, limited_hash, limited_pid = day_invite('day-limited@example.test')
+    day_rpc('issue', limited_hash)
+    for _ in range(5):
+        assert day_rpc('claim', limited_hash)['status'] == 'claimed'
+        sql(f"update private.team_invitations set auth_claimed_at=clock_timestamp()-interval '121 seconds' where participant_id='{limited_pid}'")
+    assert day_rpc('claim', limited_hash)['status'] == 'rate_limited'
+    def concurrent_denial(update, digest, marker):
+        holder = subprocess.Popen(['docker','exec','-i',a.container,'psql','-XqAt','-v','ON_ERROR_STOP=1','-U','postgres','-d',database],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        try:
+            holder.stdin.write(f"begin;{update};select 'locked';\n");holder.stdin.flush()
+            assert holder.stdout.readline().strip() == 'locked', 'local fixture could not acquire the target row'
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                attempt = pool.submit(service, f"set local application_name='{marker}';select public.team_invitation_day_access('claim','{digest}')", 'team_invitation_unavailable')
+                for _ in range(40):
+                    if sql(f"select exists(select 1 from pg_stat_activity where application_name='{marker}' and wait_event_type='Lock')") == 't':
+                        break
+                    time.sleep(0.02)
+                else:
+                    raise AssertionError('claim did not wait for the fixture row lock')
+                holder.stdin.write('commit;\n\\q\n');holder.stdin.flush();holder.wait(timeout=10)
+                attempt.result()
+        finally:
+            if holder.poll() is None:
+                holder.stdin.write('rollback;\n\\q\n');holder.stdin.flush();holder.wait(timeout=10)
+    _, racing_hash, racing_pid = day_invite('day-race-revoke@example.test')
+    day_rpc('issue', racing_hash)
+    concurrent_denial(f"update public.team_participants set revoked_at=clock_timestamp() where id='{racing_pid}'", racing_hash, 'day-revoke-fixture')
+    assert sql(f"select auth_claimed_at is null from private.team_invitations where participant_id='{racing_pid}'") == 't'
+    concurrent_denial(f"update public.team_diagnostics set status='closed' where id='{day_team}'", replacement, 'day-close-fixture')
+    actor(1, f"select public.close_team_diagnostic('{day_team}')")
+    service(f"select public.team_invitation_day_access('claim','{replacement}')", 'team_invitation_unavailable')
+    print('PASS day invitation exact deadline, service-only ACL, atomic parallel claim, retry lease, spend/renew/revoke/expiry/closed and DB rate limit', flush=True)
     meta = {'full_name': 'Product participant', 'data_processing_consent': True, 'marketing_consent': False, **{k + '_version': v for k, v in policy.items()}}
     sql(f"insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values('{uid(6)}','account-fixture-6@example.test',now(),{literal(meta)})")
     participants = []

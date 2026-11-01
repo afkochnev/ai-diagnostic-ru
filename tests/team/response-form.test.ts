@@ -48,9 +48,12 @@ const hooks = vi.hoisted(() => {
   };
 });
 
-const mocks = vi.hoisted(() => ({ save: vi.fn(), push: vi.fn(), refresh: vi.fn() }));
+const mocks = vi.hoisted(() => {
+  const push = vi.fn(), refresh = vi.fn();
+  return {save: vi.fn(), push, refresh, router: {push, refresh}};
+});
 vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof import("react")>(), ...hooks, useSyncExternalStore: (_subscribe: unknown, snapshot: () => boolean) => snapshot() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => mocks.router }));
 vi.mock("next/link", () => ({ default: "a" }));
 vi.mock("@/server/team/actions", () => ({ saveTeamResponseAction: mocks.save }));
 
@@ -85,6 +88,8 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe("team response blocks and saving", () => {
   it("does not write on opening and saves every block using the latest revision", async () => {
     const tree = render();
+    expect(button(tree, "Сохранить ответы")).toBeUndefined();
+    expect(button(tree, "Повторить сохранение")).toBeUndefined();
     await vi.advanceTimersByTimeAsync(2000);
     expect(mocks.save).not.toHaveBeenCalled();
     choose(tree, 0);
@@ -110,10 +115,16 @@ describe("team response blocks and saving", () => {
     const scale = elements(failed).find((element) => element.props.name === "question-1")!;
     expect(scale.props.value).toBe(4);
     expect(elements(failed).some((element) => element.props.role === "alert" && element.props.children === "Connection lost")).toBe(true);
-    (button(failed, "Сохранить ответы").props.onClick as () => void)();
+    expect(button(failed, "Сохранить ответы")).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+    (button(failed, "Повторить сохранение").props.onClick as () => void)();
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.save.mock.calls[1][1].get("revision")).toBe("4");
     expect(JSON.parse(mocks.save.mock.calls[1][1].get("answers"))["question-1"]).toBe(4);
+    const saved = render();
+    expect(button(saved, "Повторить сохранение")).toBeUndefined();
+    expect(elements(saved).some((element) => element.props.role === "status" && element.props.children === "Все ответы сохранены. Можно вернуться к анкете позже.")).toBe(true);
   });
 
   it("saves partial answers when Next finds a required omission", async () => {

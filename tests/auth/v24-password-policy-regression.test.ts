@@ -56,8 +56,14 @@ describe("V24 password-policy regression without live Auth writes or mail", () =
     expect((await loginAction({}, registration())).error).toContain("email");
   });
   it("keeps the recovery redirect and returns the same safe acknowledgment", async () => {
-    expect((await forgotAction({}, registration())).success).toBeTruthy();
+    expect((await forgotAction({}, registration())).success).toContain("Если этот email зарегистрирован");
     expect(m.resetPasswordForEmail).toHaveBeenCalledWith("synthetic@example.test", { redirectTo: "https://staging.example.test/auth/confirm?type=recovery" });
+  });
+  it("explains a current-password match without clearing the verified recovery session", async () => {
+    m.updateUser.mockResolvedValue({error: {code: "same_password", status: 422, message: "private provider body"}});
+    const result = await resetAction({}, registration());
+    expect(result).toEqual({error: "Новый пароль совпадает с текущим. Введите другой пароль."});
+    expect(m.clear).not.toHaveBeenCalled();expect(m.signOut).not.toHaveBeenCalled();
   });
   it("requires a recovery session bound to the current identity before password mutation", async () => {
     m.recovery.mockResolvedValue(false);

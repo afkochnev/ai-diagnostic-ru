@@ -51,7 +51,8 @@ const hooks = vi.hoisted(() => {
 });
 
 vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof import("react")>(), ...hooks }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const navigation = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
 vi.mock("next/link", () => ({ default: "a" }));
 
 const data = {
@@ -79,6 +80,7 @@ describe("diagnostic runner autosave", () => {
   const fetchMock = vi.fn();
   beforeEach(() => {
     hooks.reset();
+    navigation.push.mockClear();
     vi.useFakeTimers();
     // Supports the classic JSX transform used by the Node test environment.
     vi.stubGlobal("React", React);
@@ -157,6 +159,34 @@ describe("diagnostic runner autosave", () => {
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ answers: [{ question_id: "question-1", value: 4 }] });
+  });
+
+  it("saves anonymous answers before leaving for a resumable pause screen", async () => {
+    const renderAnonymous = () => hooks.render(() => DiagnosticRunner({ data, anonymous: true }));
+    edit(renderAnonymous(), 0);
+    const leave = elements(renderAnonymous()).find((element) => element.props.children === "Сохранить и выйти");
+    expect(leave?.props.href).toBe("/ru/free?paused=1");
+    let finishSave!: (result: unknown) => void;
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { finishSave = resolve; }));
+    (leave?.props.onClick as (event: { preventDefault: () => void }) => void)({ preventDefault: vi.fn() });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/acquisition/answers");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ current_block_id: "block-1", answers: [{ question_id: "question-1", value: 0 }] });
+    finishSave({ ok: true, json: async () => ({ revision: 8 }) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(navigation.push).toHaveBeenCalledWith("/ru/free?paused=1");
+  });
+
+  it("keeps an anonymous visitor in the questions when the final save fails", async () => {
+    const renderAnonymous = () => hooks.render(() => DiagnosticRunner({ data, anonymous: true }));
+    edit(renderAnonymous(), 3);
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ error: "unavailable" }) });
+    const leave = elements(renderAnonymous()).find((element) => element.props.children === "Сохранить и выйти");
+    (leave?.props.onClick as (event: { preventDefault: () => void }) => void)({ preventDefault: vi.fn() });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(elements(renderAnonymous()).some((element) => element.props.role === "alert" && String(element.props.children).includes("Не удалось сохранить"))).toBe(true);
   });
 
   it("keeps the explicit save and submit sequence", async () => {
