@@ -12,6 +12,7 @@ vi.mock("@/server/supabase/config",()=>({authConfig:()=>({APP_URL:"https://ai-di
 vi.mock("@/server/team/capabilities",()=>({teamFoundationEnabled:()=>true,teamCreationEnabled:()=>true,teamInvitationsEnabled:()=>true}));
 vi.mock('@/server-runtime/team-smoke',()=>({controlledTeamRequired:()=>state.controlled,controlledTeamContext:async()=>state.controlled?{mode:'controlled'}:null}));
 vi.mock("@/server/team/single-email",()=>({singleEmailCredential:state.credential}));
+vi.mock("@/server/team/day-access",()=>({issueInvitationDayAccess:async(hash:string,email:string)=>({...await state.credential(hash),email,expires:Date.now()+86400000})}));
 vi.mock("@/server/rate-limit",()=>({enforceRateLimit:vi.fn()}));
 vi.mock("@/server/team/service",()=>({teamRpc:state.rpc,invitationCompany:async()=>"Synthetic company",ownerTeam:async()=>({team:{company_id:"company",title:"Synthetic team"},participants:[{id:"10000000-0000-4000-8000-000000000001",email:"participant@example.test"}]})}));
 vi.mock("@/server/team/invitation-email",async(importOriginal)=>({...await importOriginal<typeof import("@/server/team/invitation-email")>(),getTeamInvitationProvider:()=>({name:state.provider,send:state.send})}));

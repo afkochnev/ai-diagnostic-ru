@@ -15,6 +15,7 @@ const inputClass = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white 
 export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
   const [localError, setLocalError] = useState("");
+  const [feedbackHidden, setFeedbackHidden] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const hasEmail = ["register", "login", "email-login", "forgot", "resend"].includes(mode);
@@ -37,6 +38,7 @@ export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false }
     if (error) event.preventDefault();
     else if (["resend", "email-login"].includes(mode)) setResendCooldown(60);
     setLocalError(error);
+    setFeedbackHidden(Boolean(error));
   }
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false }
   if (mode === "confirm" && state.code === "invalid_link") return <ConfirmationRecovery type={hidden.type ?? "email"} signedIn={signedIn} />;
 
   return (
-    <form action={formAction} onSubmit={validate} noValidate className="space-y-5">
+    <form action={formAction} onSubmit={validate} onChange={() => {setFeedbackHidden(true); setLocalError("");}} noValidate className="space-y-5">
       {mode === "confirm" && <p>{hidden.type === "email" ? "Нажмите кнопку, чтобы войти в кабинет. Ссылка одноразовая." : copy.confirmText}</p>}
       {Object.entries(hidden).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
       {policy && Object.entries(policy.versions).map(([kind, version]) => <input key={kind} type="hidden" name={`${kind}_version`} value={version} />)}
@@ -65,8 +67,8 @@ export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false }
         <Link className="block text-sm underline" href={policy.marketingUrl}>{copy.marketingLink}</Link>
         {policy.temporary && <p className="text-xs leading-relaxed text-muted">{copy.temporaryLegal}</p>}
       </>}
-      {(localError || state.error) && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{localError || state.error}</p>}
-      {state.success && <p role="status" className="rounded-xl bg-tint p-3 text-sm">{state.success}</p>}
+      {(localError || (!feedbackHidden && !pending && state.error)) && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{localError || state.error}</p>}
+      {!feedbackHidden && !pending && !localError && state.success && <p role="status" className="rounded-xl bg-tint p-3 text-sm">{state.success}</p>}
       <button type="submit" disabled={pending || (["resend", "email-login"].includes(mode) && resendCooldown > 0)} className="min-h-12 w-full cursor-pointer rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-60">{pending ? copy.pending : labels[mode]}</button>
       {["resend", "email-login"].includes(mode) && resendCooldown > 0 && <p className="text-xs text-muted" role="status">Повторить отправку можно через {resendCooldown} сек.</p>}
     </form>

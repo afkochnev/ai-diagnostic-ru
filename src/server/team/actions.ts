@@ -20,6 +20,7 @@ import { sendTeamCodeAction } from "./passwordless-actions";
 import { z } from "zod";
 import { ordinaryTeamReportProvider } from "./ordinary-provider";
 import { singleEmailCredential } from "./single-email";
+import {issueInvitationDayAccess} from "./day-access";
 import { openInvitationAuthProof } from "./invitation-auth-proof";
 import { requireEntitlement } from "@/server/entitlements";
 import {controlledTeamContext,controlledTeamRequired} from '@/server-runtime/team-smoke';
@@ -91,16 +92,21 @@ async function deliverInvitation(participantId: string, email: string, title: st
   const details=sealInvitationDetails({email,company:company.slice(0,200),team:title,inviter:String(inviter).slice(0,100),invitationHash:hash},authConfig().AUTH_FLOW_SECRET);
   const invitationUrl = `${authConfig().APP_URL}/ru/team/join#invitation=${token}&context=${details}`;
   let emailStatus: TeamActionState["emailStatus"] = "failed";
+  let safeFallback = false;
   try {
     const controlled=await controlledTeamContext({participantId,invitationHash:hash});
     const provider = getTeamInvitationProvider(controlled?{context:controlled,participantId,invitationHash:hash,recipient:email}:undefined);
     let emailedUrl=invitationUrl;
+    let accessExpiresAt: number | undefined;
     if(provider.name!=="mock"){
-      const credential=await singleEmailCredential(hash);
-      if(credential.email!==email)throw new Error("team_invitation_unavailable");
+      const credential=controlled?await singleEmailCredential(hash):await issueInvitationDayAccess(hash,email);
+      if("expires" in credential)accessExpiresAt=credential.expires;
+      const recipient="email" in credential?credential.email:email;
+      if(recipient!==email)throw new Error("team_invitation_unavailable");
       emailedUrl+=`&auth=${credential.envelope}`;
     }
-    const receipt=await provider.send({ to: email,...teamInvitationMessage({company,team:title,inviter,url:emailedUrl,singleEmail:provider.name!=="mock"}), idempotencyKey: `team-invitation/${participantId}/${hash}` });
+    safeFallback = !controlled;
+    const receipt=await provider.send({ to: email,...teamInvitationMessage({company,team:title,inviter,url:emailedUrl,singleEmail:provider.name!=="mock",accessExpiresAt}), idempotencyKey: `team-invitation/${participantId}/${hash}` });
     await deliveryMilestone("invitation",participantId);
     emailStatus = provider.name === "mock" ? "mock" : "sent";
     console.info("[team-email]",{event:"invitation_delivery",provider:provider.name,providerAccepted:true,providerMessageId:receipt.providerMessageId,correlation:hash.slice(0,12)});
@@ -109,7 +115,7 @@ async function deliverInvitation(participantId: string, email: string, title: st
   console.info("[team-email]",{event:"invitation_delivery",providerAccepted:false,correlation:hash.slice(0,12)});
   // A controlled failure never exposes a fallback link that could start an OTP
   // email or encourage a second credential/send after an uncertain first attempt.
-  return { ...(!controlledTeamRequired()?{invitationUrl}:{}), emailStatus,recipient:email,participantId };
+  return { ...(safeFallback&&!controlledTeamRequired()?{invitationUrl}:{}), emailStatus,recipient:email,participantId };
 }
 export async function renewTeamInvitationAction(_: TeamActionState, form: FormData): Promise<TeamActionState> {
   try {

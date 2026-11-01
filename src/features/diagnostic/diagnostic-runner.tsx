@@ -15,7 +15,7 @@ const answersHash = (value: Record<string, number | string>) => JSON.stringify(O
 export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
   const router = useRouter();
   const apiBase=anonymous?"/api/acquisition":`/api/diagnostics/${data.diagnostic.id}`;
-  const returnPath=anonymous?"/ru/free":`/ru/companies/${data.diagnostic.company_id}`;
+  const returnPath=anonymous?"/ru/free?paused=1":`/ru/companies/${data.diagnostic.company_id}`;
   const initialAnswers = useMemo(() => Object.fromEntries(data.blocks.flatMap((block) => block.questions.flatMap((question) => question.answer ? [[question.id, question.answer.numeric_value ?? question.answer.text_value ?? ""]] : []))) as Record<string, number | string>, [data.blocks]);
   const [answers, setAnswers] = useState<Record<string, number | string>>(initialAnswers);
   const [revision, setRevision] = useState(data.diagnostic.revision);

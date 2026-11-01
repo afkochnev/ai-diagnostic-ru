@@ -817,7 +817,9 @@ export type Database = {
         Row: {
           company_id: string
           created_at: string
-          diagnostic_id: string
+          diagnostic_id: string | null
+          team_diagnostic_id: string | null
+          team_report_id: string | null
           id: string
           improve: string | null
           rating: number
@@ -828,7 +830,9 @@ export type Database = {
         Insert: {
           company_id: string
           created_at?: string
-          diagnostic_id: string
+          diagnostic_id?: string | null
+          team_diagnostic_id?: string | null
+          team_report_id?: string | null
           id?: string
           improve?: string | null
           rating: number
@@ -839,7 +843,9 @@ export type Database = {
         Update: {
           company_id?: string
           created_at?: string
-          diagnostic_id?: string
+          diagnostic_id?: string | null
+          team_diagnostic_id?: string | null
+          team_report_id?: string | null
           id?: string
           improve?: string | null
           rating?: number
@@ -929,7 +935,8 @@ export type Database = {
           completed_at: string | null
           created_at: string
           deduplication_key: string
-          diagnostic_id: string
+          diagnostic_id: string | null
+          team_diagnostic_id: string | null
           id: string
           kind: string
           last_error_code: string | null
@@ -945,7 +952,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           deduplication_key?: string
-          diagnostic_id: string
+          diagnostic_id?: string | null
+          team_diagnostic_id?: string | null
           id?: string
           kind: string
           last_error_code?: string | null
@@ -961,7 +969,8 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           deduplication_key?: string
-          diagnostic_id?: string
+          diagnostic_id?: string | null
+          team_diagnostic_id?: string | null
           id?: string
           kind?: string
           last_error_code?: string | null
@@ -988,12 +997,14 @@ export type Database = {
           contact_type: string | null
           contact_value: string | null
           created_at: string
-          diagnostic_id: string
+          diagnostic_id: string | null
+          team_diagnostic_id: string | null
+          team_report_id: string | null
           email: string
           id: string
           idempotency_key: string
           name: string
-          report_id: string
+          report_id: string | null
           status: string
           updated_at: string
           user_id: string
@@ -1004,12 +1015,14 @@ export type Database = {
           contact_type?: string | null
           contact_value?: string | null
           created_at?: string
-          diagnostic_id: string
+          diagnostic_id?: string | null
+          team_diagnostic_id?: string | null
+          team_report_id?: string | null
           email: string
           id?: string
           idempotency_key: string
           name: string
-          report_id: string
+          report_id?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -1020,12 +1033,14 @@ export type Database = {
           contact_type?: string | null
           contact_value?: string | null
           created_at?: string
-          diagnostic_id?: string
+          diagnostic_id?: string | null
+          team_diagnostic_id?: string | null
+          team_report_id?: string | null
           email?: string
           id?: string
           idempotency_key?: string
           name?: string
-          report_id?: string
+          report_id?: string | null
           status?: string
           updated_at?: string
           user_id?: string

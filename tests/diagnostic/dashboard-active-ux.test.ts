@@ -29,14 +29,14 @@ describe("active diagnostic dashboard controls",()=>{
     expect(primary[0]).toContain("Начать диагностику");
     expect(html).not.toContain("<form");
   });
-  it("makes the saved individual attempt primary and keeps a new Team choice available",async()=>{
+  it("makes the saved attempt primary and routes new diagnostics through the shared mode chooser",async()=>{
     state.active={id:"active"};state.individual=[{diagnostic:{id:"active",status:"in_progress",completed_at:null},result:null}];
     const html=await markup();const primary=primaryLinks(html);
     expect(primary).toHaveLength(1);expect(primary[0]).toContain('href="/ru/diagnostics/active"');
     expect(primary[0]).toContain("Продолжить диагностику");
     expect(html).toContain('href="/ru/companies/company/diagnostics?new=1"');
     expect(html).toContain("Новая диагностика");
-    expect(html).toContain("Начать командную диагностику");
-    expect(html).toContain('href="/ru/account/plan?account=account&amp;company=company"');
+    expect(html).not.toContain("Начать командную диагностику");
+    expect(html).not.toContain('/ru/account/plan');
   });
 });
