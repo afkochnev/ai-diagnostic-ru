@@ -17,18 +17,20 @@ const team=(id="foodtech",day="2026-10-18")=>({id,title:"Аудит систем
 const company={id:"company",name:"FoodTech",account_id:"account",country:"Россия",employee_count:200} as Parameters<typeof CompanyDashboard>[0]["company"];
 beforeEach(()=>{data.individual=[];data.teams=[];data.enabled=true;data.entitled=false;vi.clearAllMocks();});
 describe("Company dashboard recent combined history",()=>{
-  it("always offers Team with account and company context on Free",async()=>{
+  it("offers one same-company mode chooser on Free without querying disabled Team history",async()=>{
     data.enabled=false;
     const html=renderToStaticMarkup(await CompanyDashboard({company,userId:"owner"}));
-    expect(html).toContain("Начать командную диагностику");
-    expect(html).toContain('/ru/account/plan?account=account&amp;company=company');
+    expect(html.match(/<a\b[^>]*>Начать диагностику<\/a>/g)).toEqual([expect.stringContaining('href="/ru/companies/company/diagnostics?new=1"')]);
+    expect(html).not.toContain("Начать командную диагностику");
+    expect(html).not.toContain('/ru/account/plan');
     expect(listTeamHistory).not.toHaveBeenCalled();
   });
-  it("takes Advanced to the same-company Team form",async()=>{
+  it("uses the same mode chooser on Advanced rather than skipping the choice",async()=>{
     data.entitled=true;
     const html=renderToStaticMarkup(await CompanyDashboard({company,userId:"owner"}));
-    expect(html).toContain("Начать командную диагностику");
-    expect(html).toContain('/ru/companies/company/diagnostics?new=1&amp;type=team#team-create');
+    expect(html.match(/<a\b[^>]*>Начать диагностику<\/a>/g)).toEqual([expect.stringContaining('href="/ru/companies/company/diagnostics?new=1"')]);
+    expect(html).not.toContain("Начать командную диагностику");
+    expect(html).not.toContain('type=team');
   });
   it("loads and shows an existing Team even without individual results",async()=>{
     data.teams=[team()];const html=renderToStaticMarkup(await CompanyDashboard({company,userId:"owner"}));
