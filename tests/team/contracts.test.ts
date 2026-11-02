@@ -27,7 +27,7 @@ describe("team invitation and answer contracts", () => {
     vi.stubEnv("APP_URL","https://ai-diagnostic-staging-web.onrender.com");
     vi.stubEnv("SUPABASE_URL","https://vflgxgdwlftlyjslyrmo.supabase.co");
     expect(teamFoundationEnabled()).toBe(true);
-    vi.stubEnv("APP_URL","https://iteamsystems.com"); expect(teamFoundationEnabled()).toBe(false);
+    vi.stubEnv("APP_URL","https://audit.iteamsystems.com"); expect(teamFoundationEnabled()).toBe(false);
     vi.stubEnv("APP_URL","https://ai-diagnostic-staging-web.onrender.com");
     vi.stubEnv("SUPABASE_URL","https://foreign.supabase.co"); expect(teamFoundationEnabled()).toBe(false);
   });

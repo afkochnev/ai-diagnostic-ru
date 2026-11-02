@@ -18,7 +18,7 @@ describe("Team-scoped Auth template and callback contract",()=>{
   const production=readFileSync(`supabase/templates/team-${name}.production.html`,"utf8");
   const branches=production.match(/^(\{\{ if [^\n]+ \}\})\n([\s\S]+?)\n(\{\{ else if [^\n]+ \}\})\n([\s\S]+?)\n\{\{ else \}\}\n([\s\S]+)\n\{\{ end \}\}\n$/)!;
   expect(branches).not.toBeNull();
-  const exactCondition=(prefix:string,route:string)=>`{{ ${prefix} or (eq .RedirectTo "https://iteamsystems.com${route}") (eq .RedirectTo "https://audit.iteam.ru${route}") }}`;
+  const exactCondition=(prefix:string,route:string)=>`{{ ${prefix} or (eq .RedirectTo "https://audit.iteamsystems.com${route}") (eq .RedirectTo "https://iteamsystems.com${route}") (eq .RedirectTo "https://audit.iteam.ru${route}") }}`;
   expect(branches[1]).toBe(exactCondition("if","/ru/team/confirm"));
   expect(branches[3]).toBe(exactCondition("else if","/auth/confirm"));
   const staging=readFileSync(`supabase/templates/team-${name}.staging.html`,"utf8");

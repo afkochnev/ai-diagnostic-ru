@@ -1,13 +1,13 @@
 import {describe,expect,it} from 'vitest';
 import {launchEnvironment,acquisitionStartEnabled,teamCreationEnabled,teamInvitationsEnabled,teamProductEnabled} from '@/server-runtime/launch-gates';
-const prod={NODE_ENV:'production',APP_URL:'https://iteamsystems.com',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co'};
+const prod={NODE_ENV:'production',APP_URL:'https://audit.iteamsystems.com',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co'};
 const stage={NODE_ENV:'production',APP_URL:'https://ai-diagnostic-staging-web.onrender.com',SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co'};
 describe('production launch controls',()=>{
  it('keeps both production features OFF until their individual explicit enable flags',()=>{
   expect(launchEnvironment('team',prod)).toBe(false);expect(launchEnvironment('acquisition',prod)).toBe(false);
   expect(launchEnvironment('team',{...prod,TEAM_ENABLED:'true'})).toBe(true);expect(launchEnvironment('acquisition',{...prod,ACQUISITION_ENABLED:'true'})).toBe(true);
  });
- it.each(['https://audit.iteam.ru','https://www.iteamsystems.com','https://audit.iteamsystems.com','https://iteamsystems.com.evil','http://iteamsystems.com','https://iteamsystems.com/ru'])('rejects noncanonical production origin %s even with all flags enabled',origin=>{
+ it.each(['https://audit.iteam.ru','https://www.iteamsystems.com','https://iteamsystems.com','https://audit.iteamsystems.com.evil','http://audit.iteamsystems.com','https://audit.iteamsystems.com/ru'])('rejects noncanonical production origin %s even with all flags enabled',origin=>{
   const env={...prod,APP_URL:origin,TEAM_ENABLED:'true',ACQUISITION_ENABLED:'true',TEAM_PRODUCT_ENABLED:'true'};
   expect(launchEnvironment('team',env)).toBe(false);expect(launchEnvironment('acquisition',env)).toBe(false);expect(teamProductEnabled(env)).toBe(false);
  });
