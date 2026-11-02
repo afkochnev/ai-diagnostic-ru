@@ -49,6 +49,28 @@ describe("canonical domain proxy", () => {
     expect(doubledPath.headers.get("location")).toBe("https://iteamsystems.com/ru//external.example/report");
   });
 
+  it.each(["GET", "HEAD"])("redirects %s using the public Host when NextURL contains Render's internal address", async (method) => {
+    const request = new NextRequest("http://0.0.0.0:10000/ru/free?source=old-domain-check", {method, headers: {host: "audit.iteam.ru"}});
+    expect(request.nextUrl.host).not.toBe("audit.iteam.ru");
+    const response = await proxy(request);
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe("https://iteamsystems.com/ru/free?source=old-domain-check");
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+    expect(mocks.getUser).not.toHaveBeenCalled();
+  });
+
+  it.each(["http://0.0.0.0:10000/ru/free", "https://audit.iteam.ru/ru/free"])("treats the canonical Host as authoritative even with a spoofed forwarded host (%s)", async (url) => {
+    const response = await proxy(new NextRequest(url, {headers: {host: "iteamsystems.com", "x-forwarded-host": "audit.iteam.ru"}}));
+    expect(response.headers.get("location")).toBeNull();
+    expect(mocks.getUser).toHaveBeenCalledOnce();
+  });
+
+  it.each(["", "sub.audit.iteam.ru", "audit.iteam.ru.external.example", "audit.iteam.ru:8443"])("does not fall back to the URL when an unlisted Host is present (%s)", async (host) => {
+    const response = await proxy(new NextRequest("https://audit.iteam.ru/ru/free", {headers: {host, "x-forwarded-host": "audit.iteam.ru"}}));
+    expect(response.headers.get("location")).toBeNull();
+    expect(mocks.getUser).toHaveBeenCalledOnce();
+  });
+
   it.each(["POST", "PUT", "PATCH", "DELETE", "OPTIONS"])("does not redirect %s or replay its payload", async (method) => {
     const response = await proxy(new NextRequest("https://audit.iteam.ru/ru/free", {method, headers: {"next-action": "synthetic-action"}}));
     expect(response.headers.get("location")).toBeNull();
