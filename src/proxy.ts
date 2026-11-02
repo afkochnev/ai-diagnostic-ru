@@ -4,11 +4,13 @@ import { authConfig, isAuthConfigured } from "@/server/supabase/config";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
+  // Next's Node server can construct nextUrl with its internal bind host.
+  const incomingHost = request.headers.get("host") ?? request.nextUrl.host;
   const canonicalRedirect = (request.method === "GET" || request.method === "HEAD")
     && process.env.NODE_ENV === "production"
     && process.env.APP_URL === "https://iteamsystems.com"
     && process.env.SUPABASE_URL === "https://fhvxqeaujjeiflanqsbg.supabase.co"
-    && request.nextUrl.host === "audit.iteam.ru";
+    && incomingHost === "audit.iteam.ru";
   if (canonicalRedirect) {
     const target = new URL("https://iteamsystems.com");
     target.pathname = request.nextUrl.pathname;
