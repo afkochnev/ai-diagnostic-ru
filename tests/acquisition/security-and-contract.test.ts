@@ -13,7 +13,7 @@ vi.mock('@/server/team/service',()=>({listTeams:vi.fn()}));
 const baseline={name:'Synthetic','industry_key':'manufacturing',employee_count:30,products:'Products',key_problems:'Constraint',main_goals:'Goals'};
 describe('V25 anonymous security boundaries',()=>{
  it('keeps production and mixed project/origin pairs disabled',()=>{
-  expect(acquisitionEnabled({NODE_ENV:'production',APP_URL:'https://audit.iteam.ru',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co'})).toBe(false);
+  expect(acquisitionEnabled({NODE_ENV:'production',APP_URL:'https://iteamsystems.com',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co'})).toBe(false);
   expect(acquisitionEnabled({APP_URL:'https://ai-diagnostic-staging-web.onrender.com',SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co'})).toBe(true);
   expect(acquisitionEnabled({APP_URL:'https://ai-diagnostic-staging-web.onrender.com',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co'})).toBe(false);
   expect(acquisitionEnabled({NODE_ENV:'development',APP_URL:'http://127.0.0.1:3250',SUPABASE_URL:'http://127.0.0.1:55321'})).toBe(true);

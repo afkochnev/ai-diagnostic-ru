@@ -9,6 +9,7 @@ const productionOrigin='https://audit.iteam.ru';
 const productionDatabase='https://fhvxqeaujjeiflanqsbg.supabase.co';
 /** Production remains controlled until its ordinary product release is explicit. */
 export function controlledTeamRequired(env:Env=process.env){
+ if(teamProductEnabled(env))return false;
  if(env.APP_URL!==productionOrigin && env.SUPABASE_URL!==productionDatabase)return false;
  if(env.NODE_ENV!=='production'||env.APP_URL!==productionOrigin||env.SUPABASE_URL!==productionDatabase)throw Error('controlled_team_unavailable');
  return !teamProductEnabled(env);

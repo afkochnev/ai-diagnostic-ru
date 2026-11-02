@@ -4,7 +4,17 @@ import { authConfig, isAuthConfigured } from "@/server/supabase/config";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
-  if (isAuthConfigured()) {
+  const canonicalRedirect = (request.method === "GET" || request.method === "HEAD")
+    && process.env.NODE_ENV === "production"
+    && process.env.APP_URL === "https://iteamsystems.com"
+    && process.env.SUPABASE_URL === "https://fhvxqeaujjeiflanqsbg.supabase.co"
+    && request.nextUrl.host === "audit.iteam.ru";
+  if (canonicalRedirect) {
+    const target = new URL("https://iteamsystems.com");
+    target.pathname = request.nextUrl.pathname;
+    target.search = request.nextUrl.search;
+    response = NextResponse.redirect(target, 308);
+  } else if (isAuthConfigured()) {
     const config = authConfig();
     const supabase = createServerClient(config.SUPABASE_URL, config.SUPABASE_PUBLISHABLE_KEY, {
       cookieOptions: { httpOnly: true, sameSite: "lax", secure: config.secure, path: "/" },
