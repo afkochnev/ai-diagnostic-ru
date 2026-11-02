@@ -8,7 +8,7 @@ export function billingEnvironmentAllowed(env: Record<string,string|undefined>) 
 }
 // Exact deployment identity is independent of merchant secrets and browser input.
 export function productionBillingEnvironment(env: Record<string,string|undefined>) {
- return env.NODE_ENV==='production'&&env.APP_URL==='https://audit.iteam.ru'&&env.SUPABASE_URL==='https://fhvxqeaujjeiflanqsbg.supabase.co';
+ return env.NODE_ENV==='production'&&env.APP_URL==='https://iteamsystems.com'&&env.SUPABASE_URL==='https://fhvxqeaujjeiflanqsbg.supabase.co';
 }
 export function yookassaRuntimeMode(env: Record<string,string|undefined>): 'test'|'production'|null {
  if(env.BILLING_PROVIDER!=='yookassa'||!/^\d{1,20}$/.test(env.YOOKASSA_SHOP_ID??''))return null;

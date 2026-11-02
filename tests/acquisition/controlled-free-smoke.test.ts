@@ -2,6 +2,7 @@ import{describe,it,expect,vi,beforeEach,afterEach}from'vitest';
 import{createHash}from'node:crypto';
 const shared=vi.hoisted(()=>({used:new Set<string>(),cookie:'',rpcCalls:0,requests:0,options:[]as Record<string,unknown>[],bodies:[]as Record<string,unknown>[],failRPC:false,failProvider:false,generated:0,emails:0,emailReservations:0}));
 vi.mock('server-only',()=>({}));
+vi.mock('@/server/acquisition/contracts',()=>({acquisitionEnabled:()=>true}));
 vi.mock('next/headers',()=>({cookies:async()=>({get:()=>shared.cookie?{value:shared.cookie}:undefined})}));
 vi.mock('@/server-runtime/supabase/admin',()=>({createAdminClient:()=>({auth:{admin:{generateLink:async(input:{email:string;type:string})=>{shared.generated++;return{data:{properties:{verification_type:input.type,hashed_token:'synthetic-proof-offline-0000000000000000'},user:{email:input.email}},error:null};}}},rpc:async(name:string,args:{p_key:string;p_limit:number;p_window_seconds:number})=>{
  shared.rpcCalls++;expect(name).toBe('consume_rate_limit');expect(args.p_limit).toBe(1);expect(args.p_window_seconds).toBe(86400);

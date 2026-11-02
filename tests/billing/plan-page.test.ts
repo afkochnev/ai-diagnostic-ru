@@ -23,7 +23,7 @@ describe("Account plan screen", () => {
   function readyPayment(){for(const [k,v]of Object.entries({APP_URL:'https://ai-diagnostic-staging-web.onrender.com',SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co',BILLING_PROVIDER:'yookassa',BILLING_ENABLED:'true',YOOKASSA_RECONCILIATION_ENABLED:'true',YOOKASSA_TEST_MODE:'true',YOOKASSA_SHOP_ID:'123456',YOOKASSA_SECRET_KEY:'test_synthetic',YOOKASSA_RECEIPT_CONFIG_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE:'full_payment',YOOKASSA_RECEIPT_SOLUTION:'external',YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE:'false'}))vi.stubEnv(k,v);}
   function readyLivePayment(){
     readyPayment();
-    for(const [k,v]of Object.entries({NODE_ENV:'production',APP_URL:'https://audit.iteam.ru',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co',YOOKASSA_TEST_MODE:'false',YOOKASSA_PRODUCTION_CONFIRMED:'true',YOOKASSA_PRODUCTION_FISCAL_CONFIRMED:'true',YOOKASSA_SECRET_KEY:'live_synthetic_not_a_credential'}))vi.stubEnv(k,v);
+    for(const [k,v]of Object.entries({NODE_ENV:'production',APP_URL:'https://iteamsystems.com',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co',YOOKASSA_TEST_MODE:'false',YOOKASSA_PRODUCTION_CONFIRMED:'true',YOOKASSA_PRODUCTION_FISCAL_CONFIRMED:'true',YOOKASSA_SECRET_KEY:'live_synthetic_not_a_credential'}))vi.stubEnv(k,v);
     state.terms.mockResolvedValue({version:'advanced-terms-ru-v1',content_sha256:'a'.repeat(64)});
   }
   it('shows the actual price and acceptance without promising a free test in live mode',async()=>{

@@ -38,7 +38,7 @@ describe("confidential Team report boundary",()=>{
   expect(orderDispersion(rows,true).map(x=>x.question_id)).toEqual(["a","b","z"]);
  });
  it("does not run Team queue against production or an unknown environment",async()=>{
-  vi.stubEnv("APP_URL","https://audit.iteam.ru");expect(await runTeamJobs()).toBe(0);
+  vi.stubEnv("APP_URL","https://iteamsystems.com");expect(await runTeamJobs()).toBe(0);
  });
  it("validates/stores synthesis before generating and publishing main report",async()=>{
   const rpc=vi.fn(async(name:string)=>({data:name==="prepare_team_report_job"?{status:"generating",qualitative_groups:[],report_input:input}:"stored",error:null}));

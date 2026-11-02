@@ -14,6 +14,19 @@ describe("Team-scoped Auth template and callback contract",()=>{
   expect(match[2]).toContain(`href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=${name==="signup"?"signup":"email"}"`);
   expect(match[2]).not.toContain("командн");expect(match[2]).not.toContain("{{ .Token }}");
  });
+ it.each(["signup","magic"])("%s production allows only the new and previous exact origins without changing either email flow",name=>{
+  const production=readFileSync(`supabase/templates/team-${name}.production.html`,"utf8");
+  const branches=production.match(/^(\{\{ if [^\n]+ \}\})\n([\s\S]+?)\n(\{\{ else if [^\n]+ \}\})\n([\s\S]+?)\n\{\{ else \}\}\n([\s\S]+)\n\{\{ end \}\}\n$/)!;
+  expect(branches).not.toBeNull();
+  const exactCondition=(prefix:string,route:string)=>`{{ ${prefix} or (eq .RedirectTo "https://iteamsystems.com${route}") (eq .RedirectTo "https://audit.iteam.ru${route}") }}`;
+  expect(branches[1]).toBe(exactCondition("if","/ru/team/confirm"));
+  expect(branches[3]).toBe(exactCondition("else if","/auth/confirm"));
+  const staging=readFileSync(`supabase/templates/team-${name}.staging.html`,"utf8");
+  const bodies=staging.match(/^\{\{ if [^\n]+ \}\}\n([\s\S]+?)\n\{\{ else if [^\n]+ \}\}\n([\s\S]+?)\n\{\{ else \}\}/)!;
+  expect(branches[2]).toBe(bodies[1]);expect(branches[4]).toBe(bodies[2]);
+  expect(hash(branches[5])).toBe(name==="signup"?"2fd2fcf653b909cbcb65c9272a6f51f9d18321c368a497a15a9a3a40ecb0c61d":"87cf15e18260bceffbcebbe235e1ef1cf1677442199bdf301d9d2e46f1db6782");
+  expect(production).not.toContain("ai-diagnostic-staging-web");
+ });
  it("never reads Auth or invitation secrets through GET query parameters or generic next",()=>{
   const callback=readFileSync("src/features/team/email-confirm.tsx","utf8");
   expect(callback).toContain("window.location.hash");expect(callback).toContain("window.history.replaceState");expect(callback).not.toContain("searchParams");
