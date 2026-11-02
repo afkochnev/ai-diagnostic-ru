@@ -2,23 +2,56 @@
 import Link from 'next/link';
 import {useRouter} from 'next/navigation';
 import {useActionState,useEffect,useState} from 'react';
+import {AutoResizeTextarea} from '@/components/ui/auto-resize-textarea';
 import {startAnonymous,saveShortProfile,sendAccess,finishClaim,confirmAccess,type AcquisitionState} from '@/server/acquisition/actions';
 import type {Choices} from '@/server/acquisition/service';
 type Policy={versions:Record<string,string>;temporary:boolean;dataUrl:string;marketingUrl:string;policyUrl?:string};
-const field='mt-2 block min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3';
+const field='mt-2 block min-h-12 w-full min-w-0 rounded-xl border border-line bg-white px-3 py-3 text-base leading-6 font-normal';
 const button='mt-6 inline-flex min-h-12 items-center justify-center rounded-xl bg-brand px-6 py-3 font-semibold text-white disabled:opacity-50';
 function Notice({state}:{state:AcquisitionState}){return state.error?<p role="alert" className="my-4 rounded-xl bg-red-50 p-4 text-red-900">{state.error}</p>:null;}
-function Consent({policy}:{policy:Policy}){return <div className="mt-5"><input name="consent_version" value={policy.versions.data_processing} type="hidden"/><label className="flex items-start gap-3"><input type="checkbox" name="consent" required className="mt-1 size-5 shrink-0"/><span>Я согласен с <a className="underline" href={policy.dataUrl}>{policy.temporary ? "политикой обработки персональных данных" : "согласием на обработку персональных данных"}</a>.</span></label>{policy.policyUrl&&<a className="mt-3 block underline" href={policy.policyUrl}>Политика обработки персональных данных</a>}{policy.temporary&&<p className="mt-3 text-sm text-muted">Юридические документы пока не утверждены. Здесь будет опубликована актуальная версия.</p>}</div>;}
+function Consent({policy}:{policy:Policy}){return <div className="mt-5"><input name="consent_version" value={policy.versions.data_processing} type="hidden"/><label className="flex items-start gap-3"><input type="checkbox" name="consent" required className="mt-1 size-5 shrink-0"/><span>Я даю <a className="underline" href={policy.dataUrl}>согласие на обработку персональных данных</a></span></label>{policy.policyUrl&&<a className="mt-3 block underline" href={policy.policyUrl}>Политика обработки персональных данных</a>}{policy.temporary&&<p className="mt-3 text-sm text-muted">Юридические документы пока не утверждены. Здесь будет опубликована актуальная версия.</p>}</div>;}
 export function StartForm({policy,attribution={}}:{policy:Policy;attribution?:Record<string,string>}){
  const [state,action,pending]=useActionState(startAnonymous,{});
- return <form action={action} className="mt-6"><Notice state={state}/>{Object.entries(attribution).map(([k,v])=><input type="hidden" key={k} name={k} value={v}/>)}<Consent policy={policy}/><button className={button} disabled={pending}>{pending?'Открываем вопросы…':'Начать диагностику'}</button><p className="mt-3 text-sm text-muted">Имя, email и сведения о компании пока не нужны. Сохранённые ответы доступны в этом браузере семь дней.</p></form>;
+ return <form action={action} className="mt-6"><Notice state={state}/>{Object.entries(attribution).map(([k,v])=><input type="hidden" key={k} name={k} value={v}/>)}<Consent policy={policy}/><button className={button} disabled={pending}>{pending?'Открываем вопросы…':'Начать диагностику'}</button><p className="mt-3 text-sm text-muted">Без регистрации</p></form>;
 }
 export function ShortProfileForm({industries,revenues,draft,prefilled=false}:{industries:{industry_key:string;name:string}[];revenues:{revenue_key:string;name:string}[];draft?:Record<string,string|number|null>|null;prefilled?:boolean}){
  const [state,action,pending]=useActionState(saveShortProfile,{});
  const [values,setValues]=useState<Record<string,string>>(()=>Object.fromEntries(Object.entries(draft??{}).map(([key,value])=>[key,String(value??'')])));
  const input=(name:string)=>({value:values[name]??'',onChange:(event:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>)=>setValues(previous=>({...previous,[name]:event.target.value}))});
- const text=(name:string,label:string,area=false,required=true)=><label className="block">{label}{required?' *':''}{area?<textarea name={name} required={required} maxLength={5000} {...input(name)} className={field+' min-h-28'}/>:<input name={name} required={required} maxLength={200} {...input(name)} className={field}/>}</label>;
- return <form action={action} className="mt-7 space-y-5"><Notice state={state}/>{prefilled&&<p className="rounded-xl bg-tint p-4 text-sm">Проблема и цели перенесены из ваших ответов. Здесь их можно уточнить.</p>}{text('name','Название компании')}<label className="block">Отрасль *<select name="industry_key" required {...input('industry_key')} className={field}><option value="">Выберите отрасль</option>{industries.map(i=><option key={i.industry_key} value={i.industry_key}>{i.name}</option>)}</select></label><label className="block">Количество сотрудников *<input name="employee_count" type="number" min="1" max="10000000" required {...input('employee_count')} className={field}/></label>{text('products','Основные продукты / услуги',true)}{text('key_problems','Главная проблема / ограничения',true)}{text('main_goals','Главные цели компании',true)}<details className="rounded-xl border border-line p-4"><summary className="cursor-pointer font-medium">Добавить больше контекста для более точного отчёта</summary><div className="mt-5 space-y-5">{text('country','Страна',false,false)}{text('customer_segments','Клиенты',true,false)}{text('sales_channels','Каналы продаж',true,false)}<label className="block">Годовая выручка<select name="annual_revenue_key" {...input('annual_revenue_key')} className={field}><option value="">Не указана</option>{revenues.map(r=><option key={r.revenue_key} value={r.revenue_key}>{r.name}</option>)}</select></label><label className="block">Возраст компании, лет<input type="number" name="company_age_years" min="0" max="10000" {...input('company_age_years')} className={field}/></label><label className="block">Уровни управления<input type="number" name="management_levels" min="1" max="10000" {...input('management_levels')} className={field}/></label></div></details><button className={button} disabled={pending}>{pending?'Сохраняем…':'Продолжить к получению отчёта'}</button></form>;
+ const labelClass='block min-w-0 text-base leading-6 font-medium';
+ const text=(name:string,label:string,area=false,required=true)=><label className={labelClass}>{label}{required?' *':''}{area?<AutoResizeTextarea name={name} rows={3} required={required} maxLength={5000} {...input(name)} className={field+' min-h-28'}/>:<input name={name} required={required} maxLength={200} {...input(name)} className={field+' h-12'}/>}</label>;
+ return <form action={action} className="mt-7 space-y-7 text-base leading-6">
+  <Notice state={state}/>
+  {prefilled&&<p className="rounded-xl bg-tint p-4">Проблема и цели перенесены из ваших ответов. Здесь их можно уточнить.</p>}
+  <div className="space-y-5">
+   {text('name','Название компании')}
+   <div className="grid gap-5 sm:grid-cols-2">
+    <label className={labelClass}>Отрасль *<select name="industry_key" required {...input('industry_key')} className={field+' h-12'}><option value="">Выберите отрасль</option>{industries.map(i=><option key={i.industry_key} value={i.industry_key}>{i.name}</option>)}</select></label>
+    <label className={labelClass}>Количество сотрудников *<input name="employee_count" type="number" min="1" max="10000000" required {...input('employee_count')} className={field+' h-12'}/></label>
+   </div>
+  </div>
+  <div className="space-y-6">
+   {text('products','Основные продукты / услуги',true)}
+   {text('key_problems','Главная проблема / ограничения',true)}
+   {text('main_goals','Главные цели компании',true)}
+  </div>
+  <details className="rounded-xl border border-line p-4 sm:p-5">
+   <summary className="cursor-pointer font-medium">Добавить больше контекста для более точного отчёта</summary>
+   <div className="mt-6 space-y-6">
+    <div className="grid gap-5 sm:grid-cols-2">
+     {text('country','Страна',false,false)}
+     <label className={labelClass}>Годовая выручка<select name="annual_revenue_key" {...input('annual_revenue_key')} className={field+' h-12'}><option value="">Не указана</option>{revenues.map(r=><option key={r.revenue_key} value={r.revenue_key}>{r.name}</option>)}</select></label>
+    </div>
+    {text('customer_segments','Клиенты',true,false)}
+    {text('sales_channels','Каналы продаж',true,false)}
+    <div className="grid gap-5 sm:grid-cols-2">
+     <label className={labelClass}>Возраст компании, лет<input type="number" name="company_age_years" min="0" max="10000" {...input('company_age_years')} className={field+' h-12'}/></label>
+     <label className={labelClass}>Уровни управления<input type="number" name="management_levels" min="1" max="10000" {...input('management_levels')} className={field+' h-12'}/></label>
+    </div>
+   </div>
+  </details>
+  <button className={button+' w-full sm:w-auto'} disabled={pending}>{pending?'Сохраняем…':'Перейти к получению отчета'}</button>
+ </form>;
 }
 export function EmailForm({policy,renewConsent,waiting=false,mock=false,cooldownSeconds=0}:{policy:Policy;renewConsent:boolean;waiting?:boolean;mock?:boolean;cooldownSeconds?:number}){
  const [displayName,setDisplayName]=useState(''),[email,setEmail]=useState('');
