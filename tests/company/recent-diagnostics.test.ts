@@ -3,6 +3,9 @@ vi.mock('server-only',()=>({}));
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 const data=vi.hoisted(()=>({individual:[] as unknown[],teams:[] as unknown[],enabled:true,entitled:false}));
+const valueMoment=vi.hoisted(()=>vi.fn(async()=>"unexpected-value-moment"));
+vi.mock("@/server/acquisition/contracts",()=>({acquisitionEnabled:()=>true}));
+vi.mock("@/features/acquisition/company-value-moment",()=>({CompanyValueMoment:valueMoment}));
 vi.mock("@/server/diagnostic/service",()=>({getActiveDiagnostic:vi.fn(async()=>null),getLatestDiagnostics:vi.fn(async()=>data.individual)}));
 vi.mock("@/server/entitlements",()=>({hasEntitlement:vi.fn(async()=>data.entitled)}));
 vi.mock("@/server/team/service",()=>({listTeamHistory:vi.fn(async()=>data.teams)}));
@@ -20,7 +23,7 @@ describe("Company dashboard recent combined history",()=>{
   it("offers one same-company mode chooser on Free without querying disabled Team history",async()=>{
     data.enabled=false;
     const html=renderToStaticMarkup(await CompanyDashboard({company,userId:"owner"}));
-    expect(html.match(/<a\b[^>]*>Начать диагностику<\/a>/g)).toEqual([expect.stringContaining('href="/ru/companies/company/diagnostics?new=1"')]);
+    expect(html.match(/<a\b[^>]*>Новая диагностика<\/a>/g)).toEqual([expect.stringContaining('href="/ru/companies/company/diagnostics?new=1"')]);
     expect(html).not.toContain("Начать командную диагностику");
     expect(html).not.toContain('/ru/account/plan');
     expect(listTeamHistory).not.toHaveBeenCalled();
@@ -28,25 +31,34 @@ describe("Company dashboard recent combined history",()=>{
   it("uses the same mode chooser on Advanced rather than skipping the choice",async()=>{
     data.entitled=true;
     const html=renderToStaticMarkup(await CompanyDashboard({company,userId:"owner"}));
-    expect(html.match(/<a\b[^>]*>Начать диагностику<\/a>/g)).toEqual([expect.stringContaining('href="/ru/companies/company/diagnostics?new=1"')]);
+    expect(html.match(/<a\b[^>]*>Новая диагностика<\/a>/g)).toEqual([expect.stringContaining('href="/ru/companies/company/diagnostics?new=1"')]);
     expect(html).not.toContain("Начать командную диагностику");
     expect(html).not.toContain('type=team');
   });
   it("loads and shows an existing Team even without individual results",async()=>{
     data.teams=[team()];const html=renderToStaticMarkup(await CompanyDashboard({company,userId:"owner"}));
-    expect(listTeamHistory).toHaveBeenCalledWith("company");expect(html).toContain("Последние диагностики");expect(html).toContain("Аудит системы управления FoodTech");expect(html).toContain("Командная");expect(html).toContain("Завершили: 3");expect(html).toContain("Сбор ответов открыт");expect(html).toContain("/ru/companies/company/teams/foodtech");expect(html).not.toContain("Вы ещё не проходили диагностику");expect(html).not.toContain("Диагностик пока нет");expect(html).not.toContain("История индивидуальных диагностик");
+    expect(listTeamHistory).toHaveBeenCalledWith("company");expect(html).toMatch(/id="recent-diagnostics-heading"[^>]*>Диагностики<\/h2>/);expect(html).toContain("Аудит системы управления FoodTech");expect(html).toContain("Командная");expect(html).toContain("Завершили: 3");expect(html).toContain("Сбор ответов открыт");expect(html).toContain("/ru/companies/company/teams/foodtech");expect(html).not.toContain("Вы ещё не проходили диагностику");expect(html).not.toContain("Диагностик пока нет");expect(html).not.toContain("История индивидуальных диагностик");
   });
   it("merges dates, marks both types and preserves existing individual result links",()=>{
     const html=renderToStaticMarkup(React.createElement(RecentDiagnostics,{companyId:"company",individual:[individual()],teams:[team()]}));
-    expect(html.indexOf("Командная")).toBeLessThan(html.indexOf("Индивидуальная"));expect(html).toContain("Завершена");expect(html).toContain("54,6");expect(html).toContain("17.10.2026");expect(html).toContain("/ru/diagnostics/individual/result");expect(html).toContain("Все диагностики");expect(html).toContain('href="/ru/companies/company/diagnostics"');
+    expect(html.indexOf("Командная")).toBeLessThan(html.indexOf("Индивидуальная"));expect(html).toContain("Завершена");expect(html).toContain("54,6");expect(html).toContain("17.10.2026");expect(html).toContain("/ru/diagnostics/individual/result");expect(html).not.toContain("Все диагностики");expect(html).toContain('href="/ru/companies/company/diagnostics?new=1"');
   });
-  it("caps the overview at5 and sorts stable equal dates without losing in-progress status",()=>{
+  it("keeps the combined history instead of dropping rows after five and preserves date order",()=>{
     const individuals=Array.from({length:5},(_,i)=>individual("i"+i,`2026-10-${10+i}`));const teams=[team("new","2026-10-18")];
-    expect(recentDiagnostics(individuals,teams)).toHaveLength(5);expect(recentDiagnostics(individuals,teams)[0].id).toBe("new");
+    expect(recentDiagnostics(individuals,teams)).toHaveLength(6);expect(recentDiagnostics(individuals,teams)[0].id).toBe("new");
     const html=renderToStaticMarkup(React.createElement(RecentDiagnostics,{companyId:"company",individual:[individual("active","2026-10-18","in_progress")],teams:[]}));expect(html).toContain("В процессе");expect(html).toContain('href="/ru/diagnostics/active"');
   });
   it("shows neutral empty copy only if neither type exists and does not query disabled Team",async()=>{
     data.enabled=false;const html=renderToStaticMarkup(await CompanyDashboard({company,userId:"owner"}));expect(html).toContain("Диагностик пока нет.");expect(listTeamHistory).not.toHaveBeenCalled();
+  });
+  it("keeps completed results in the list without calling the redundant result and Team offer cards",async()=>{
+    data.individual=[individual()];
+    const html=renderToStaticMarkup(await CompanyDashboard({company,userId:"owner"}));
+    expect(html).toContain('href="/ru/diagnostics/individual/result"');
+    expect(html).toContain("54,6");
+    expect(valueMoment).not.toHaveBeenCalled();
+    for(const heading of ["Ваш следующий шаг","Ваш последний результат","Проверьте диагноз командой"]){expect(html).not.toContain(heading);}
+    expect(html).not.toContain("unexpected-value-moment");
   });
 });
 
