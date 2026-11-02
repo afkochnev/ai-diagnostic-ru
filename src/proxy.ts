@@ -8,11 +8,11 @@ export async function proxy(request: NextRequest) {
   const incomingHost = request.headers.get("host") ?? request.nextUrl.host;
   const canonicalRedirect = (request.method === "GET" || request.method === "HEAD")
     && process.env.NODE_ENV === "production"
-    && process.env.APP_URL === "https://iteamsystems.com"
+    && process.env.APP_URL === "https://audit.iteamsystems.com"
     && process.env.SUPABASE_URL === "https://fhvxqeaujjeiflanqsbg.supabase.co"
-    && incomingHost === "audit.iteam.ru";
+    && ["audit.iteam.ru", "iteamsystems.com", "www.iteamsystems.com"].includes(incomingHost);
   if (canonicalRedirect) {
-    const target = new URL("https://iteamsystems.com");
+    const target = new URL("https://audit.iteamsystems.com");
     target.pathname = request.nextUrl.pathname;
     target.search = request.nextUrl.search;
     response = NextResponse.redirect(target, 308);

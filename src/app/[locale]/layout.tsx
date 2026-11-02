@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!isLocale(locale)) notFound();
   const title = "Управленческий AI-аудит компании";
   const description = "Пройдите диагностику системы управления и получите AI-отчёт с ключевыми рисками, ограничениями и планом действий на 90 дней.";
-  const origin = "https://iteamsystems.com";
+  const origin = "https://audit.iteamsystems.com";
   const image = `${origin}/og/iteam-audit.png`;
   return { title: { default: title, template: `%s | ${title}` }, description, alternates: { canonical: origin }, openGraph: { title, description, url: origin, type: "website", images: [{ url: image, width: 1200, height: 630, alt: title }] }, twitter: { card: "summary_large_image", title, description, images: [image] } };
 }

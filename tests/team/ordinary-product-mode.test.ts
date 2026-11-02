@@ -5,13 +5,13 @@ vi.mock('@/server-runtime/supabase/admin',()=>({createAdminClient:()=>({rpc:fixt
 import {teamProductEnabled,teamCreationEnabled,teamInvitationsEnabled} from '@/server-runtime/launch-gates';
 import {controlledTeamRequired,controlledTeamContext,reserveControlledTeamEffect,assertControlledTeamEffectWindow} from '@/server-runtime/team-smoke';
 import {processTeamJob,runTeamJobs} from '@/server/team/worker';
-const production={NODE_ENV:'production',APP_URL:'https://iteamsystems.com',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co',TEAM_ENABLED:'true',TEAM_PRODUCT_ENABLED:'true'};
+const production={NODE_ENV:'production',APP_URL:'https://audit.iteamsystems.com',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co',TEAM_ENABLED:'true',TEAM_PRODUCT_ENABLED:'true'};
 beforeEach(()=>{fixture.rpc.mockReset();for(const[k,v]of Object.entries(production))vi.stubEnv(k,v);});
 afterEach(()=>vi.unstubAllEnvs());
 describe('explicit ordinary Team product mode',()=>{
  it('requires the production identity, foundation flag and explicit release flag',()=>{
   expect(teamProductEnabled(production)).toBe(true);
-  for(const delta of [{TEAM_PRODUCT_ENABLED:undefined},{TEAM_PRODUCT_ENABLED:'false'},{TEAM_ENABLED:'false'},{NODE_ENV:'development'},{APP_URL:'https://other.example.test'},{APP_URL:'https://audit.iteam.ru'},{SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co'}])expect(teamProductEnabled({...production,...delta})).toBe(false);
+  for(const delta of [{TEAM_PRODUCT_ENABLED:undefined},{TEAM_PRODUCT_ENABLED:'false'},{TEAM_ENABLED:'false'},{NODE_ENV:'development'},{APP_URL:'https://other.example.test'},{APP_URL:'https://audit.iteam.ru'},{APP_URL:'https://iteamsystems.com'},{SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co'}])expect(teamProductEnabled({...production,...delta})).toBe(false);
   expect(controlledTeamRequired(production)).toBe(false);
   expect(()=>controlledTeamRequired({...production,TEAM_PRODUCT_ENABLED:'false'})).toThrow('controlled_team_unavailable');
   expect(controlledTeamRequired({...production,APP_URL:'https://audit.iteam.ru',TEAM_PRODUCT_ENABLED:'false'})).toBe(true);

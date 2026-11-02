@@ -22,17 +22,21 @@ vi.mock("@/server/supabase/config", () => ({authConfig: mocks.authConfig, isAuth
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("NODE_ENV", "production");
-  vi.stubEnv("APP_URL", "https://iteamsystems.com");
+  vi.stubEnv("APP_URL", "https://audit.iteamsystems.com");
   vi.stubEnv("SUPABASE_URL", "https://fhvxqeaujjeiflanqsbg.supabase.co");
   mocks.getUser.mockResolvedValue({data: {user: null}});
 });
 afterEach(() => vi.unstubAllEnvs());
 
 describe("canonical domain proxy", () => {
-  it.each(["GET", "HEAD"])("redirects %s before creating or refreshing an auth session", async (method) => {
-    const response = await proxy(new NextRequest("https://audit.iteam.ru/auth/confirm?type=recovery&token_hash=synthetic-token", {method}));
+  it.each([
+    ["GET", "audit.iteam.ru"], ["HEAD", "audit.iteam.ru"],
+    ["GET", "iteamsystems.com"], ["HEAD", "iteamsystems.com"],
+    ["GET", "www.iteamsystems.com"], ["HEAD", "www.iteamsystems.com"],
+  ])("redirects %s from %s before creating or refreshing an auth session", async (method, host) => {
+    const response = await proxy(new NextRequest(`https://${host}/auth/confirm?type=recovery&token_hash=synthetic-token`, {method}));
     expect(response.status).toBe(308);
-    expect(response.headers.get("location")).toBe("https://iteamsystems.com/auth/confirm?type=recovery&token_hash=synthetic-token");
+    expect(response.headers.get("location")).toBe("https://audit.iteamsystems.com/auth/confirm?type=recovery&token_hash=synthetic-token");
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(mocks.isAuthConfigured).not.toHaveBeenCalled();
@@ -42,11 +46,11 @@ describe("canonical domain proxy", () => {
 
   it("keeps the original report path and query while fixing the destination origin", async () => {
     const response = await proxy(new NextRequest("https://audit.iteam.ru/ru/companies/company/teams/team?version=3&next=https%3A%2F%2Fexternal.example%2F&filter=a%2Bb"));
-    expect(response.headers.get("location")).toBe("https://iteamsystems.com/ru/companies/company/teams/team?version=3&next=https%3A%2F%2Fexternal.example%2F&filter=a%2Bb");
+    expect(response.headers.get("location")).toBe("https://audit.iteamsystems.com/ru/companies/company/teams/team?version=3&next=https%3A%2F%2Fexternal.example%2F&filter=a%2Bb");
     // No fragment is added: browsers retain the invitation's original fragment.
     expect(new URL(response.headers.get("location")!).hash).toBe("");
     const doubledPath = await proxy(new NextRequest("https://audit.iteam.ru/ru//external.example/report"));
-    expect(doubledPath.headers.get("location")).toBe("https://iteamsystems.com/ru//external.example/report");
+    expect(doubledPath.headers.get("location")).toBe("https://audit.iteamsystems.com/ru//external.example/report");
   });
 
   it.each(["GET", "HEAD"])("redirects %s using the public Host when NextURL contains Render's internal address", async (method) => {
@@ -54,13 +58,13 @@ describe("canonical domain proxy", () => {
     expect(request.nextUrl.host).not.toBe("audit.iteam.ru");
     const response = await proxy(request);
     expect(response.status).toBe(308);
-    expect(response.headers.get("location")).toBe("https://iteamsystems.com/ru/free?source=old-domain-check");
+    expect(response.headers.get("location")).toBe("https://audit.iteamsystems.com/ru/free?source=old-domain-check");
     expect(mocks.createServerClient).not.toHaveBeenCalled();
     expect(mocks.getUser).not.toHaveBeenCalled();
   });
 
   it.each(["http://0.0.0.0:10000/ru/free", "https://audit.iteam.ru/ru/free"])("treats the canonical Host as authoritative even with a spoofed forwarded host (%s)", async (url) => {
-    const response = await proxy(new NextRequest(url, {headers: {host: "iteamsystems.com", "x-forwarded-host": "audit.iteam.ru"}}));
+    const response = await proxy(new NextRequest(url, {headers: {host: "audit.iteamsystems.com", "x-forwarded-host": "audit.iteam.ru"}}));
     expect(response.headers.get("location")).toBeNull();
     expect(mocks.getUser).toHaveBeenCalledOnce();
   });
@@ -78,7 +82,7 @@ describe("canonical domain proxy", () => {
     expect(mocks.getUser).toHaveBeenCalledOnce();
   });
 
-  it.each(["iteamsystems.com", "www.iteamsystems.com", "ai-diagnostic-staging-web.onrender.com", "sub.audit.iteam.ru", "audit.iteam.ru.external.example", "external.example", "audit.iteam.ru:8443"])("does not redirect an unlisted host %s", async (host) => {
+  it.each(["audit.iteamsystems.com", "ai-diagnostic-staging-web.onrender.com", "sub.audit.iteam.ru", "audit.iteam.ru.external.example", "iteamsystems.com.external.example", "external.example", "audit.iteam.ru:8443"])("does not redirect the canonical or an unlisted host %s", async (host) => {
     const response = await proxy(new NextRequest(`https://${host}/ru/free`, {headers: {"x-forwarded-host": "audit.iteam.ru"}}));
     expect(response.headers.get("location")).toBeNull();
     expect(mocks.getUser).toHaveBeenCalledOnce();
@@ -86,7 +90,8 @@ describe("canonical domain proxy", () => {
 
   it.each([
     ["APP_URL", "https://audit.iteam.ru"],
-    ["APP_URL", "https://iteamsystems.com/"],
+    ["APP_URL", "https://iteamsystems.com"],
+    ["APP_URL", "https://audit.iteamsystems.com/"],
     ["SUPABASE_URL", "https://vflgxgdwlftlyjslyrmo.supabase.co"],
     ["NODE_ENV", "development"],
   ])("keeps ordinary session handling outside the exact production identity (%s)", async (name, value) => {
