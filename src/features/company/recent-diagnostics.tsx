@@ -12,7 +12,7 @@ export function recentDiagnostics(individual: Individual[], teams: Team[]) {
     ...teams.map(item=>({type:"team" as const,id:item.id,date:item.created_at,item})),
   ];
   const timestamp=(value:string)=>Date.parse(value)||0;
-  return rows.sort((a,b)=>timestamp(b.date)-timestamp(a.date)||a.id.localeCompare(b.id)||a.type.localeCompare(b.type)).slice(0,5);
+  return rows.sort((a,b)=>timestamp(b.date)-timestamp(a.date)||a.id.localeCompare(b.id)||a.type.localeCompare(b.type));
 }
 export function companyNextAction(companyId:string, activeId:string|undefined, individual:Individual[], teams:Team[]) {
   if(activeId) return {href:`/ru/diagnostics/${activeId}`,label:"Продолжить диагностику",description:"Ваши сохранённые ответы уже на месте. Продолжите с того места, где остановились."};
@@ -31,7 +31,7 @@ const badge="rounded-full bg-tint px-3 py-1 text-sm font-semibold";
 export function RecentDiagnostics({companyId,individual,teams}:{companyId:string;individual:Individual[];teams:Team[]}) {
   const rows=recentDiagnostics(individual,teams);
   return <section className="mt-8" aria-labelledby="recent-diagnostics-heading">
-    <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="recent-diagnostics-heading" className="text-2xl font-semibold">Последние диагностики</h2><Link className="underline" href={`/ru/companies/${companyId}/diagnostics`}>Все диагностики</Link></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="recent-diagnostics-heading" className="text-2xl font-semibold">Диагностики</h2><Link className="inline-flex min-h-12 items-center justify-center rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark" href={`/ru/companies/${companyId}/diagnostics?new=1`}>Новая диагностика</Link></div>
     {!rows.length ? <Card className="mt-4"><p className="text-muted">Диагностик пока нет.</p></Card> : <div className="mt-4 grid gap-4">{rows.map(row=><Card key={`${row.type}:${row.id}`}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div>
         <span className={badge}>{row.type==="team"?"Командная":"Индивидуальная"}</span>
