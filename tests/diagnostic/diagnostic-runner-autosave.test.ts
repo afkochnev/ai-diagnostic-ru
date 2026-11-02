@@ -115,6 +115,32 @@ describe("diagnostic runner autosave", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("shows save progress and persistent errors but removes the status row after success", async () => {
+    const statuses = (tree: ReactNode) => elements(tree).filter((element) => element.props.role === "status");
+    expect(statuses(render())).toHaveLength(0);
+    let finishSave!: (result: unknown) => void;
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { finishSave = resolve; }));
+    edit(render(), 3);
+    expect(statuses(render())).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(900);
+    expect(statuses(render())).toHaveLength(1);
+    finishSave({ ok: true, json: async () => ({ revision: 8 }) });
+    await vi.advanceTimersByTimeAsync(0);
+    const saved = render();
+    expect(statuses(saved)).toHaveLength(0);
+
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ error: "unavailable" }) });
+    edit(saved, 4);
+    render();
+    await vi.advanceTimersByTimeAsync(900);
+    const failed = render();
+    expect(statuses(failed)).toHaveLength(1);
+    expect(elements(failed).some((element) => element.props.role === "alert")).toBe(true);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(statuses(render())).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("cancels autosave when an edit is reverted before the debounce", async () => {
     edit(render(), 3);
     const changed = render();

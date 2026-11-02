@@ -20,7 +20,29 @@ beforeEach(() => {
 });
 afterEach(()=>vi.unstubAllEnvs());
 describe("Account plan screen", () => {
-  function readyPayment(){for(const [k,v]of Object.entries({APP_URL:'https://ai-diagnostic-staging-web.onrender.com',SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co',BILLING_PROVIDER:'yookassa',BILLING_ENABLED:'true',YOOKASSA_TEST_MODE:'true',YOOKASSA_SHOP_ID:'123456',YOOKASSA_SECRET_KEY:'test_synthetic',YOOKASSA_RECEIPT_CONFIG_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE:'full_payment',YOOKASSA_RECEIPT_SOLUTION:'external',YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE:'false'}))vi.stubEnv(k,v);}
+  function readyPayment(){for(const [k,v]of Object.entries({APP_URL:'https://ai-diagnostic-staging-web.onrender.com',SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co',BILLING_PROVIDER:'yookassa',BILLING_ENABLED:'true',YOOKASSA_RECONCILIATION_ENABLED:'true',YOOKASSA_TEST_MODE:'true',YOOKASSA_SHOP_ID:'123456',YOOKASSA_SECRET_KEY:'test_synthetic',YOOKASSA_RECEIPT_CONFIG_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE_CONFIRMED:'true',YOOKASSA_PAYMENT_MODE:'full_payment',YOOKASSA_RECEIPT_SOLUTION:'external',YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE:'false'}))vi.stubEnv(k,v);}
+  function readyLivePayment(){
+    readyPayment();
+    for(const [k,v]of Object.entries({NODE_ENV:'production',APP_URL:'https://audit.iteam.ru',SUPABASE_URL:'https://fhvxqeaujjeiflanqsbg.supabase.co',YOOKASSA_TEST_MODE:'false',YOOKASSA_PRODUCTION_CONFIRMED:'true',YOOKASSA_PRODUCTION_FISCAL_CONFIRMED:'true',YOOKASSA_SECRET_KEY:'live_synthetic_not_a_credential'}))vi.stubEnv(k,v);
+    state.terms.mockResolvedValue({version:'advanced-terms-ru-v1',content_sha256:'a'.repeat(64)});
+  }
+  it('shows the actual price and acceptance without promising a free test in live mode',async()=>{
+    readyLivePayment();
+    const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
+    expect(html).toContain('Подключить Advanced за 480 ₽');expect(html).toContain('name="terms_accepted"');
+    expect(html).not.toContain('Тестовый режим оплаты');expect(html).not.toContain('реальные деньги не списываются');
+  });
+  it('keeps the test-only payment explanation in YooKassa test mode',async()=>{
+    readyPayment();state.terms.mockResolvedValue({version:'advanced-terms-ru-v1',content_sha256:'a'.repeat(64)});
+    const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
+    expect(html).toContain('Тестовый режим оплаты');expect(html).toContain('реальные деньги не списываются');
+  });
+  it.each([{BILLING_ENABLED:'false'},{APP_URL:'https://other.example.test'},{YOOKASSA_SECRET_KEY:'test_synthetic'},{YOOKASSA_PRODUCTION_FISCAL_CONFIRMED:'false'},{YOOKASSA_RECEIPT_CONFIG_CONFIRMED:'false'},{YOOKASSA_RECONCILIATION_ENABLED:'false'}])('does not offer checkout when a live environment or fiscal gate fails %#',async patch=>{
+    readyLivePayment();for(const [k,v]of Object.entries(patch))vi.stubEnv(k,v);
+    const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
+    expect(html).toContain('Оплата временно недоступна');expect(html).not.toContain('name="terms_accepted"');
+    expect(html).not.toContain('реальные деньги не списываются');
+  });
   it("keeps the exact Account and Company context when MFA is required before loading the plan", async () => {
     const account="10000000-0000-4000-8000-000000000001",company="20000000-0000-4000-8000-000000000001";
     state.identity.mockRejectedValue(Error("redirect:/ru/mfa"));

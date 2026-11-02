@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { AnswerScale, AnswerScaleGuide } from "@/features/diagnostic/answer-scale";
+import { AutoResizeTextarea } from "@/components/ui/auto-resize-textarea";
 import { saveTeamResponseAction } from "@/server/team/actions";
 import type { TeamActionState, TeamQuestion, TeamResponse } from "@/server/team/contracts";
 
@@ -139,19 +140,20 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
     <div className="rounded-2xl border border-line bg-white p-5">
       <div className="flex flex-wrap justify-between gap-2 text-sm text-muted"><span>Блок {viewIndex + 1} из {blocks.length}</span><span>Отвечено {answered} из {required.length} обязательных вопросов</span></div>
       <div role="progressbar" aria-label="Заполнение анкеты" aria-valuemin={0} aria-valuemax={required.length} aria-valuenow={answered} className="mt-3 h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${required.length ? answered / required.length * 100 : 0}%` }} /></div>
-      <p role="status" aria-live="polite" className="mt-3 text-sm text-muted">{saving === "saved" ? "Все ответы сохранены. Можно вернуться к анкете позже." : saving === "saving" ? "Сохранение…" : saving === "error" ? "Ответы пока не сохранены. Повторите сохранение." : "Есть несохранённые ответы…"}</p>
+      {saving !== "saved" && <p role="status" aria-live="polite" className="mt-3 text-sm text-muted">{saving === "saving" ? "Сохранение…" : saving === "error" ? "Ответы пока не сохранены. Повторите сохранение." : "Есть несохранённые ответы…"}</p>}
     </div>
     <h2 ref={blockHeading} tabIndex={-1} className="scroll-mt-6 text-2xl font-semibold outline-none">{currentBlock.title}</h2>
-    {currentBlock.questions.some((question) => question.answer_type === "scale_0_4") ? <AnswerScaleGuide id="team-answer-scale-guide" /> : <p className="text-sm text-muted">Отвечайте о текущей ситуации в компании. Достаточно нескольких предложений; обязательные вопросы отмечены звёздочкой.</p>}
+    {currentBlock.questions.some((question) => question.answer_type === "scale_0_4") && <AnswerScaleGuide id="team-answer-scale-guide" />}
     {validationError && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{validationError}</p>}
     {currentBlock.questions.map((question) => {
       const invalid = missingIds.includes(question.id);
       const index = response.questions.findIndex((candidate) => candidate.id === question.id);
+      const help = question.answer_type === "text" ? question.help?.replace(/^Достаточно нескольких предложений(?:[^.!?]*[.!?]|$)\s*/iu, "").trim() : question.help;
       return <fieldset disabled={navigationPending || !hydrated} ref={(element) => { questionRefs.current[question.id] = element; }} key={question.id} className={`rounded-xl border p-5 ${invalid ? "border-red-500" : "border-line"}`}>
         <legend className="sr-only">Вопрос {index + 1}</legend>
         <label htmlFor={question.answer_type === "text" ? `q-${question.id}` : undefined} className="block font-medium">{index + 1}. {question.prompt}{question.required ? " *" : ""}</label>
-        {question.help && <p id={`help-${question.id}`} className="mt-2 text-sm text-muted">{question.help}</p>}
-        {question.answer_type === "scale_0_4" ? <AnswerScale name={question.id} label={question.prompt} value={answers[question.id]} invalid={invalid} describedBy={`team-answer-scale-guide${question.help ? ` help-${question.id}` : ""}`} onChange={(value) => update(question, value)} /> : <textarea id={`q-${question.id}`} name={question.id} value={String(answers[question.id] ?? "")} onChange={(event) => update(question, event.target.value)} maxLength={10000} rows={4} aria-invalid={invalid || undefined} aria-describedby={question.help ? `help-${question.id}` : undefined} className="mt-3 w-full rounded-xl border border-line p-3" />}
+        {help && <p id={`help-${question.id}`} className="mt-2 text-sm text-muted">{help}</p>}
+        {question.answer_type === "scale_0_4" ? <AnswerScale name={question.id} label={question.prompt} value={answers[question.id]} invalid={invalid} describedBy={`team-answer-scale-guide${help ? ` help-${question.id}` : ""}`} onChange={(value) => update(question, value)} /> : <AutoResizeTextarea id={`q-${question.id}`} name={question.id} value={String(answers[question.id] ?? "")} onChange={(event) => update(question, event.target.value)} maxLength={10000} rows={4} aria-invalid={invalid || undefined} aria-describedby={help ? `help-${question.id}` : undefined} className="mt-4 min-h-32 w-full rounded-xl border border-line p-3" />}
         {invalid && <p className="mt-2 text-sm text-red-800">Ответьте на этот вопрос.</p>}
       </fieldset>;
     })}

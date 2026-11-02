@@ -43,9 +43,10 @@ export function preparedProductionConfigurationReadiness(input:unknown){
   for(const[k,v]of Object.entries(c.paymentSlots))if(typeof v==='string')env[k]=v;
   try{
    const receipt=receiptSettings(env);
+   // The saved OFF profile is independent of the current code-level commercial switch.
    valid=c.paymentSlots.YOOKASSA_SHOP_ID===c.merchantConfirmation.productionShopId
     &&c.paymentSlots.YOOKASSA_SHOP_ID!==c.stagingTestMerchantConfirmation.shopId
-    &&!annualOffer.productionEnabled&&receipt.tax_system_code===undefined&&receipt.measure==='another';
+    &&receipt.tax_system_code===undefined&&receipt.measure==='another';
   }catch{/* Return no caller values or validation payloads. */}
  }
  return{

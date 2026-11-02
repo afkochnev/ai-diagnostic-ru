@@ -1,5 +1,7 @@
 # V2.7 — YooKassa production capability and configuration
 
+Release candidate update, 2026-11-02: the authoritative commercial configuration now has `productionEnabled=true`. This code-level prerequisite does not activate production: the WEB runtime, protected merchant key, fiscal confirmation, DB creation/reconciliation gates and a matching live offer remain required. No environment, database or merchant settings were changed by this candidate. The OFF profile and release history below describe the earlier preparation; the offline prepared-profile report is not installed-production readiness.
+
 This package implements production-mode contracts in code and SQL. It does not enable billing or authorize any production mutation. The commercial authority remains `docs/v26b-commercial-config.json`: 480 RUB / 48000 minor, one calendar year, one-time payment, no recurring or auto-renewal, no VAT (`vat_code=1`), `productionEnabled=false`. The approved commercial/privacy body bytes are unchanged.
 
 ## Canonical staging baseline

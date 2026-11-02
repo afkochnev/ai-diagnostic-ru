@@ -1,5 +1,5 @@
 {
-  "status": "APPROVED_COMMERCIAL_INPUTS_PRODUCTION_DISABLED",
+  "status": "COMMERCIAL_CONTRACT_ENABLED_DEPLOYMENT_GATES_REQUIRED",
   "approvedBy": "User instruction, 2026-10-21",
   "provider": "yookassa",
   "plan": "advanced",
@@ -13,7 +13,7 @@
   "vat": "none",
   "vat_included": false,
   "vat_code": 1,
-  "productionEnabled": false,
+  "productionEnabled": true,
   "display": {
     "price": "480 ₽",
     "optionalClarification": "Без НДС",
@@ -52,7 +52,7 @@
     "paymentModeVerificationScope": "Owner-approved staging TEST shop only; production fiscal confirmation still required"
   },
   "scope": {
-    "kind": "Authoritative commercial contract consumed by the implemented adapter; payment creation remains gated on confirmed receipt settings and a separately approved sandbox rollout",
+    "kind": "Authoritative commercial contract consumed by the implemented adapter; live payment creation still requires matching deployment, merchant, fiscal, environment and database gates. This code change does not install or activate those settings.",
     "runtimeAdapterImplemented": true,
     "realProviderCalls": 0,
     "stagingChanged": false,
