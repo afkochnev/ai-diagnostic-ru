@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, typ
 import { useRouter } from "next/navigation";
 import { AnswerScale, AnswerScaleGuide } from "./answer-scale";
 import { AutoResizeTextarea } from "@/components/ui/auto-resize-textarea";
+import { questionHelpForDisplay } from "@/shared/question-help";
 import type { DiagnosticPageData } from "@/server/diagnostic/service";
 
 export type RunnerData={diagnostic:Pick<DiagnosticPageData["diagnostic"],"id"|"revision"|"current_block_id"|"company_id">;company:{name:string};blocks:DiagnosticPageData["blocks"]};
@@ -157,7 +158,7 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
 }
 
 function QuestionCard({ question, value, invalid, disabled, containerRef, onChange }: { question: Question; value?: number | string; invalid: boolean; disabled: boolean; containerRef: (element: HTMLElement | null) => void; onChange: (value: number | string) => void }) {
-  const help = question.answer_type === "text" ? question.help_text?.replace(/^Достаточно нескольких предложений(?:[^.!?]*[.!?]|$)\s*/iu, "").trim() : question.help_text;
+  const help = questionHelpForDisplay(question.help_text, question.answer_type);
   return <article ref={containerRef} data-invalid={invalid || undefined} className={`rounded-2xl border bg-white p-5 shadow-card sm:p-7 ${invalid ? "border-red-500" : "border-line"}`}>
     <div className="flex items-start justify-between gap-4"><h2 className="text-base font-medium leading-relaxed">{question.prompt}</h2>{question.is_required && <span className="shrink-0 text-xs text-muted">Обязательно</span>}</div>
     {help && <p id={`help-${question.id}`} className="mt-2 text-sm text-muted">{help}</p>}

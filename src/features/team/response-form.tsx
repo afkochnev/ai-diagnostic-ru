@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { AnswerScale, AnswerScaleGuide } from "@/features/diagnostic/answer-scale";
 import { AutoResizeTextarea } from "@/components/ui/auto-resize-textarea";
+import { questionHelpForDisplay } from "@/shared/question-help";
 import { saveTeamResponseAction } from "@/server/team/actions";
 import type { TeamActionState, TeamQuestion, TeamResponse } from "@/server/team/contracts";
 
@@ -148,7 +149,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
     {currentBlock.questions.map((question) => {
       const invalid = missingIds.includes(question.id);
       const index = response.questions.findIndex((candidate) => candidate.id === question.id);
-      const help = question.answer_type === "text" ? question.help?.replace(/^Достаточно нескольких предложений(?:[^.!?]*[.!?]|$)\s*/iu, "").trim() : question.help;
+      const help = questionHelpForDisplay(question.help, question.answer_type);
       return <fieldset disabled={navigationPending || !hydrated} ref={(element) => { questionRefs.current[question.id] = element; }} key={question.id} className={`rounded-xl border p-5 ${invalid ? "border-red-500" : "border-line"}`}>
         <legend className="sr-only">Вопрос {index + 1}</legend>
         <label htmlFor={question.answer_type === "text" ? `q-${question.id}` : undefined} className="block font-medium">{index + 1}. {question.prompt}{question.required ? " *" : ""}</label>

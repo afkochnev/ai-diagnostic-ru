@@ -42,6 +42,18 @@ export function LandingPreviewLabel() {
   return <span className="inline-flex items-center gap-2 text-sm font-semibold text-muted">Пример отчёта<span aria-hidden="true"><span className="lg:hidden">↓</span><span className="hidden lg:inline">→</span></span></span>;
 }
 
+export function LandingPromises() {
+  return <ul className="mt-5 max-w-xl space-y-1 text-lg leading-relaxed text-muted sm:text-xl">
+    <li>Оцените ключевые области управления.</li>
+    <li>Получите объяснение проблемных зон.</li>
+    <li>Примите план действий на 30 / 60 / 90 дней.</li>
+  </ul>;
+}
+
+export function LandingOutcome() {
+  return <p className="mt-4 max-w-xl text-lg leading-relaxed text-muted sm:text-xl">За 20 минут вы получите объемную картину своей компании и увидите направление необходимых изменений.</p>;
+}
+
 export function FreeLanding({authenticated, attribution}: {authenticated: boolean; attribution: Record<string, string>}) {
   const href = authenticated ? '/ru/account' : `/ru/free${Object.keys(attribution).length ? '?' + new URLSearchParams(attribution) : ''}`;
   const cta = <AcquisitionCTA href={href}>{authenticated ? 'Открыть кабинет' : 'Начать бесплатную диагностику'}</AcquisitionCTA>;
@@ -52,11 +64,9 @@ export function FreeLanding({authenticated, attribution}: {authenticated: boolea
       <div className="grid items-start gap-8 lg:grid-cols-[1.05fr_1fr] lg:gap-10"><div>
         <p className="text-sm font-medium text-muted">Для собственников и руководителей компаний</p>
         <h1 id="hero-title" className="mt-3 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl lg:text-[2.65rem]">Узнайте, что ограничивает рост вашей компании</h1>
-        <p className="mt-5 max-w-xl text-base leading-relaxed text-muted sm:text-lg">Оцените восемь областей управления. Получите объяснение ключевых проблем и план действий на 30 / 60 / 90 дней.</p>
+        <LandingPromises/>
         <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center">{cta}<LandingPreviewLabel/></div>
-        <p className="mt-4 text-sm font-medium">Без регистрации до вопросов · Бесплатный отчёт и PDF</p>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">80 вопросов с оценкой 1–5 и 4 открытых вопроса (2 можно пропустить). Можно сделать паузу и продолжить в том же браузере в течение 7 дней.</p>
-        <p className="mt-2 text-sm leading-relaxed text-muted">После вопросов понадобятся сведения о компании, имя и email для доступа к результату.</p>
+        <LandingOutcome/>
       </div><SyntheticPreview/></div>
     </Container></section>
     <LandingAudience/>
@@ -82,6 +92,7 @@ export function FreeLanding({authenticated, attribution}: {authenticated: boolea
       <div className="max-w-3xl"><h2 id="privacy-title" className="section-title">Сохранение и доступ к результатам</h2>
         <p className="mt-4 leading-relaxed text-muted">До начала вопросов мы попросим согласие на обработку данных. Анонимный прогресс хранится 7 дней и доступен в том же браузере. После подтверждения email диагностика сохраняется в вашем аккаунте.</p>
         <div className="mt-6 space-y-3">{[
+          ['Что потребуется для прохождения?', 'Без регистрации можно начать отвечать на вопросы: 80 вопросов с оценкой 1–5 и 4 открытых вопроса (2 можно пропустить). После вопросов понадобятся сведения о компании, имя и email для доступа к результату.'],
           ['Кто увидит мои ответы?', 'Доступ к результатам требует входа. Ответы не попадают в аналитику переходов и не используются в открытых примерах на этой странице.'],
           ['Что делать, если я закрою страницу?', 'Вернитесь в том же браузере в течение 7 дней. Если данные браузера удалены до подтверждения email, доступ к анонимным ответам может быть утрачен.'],
           ['Полный отчёт бесплатный?', 'Да. Индивидуальная диагностика, полный AI-отчёт и PDF входят в Free. Для командной диагностики нужен Advanced.'],
