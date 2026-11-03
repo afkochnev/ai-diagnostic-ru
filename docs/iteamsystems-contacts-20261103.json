@@ -1,0 +1,49 @@
+{
+  "status": "PREPARED_NOT_DEPLOYED",
+  "requested_on": "2026-11-03",
+  "contact_email": "alexander@iteamsystems.com",
+  "website": "https://audit.iteamsystems.com",
+  "documents": [
+    {
+      "source_version": "advanced-terms-ru-v1",
+      "version": "advanced-terms-ru-v2",
+      "kind": "commercial",
+      "source_sha256": "5e98f8712abd03413598efced5f1e1445701af873e552e32d9797c495191fe94",
+      "sha256": "f660a98f802ae091cd3cb124a399002f16cb4eebd08b57ca329aed0115f65b94",
+      "path": "docs/legal/advanced-terms-ru-v2.md"
+    },
+    {
+      "source_version": "data-processing-policy-ru-v1",
+      "version": "data-processing-policy-ru-v2",
+      "kind": "policy",
+      "source_sha256": "d1e56ca672f3444333e51a3edc1397ceb62d89932f1c0f7620566aaa29b14de6",
+      "sha256": "97a267d0f7110dbd3c43cf7dbd5c783a43d7e36ed7b7e7802bb99b7806ff5f13",
+      "path": "docs/legal/data-processing-policy-ru-v2.md"
+    },
+    {
+      "source_version": "data-processing-consent-ru-v1",
+      "version": "data-processing-consent-ru-v2",
+      "kind": "data_processing",
+      "source_sha256": "45dbeac12254747f406bcc7915512a71afc504687c592a96d22726305f4ecc94",
+      "sha256": "3a7a73d92488479fc125366b8598fe4da198fdd1b097260024da9f1a6902fed0",
+      "path": "docs/legal/data-processing-consent-ru-v2.md"
+    },
+    {
+      "source_version": "marketing-consent-ru-v1",
+      "version": "marketing-consent-ru-v2",
+      "kind": "marketing",
+      "source_sha256": "f8767fad986137079748f00cafaca1e74d95ccf648546c8dd4d6e5b019e67dae",
+      "sha256": "fad891d4c3e7e77177c5b20aa0f8ea5b642df265b846ead850c0b0c19f148247",
+      "path": "docs/legal/marketing-consent-ru-v2.md"
+    }
+  ],
+  "publication_migration": "supabase/migrations/20261103131640_publish_iteamsystems_contact_documents_v2.sql",
+  "runtime_changes": {
+    "services": [
+      "srv-dak57did0e5s73b1t0b0",
+      "srv-dak5rurl550s73a17l60"
+    ],
+    "CONSULTATION_NOTIFICATION_EMAIL": "alexander@iteamsystems.com"
+  },
+  "historical_records_rewritten": false
+}

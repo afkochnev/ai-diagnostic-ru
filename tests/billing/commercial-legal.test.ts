@@ -13,19 +13,21 @@ describe('commercial document availability and version evidence',()=>{
   vi.mocked(billingRpc).mockResolvedValue(null);expect(await currentCommercialTerms()).toBeNull();
   vi.mocked(billingRpc).mockRejectedValue(Error('offline'));expect(await currentCommercialTerms()).toBeNull();
  });
- it('requires an intact approved current document and serves its exact body',async()=>{
-  vi.mocked(billingRpc).mockResolvedValue(document);expect(await currentCommercialTerms()).toEqual(document);
-  vi.mocked(billingRpc).mockResolvedValue({...document,body:body+'changed'});expect(await currentCommercialTerms()).toBeNull();
+ it.each(['advanced-terms-ru-v1','advanced-terms-ru-v2'])('requires an intact approved current document and serves its exact body (%s)',async(version)=>{
+  const current={...document,version};
+  vi.mocked(billingRpc).mockResolvedValue(current);expect(await currentCommercialTerms()).toEqual(current);
+  vi.mocked(billingRpc).mockResolvedValue({...current,body:body+'changed'});expect(await currentCommercialTerms()).toBeNull();
  });
  it('keeps historical version reads separate from current checkout version',async()=>{
-  const old={...document,version:'advanced-terms-ru-v2'};vi.mocked(billingRpc).mockResolvedValue(old);
+  const old={...document,version:'advanced-terms-ru-v3'};vi.mocked(billingRpc).mockResolvedValue(old);
   expect(await currentCommercialTerms()).toBeNull();expect(await publishedCommercialTerms(old.version)).toEqual(old);
   expect(await publishedCommercialTerms(document.version)).toBeNull();
  });
- it('requires explicit acceptance plus the exact version and digest',()=>{
-  const input={version:'advanced-terms-ru-v1' as const,sha256:hash,accepted:true as const};
+ it.each(['advanced-terms-ru-v1','advanced-terms-ru-v2'] as const)('requires explicit acceptance plus the exact version and digest (%s)',(version)=>{
+  const input={version,sha256:hash,accepted:true as const};
   expect(commercialTermsRpc(input)).toEqual({p_terms_version:input.version,p_terms_sha256:hash,p_terms_accepted:true});
   expect(()=>commercialTermsRpc({...input,accepted:false} as never)).toThrow();
   expect(()=>commercialTermsRpc({...input,version:'temporary-ru-v1'} as never)).toThrow();
+  expect(()=>commercialTermsRpc({...input,version:'advanced-terms-ru-v3'} as never)).toThrow();
  });
 });

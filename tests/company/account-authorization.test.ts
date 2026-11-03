@@ -103,7 +103,7 @@ const DIAGNOSTIC = "80000000-0000-4000-8000-000000000008";
 const REPORT = "90000000-0000-4000-8000-000000000009";
 
 const fixturePdf = (label: string) => Buffer.from(`%PDF-1.7\n${label}\n%%EOF\n`);
-const fixtureArtifact = (reportId: string, label: string) => ({ id: "60000000-0000-4000-8000-000000000006", report_id: reportId, ai_report_version: 1, format: "pdf", template_version: "stage12-1i", status: "ready", content_base64: fixturePdf(label).toString("base64"), checksum: crypto.createHash("sha256").update(fixturePdf(label)).digest("hex") });
+const fixtureArtifact = (reportId: string, label: string) => ({ id: "60000000-0000-4000-8000-000000000006", report_id: reportId, ai_report_version: 1, format: "pdf", template_version: "stage12-1j", status: "ready", content_base64: fixturePdf(label).toString("base64"), checksum: crypto.createHash("sha256").update(fixturePdf(label)).digest("hex") });
 
 beforeEach(() => {
   vi.stubEnv("APP_URL", "https://ai-diagnostic-staging-web.onrender.com");

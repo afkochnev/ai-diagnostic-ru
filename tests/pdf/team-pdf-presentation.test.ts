@@ -5,7 +5,7 @@ const input=():TeamPdfInput=>({companyName:"FoodTech",teamTitle:"Система 
 describe("branded Team PDF presentation",()=>{
  it("uses new template, canonical logo, site links, legend and normalized dispersion units",()=>{
   const value=input(),before=JSON.stringify(value),html=buildTeamPdfHtml(value);
-  expect(TEAM_PDF_TEMPLATE_VERSION).toBe("team-report-v3-dispersion-percent-v2");expect(html).toContain('alt="iTeam"');expect(html).toContain('src="data:image/png;base64,');expect(html).toContain('<a class="site" href="https://iteam.ru">iteam.ru</a>');
+  expect(TEAM_PDF_TEMPLATE_VERSION).toBe("team-report-v3-dispersion-percent-v3");expect(html).toContain('alt="iTeam"');expect(html).toContain('src="data:image/png;base64,');expect(html).toContain('<a class="site" href="https://audit.iteamsystems.com">audit.iteamsystems.com</a>');
   for(const s of ["Командная диагностика","Как читать разброс оценок","Умеренный","Высокий","Очень высокий","Приложение с результатами оценки","не являются статистическим доказательством конфликта","Наименьший разброс оценок","Наибольший разброс оценок"])expect(html).toContain(s);
   expect(html).not.toContain("Программные показатели к разделу");
   expect(html.indexOf('class="results"')).toBeLessThan(html.indexOf('class="report-section"'));expect(html).toContain('data-dispersion-level="very_high">31,2%');expect(JSON.stringify(value)).toBe(before);

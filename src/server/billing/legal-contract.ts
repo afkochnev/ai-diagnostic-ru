@@ -1,8 +1,10 @@
 import {z} from 'zod';
 
-export const advancedTermsVersion='advanced-terms-ru-v1';
+// Accept both published revisions during rollout. The database still requires
+// the exact active version and digest before creating a checkout.
+export const advancedTermsVersions=['advanced-terms-ru-v1','advanced-terms-ru-v2'] as const;
 export const commercialAcceptanceSchema=z.strictObject({
- version:z.literal(advancedTermsVersion),sha256:z.string().regex(/^[a-f0-9]{64}$/),accepted:z.literal(true),
+ version:z.enum(advancedTermsVersions),sha256:z.string().regex(/^[a-f0-9]{64}$/),accepted:z.literal(true),
 });
 export type CommercialAcceptance=z.infer<typeof commercialAcceptanceSchema>;
 export const commercialDocumentSchema=z.object({

@@ -53,7 +53,7 @@ describe("Account plan screen", () => {
   it('shows an exact version link and explicit acceptance with the document digest before checkout',async()=>{
     readyPayment();state.terms.mockResolvedValue({version:'advanced-terms-ru-v1',content_sha256:'a'.repeat(64)});
     const html=renderToStaticMarkup(await AccountPlanPage({searchParams:Promise.resolve({})}));
-    expect(html).toContain('/ru/legal/advanced/advanced-terms-ru-v1');expect(html).toContain('name="terms_accepted"');expect(html).toContain('name="terms_sha256"');expect(html).toContain('a'.repeat(64));expect(html).toContain('info@iteam.ru');expect(html).toContain('аккаунт переходит на Free');
+    expect(html).toContain('/ru/legal/advanced/advanced-terms-ru-v1');expect(html).toContain('name="terms_accepted"');expect(html).toContain('name="terms_sha256"');expect(html).toContain('a'.repeat(64));expect(html).toContain('alexander@iteamsystems.com');expect(html).toContain('аккаунт переходит на Free');
   });
   it('denies checkout when terms are unavailable even if all provider/fiscal gates pass',async()=>{
     readyPayment();state.terms.mockResolvedValue(null);

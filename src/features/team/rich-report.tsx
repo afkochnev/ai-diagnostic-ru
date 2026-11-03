@@ -27,7 +27,7 @@ export function RichTeamReport({ content, pipeline="TEAM-RU-2",profile,idPrefix=
   if (!parsed.success) return <p role="alert" className="mt-4">Не удалось отобразить формат отчёта.</p>;
   const report = parsed.data;
   return <article className="mt-5 space-y-5">
-    <div className="flex items-center justify-between gap-4"><Image src="/brand/iteam-logo-no-tagline.png" alt="iTeam" width={144} height={45} className="h-auto w-36" unoptimized/><a href="https://iteam.ru" target="_blank" rel="noreferrer" className="underline">iteam.ru</a></div>
+    <div className="flex items-center justify-between gap-4"><Image src="/brand/iteam-logo-no-tagline.png" alt="iTeam" width={144} height={45} className="h-auto w-36" unoptimized/><a href="https://audit.iteamsystems.com" target="_blank" rel="noreferrer" className="underline">audit.iteamsystems.com</a></div>
     <details className="rounded-xl bg-tint p-4"><summary className="cursor-pointer font-semibold">Разделы отчёта</summary><nav aria-label="Разделы командного AI-отчёта" className="mt-3 grid gap-2 sm:grid-cols-2">{[...teamCoreSections,...teamDynamicsSections].map(([title,key])=><a key={key} className="underline" href={`#${idPrefix}-${key}`}>{title}</a>)}</nav></details>
     {teamCoreSections.map(([title, key], i) => <Section key={key} id={`${idPrefix}-${key}`} number={i+1} title={title} value={report[key]} />)}
     <h3 className="pt-4 text-xl font-semibold">Командная динамика</h3>
