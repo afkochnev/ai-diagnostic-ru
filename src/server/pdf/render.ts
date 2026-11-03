@@ -38,7 +38,7 @@ export async function renderPdfHtml(html: string,options:PdfChromeOptions={}): P
     const rendering = (async () => {
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "load" });
-      return page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: options.headerTemplate??`<div style="width:100%;font-family:Arial,sans-serif;color:#8295a0;padding:0 17mm;"><img src="${logoDataUri()}" style="height:18px;width:auto;object-fit:contain;object-position:left center;"></div>`, footerTemplate: options.footerTemplate??'<div style="width:100%;font-family:Arial, sans-serif;font-size:8px;color:#8295a0;text-align:right;padding:0 17mm;">https://iteam.ru · <span class="pageNumber"></span> / <span class="totalPages"></span></div>' });
+      return page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true, displayHeaderFooter: true, headerTemplate: options.headerTemplate??`<div style="width:100%;font-family:Arial,sans-serif;color:#8295a0;padding:0 17mm;"><img src="${logoDataUri()}" style="height:18px;width:auto;object-fit:contain;object-position:left center;"></div>`, footerTemplate: options.footerTemplate??'<div style="width:100%;font-family:Arial, sans-serif;font-size:8px;color:#8295a0;text-align:right;padding:0 17mm;">https://audit.iteamsystems.com · <span class="pageNumber"></span> / <span class="totalPages"></span></div>' });
     })();
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error("pdf_render_timeout")), timeoutMs);

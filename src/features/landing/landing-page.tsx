@@ -14,7 +14,7 @@ export function LandingPage({locale, messages, authenticated = false, acquisitio
 
   return <main id="main-content">
     <section className="border-b border-line py-8 sm:py-12" aria-labelledby="hero-title"><Container>
-      <a href="https://iteam.ru" target="_blank" rel="noreferrer" className="mb-6 inline-flex rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"><Image src="/brand/iteam-logo-landing.png" alt="iTeam" width={144} height={45} className="h-auto w-32 sm:w-36" priority/></a>
+      <a href="https://audit.iteamsystems.com" target="_blank" rel="noreferrer" className="mb-6 inline-flex rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"><Image src="/brand/iteam-logo-landing.png" alt="iTeam" width={144} height={45} className="h-auto w-32 sm:w-36" priority/></a>
       <div className="grid items-start gap-8 lg:grid-cols-[1.05fr_1fr] lg:gap-10"><div>
         <p className="text-sm font-medium text-muted">Для собственников и руководителей компаний</p>
         <h1 id="hero-title" className="mt-3 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl lg:text-[2.65rem]">{content.title}</h1>

@@ -72,6 +72,15 @@ describe("live-admin PDF entry and immutable shared renderer", () => {
     tables.report_artifacts.push(stored()); const before = JSON.stringify(tables.report_artifacts);
     expect((await preparePdfForAdminReport(id)).artifact_id).toBe(artifactId); expect(JSON.stringify(tables.report_artifacts)).toBe(before); expect(m.render).not.toHaveBeenCalled(); expect(m.insert).not.toHaveBeenCalled();
   });
+  it("creates the current PDF without reusing or changing the previous domain's artifact", async () => {
+    const historical = stored({ id: "30000000-0000-4000-8000-000000000002", template_version: "stage12-1i" });
+    tables.report_artifacts.push(historical); const before = JSON.stringify(historical);
+    await expect(getAdminPdfStatus(id)).rejects.toThrow("pdf_artifact_not_ready");
+    const ready = await preparePdfForAdminReport(id);
+    expect(ready.template_version).toBe("stage12-1j"); expect(tables.report_artifacts).toHaveLength(2);
+    expect(JSON.stringify(historical)).toBe(before); expect(m.render).toHaveBeenCalledOnce(); expect(m.insert).toHaveBeenCalledOnce();
+    expect((await getPdfForReport(id, "actual-owner")).bytes).toEqual(pdf);
+  });
   it.each(["failed", "queued", "generating"])("rejects %s report including historical v1 without fallback", async status => {
     tables.ai_reports[0].status = status; tables.ai_reports[0].version = 1;
     await expect(preparePdfForAdminReport(id)).rejects.toThrow("pdf_report_not_ready"); expect(m.render).not.toHaveBeenCalled(); expect(m.insert).not.toHaveBeenCalled();

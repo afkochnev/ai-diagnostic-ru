@@ -32,7 +32,7 @@ export default async function LocaleLayout({ children, params }: Props & { child
       <SessionRefresh />
       <SiteHeader locale={locale} messages={messages} signedIn={Boolean(await getIdentity())} />
       {children}
-      <footer className="border-t border-line py-7"><Container><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{messages.site.footer}</p><a className="text-sm underline" href="https://iteam.ru" target="_blank" rel="noreferrer">iteam.ru</a></div></Container></footer>
+      <footer className="border-t border-line py-7"><Container><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{messages.site.footer}</p><a className="text-sm underline" href="https://audit.iteamsystems.com" target="_blank" rel="noreferrer">audit.iteamsystems.com</a></div></Container></footer>
     </>
   );
 }

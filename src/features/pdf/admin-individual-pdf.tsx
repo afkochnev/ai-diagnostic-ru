@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 type Ready = { report_id: string; ai_report_version: number; template_version: string; artifact_id: string; status: "ready"; checksum: string; download_url: string };
 function readyFor(value: unknown, reportId: string, version: number): Ready {
   const v = value as Partial<Ready> | null;
-  if (!v || v.report_id !== reportId || v.ai_report_version !== version || v.status !== "ready" || v.template_version !== "stage12-1i" || !/^[a-f0-9]{64}$/.test(v.checksum ?? "") || !/^[a-f0-9-]{36}$/i.test(v.artifact_id ?? "") || v.download_url !== `/api/admin/report-artifacts/${v.artifact_id}`) throw Error("invalid_receipt");
+  if (!v || v.report_id !== reportId || v.ai_report_version !== version || v.status !== "ready" || v.template_version !== "stage12-1j" || !/^[a-f0-9]{64}$/.test(v.checksum ?? "") || !/^[a-f0-9-]{36}$/i.test(v.artifact_id ?? "") || v.download_url !== `/api/admin/report-artifacts/${v.artifact_id}`) throw Error("invalid_receipt");
   return v as Ready;
 }
 export function AdminIndividualPdf({ reportId, version }: { reportId: string; version: number }) {

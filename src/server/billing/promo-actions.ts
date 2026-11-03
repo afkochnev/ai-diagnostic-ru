@@ -53,7 +53,7 @@ export async function redeemAdvancedPromo(_: PromoActionState, form: FormData): 
   }
   if (outcome.status === "invalid") return {error: "Промокод не действует: проверьте написание, срок или запросите новый код у организатора тестирования."};
   if (outcome.status === "rate_limited") return {error: "Слишком много попыток. Попробуйте через 15 минут."};
-  if (outcome.status === "billing_managed") return {error: "Этот аккаунт связан с оплатой. Для подключения тестового доступа напишите на info@iteam.ru."};
+  if (outcome.status === "billing_managed") return {error: "Этот аккаунт связан с оплатой. Для подключения тестового доступа напишите на alexander@iteamsystems.com."};
   if (outcome.status === "already_redeemed" && (!outcome.effective_until || Date.parse(outcome.effective_until) <= Date.now())) {
     return {error: "Этот промокод уже использован, и срок тестового доступа завершился. Запросите новый код у организатора тестирования."};
   }
