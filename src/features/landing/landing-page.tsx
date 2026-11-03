@@ -1,4 +1,4 @@
-import {FreeLanding, LandingAudience, LandingFormats, LandingPreviewLabel, LandingScope, SyntheticPreview} from "@/features/acquisition/free-landing";
+import {FreeLanding, LandingAudience, LandingFormats, LandingOutcome, LandingPreviewLabel, LandingPromises, LandingScope, SyntheticPreview} from "@/features/acquisition/free-landing";
 import Image from "next/image";
 import {ButtonLink} from "@/components/ui/button-link";
 import {Card} from "@/components/ui/card";
@@ -18,11 +18,9 @@ export function LandingPage({locale, messages, authenticated = false, acquisitio
       <div className="grid items-start gap-8 lg:grid-cols-[1.05fr_1fr] lg:gap-10"><div>
         <p className="text-sm font-medium text-muted">Для собственников и руководителей компаний</p>
         <h1 id="hero-title" className="mt-3 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl lg:text-[2.65rem]">{content.title}</h1>
-        <p className="mt-5 max-w-xl text-base leading-relaxed text-muted sm:text-lg">{content.description}</p>
+        <LandingPromises/>
         <div className="mt-6 flex flex-col items-start gap-4 sm:flex-row sm:items-center"><ButtonLink href={registrationPath}>{cta}</ButtonLink><LandingPreviewLabel/></div>
-        <p className="mt-4 text-sm font-medium">Индивидуальная диагностика, AI-отчёт и PDF — бесплатно</p>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">80 вопросов с оценкой 1–5 и 4 открытых вопроса (2 можно пропустить). Можно сделать паузу и продолжить из кабинета.</p>
-        {!authenticated && <p className="mt-2 text-sm leading-relaxed text-muted">Сначала создайте аккаунт и подтвердите email — для сохранения ответов и доступа к отчёту.</p>}
+        <LandingOutcome/>
       </div><SyntheticPreview/></div>
     </Container></section>
     <LandingAudience/>

@@ -87,6 +87,13 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("team response blocks and saving", () => {
+  it("hides obsolete profile advice in saved question hints without changing the answer", () => {
+    const cached = { ...response, answers: { "question-2": "Saved goals" }, questions: [{ ...response.questions[1], help: "Укажите три главные цели. Если ответ перенесён из профиля, уточните его при необходимости." }] };
+    const tree = hooks.render(() => TeamResponseForm({ response: cached }));
+    expect(elements(tree).find((element) => element.props.id === "help-question-2")?.props.children).toBe("Укажите три главные цели.");
+    expect(elements(tree).find((element) => element.type === AutoResizeTextarea)?.props.value).toBe("Saved goals");
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
   it("does not write on opening and saves every block using the latest revision", async () => {
     const tree = render();
     expect(button(tree, "Сохранить ответы")).toBeUndefined();

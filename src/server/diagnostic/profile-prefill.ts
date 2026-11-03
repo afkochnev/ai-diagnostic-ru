@@ -14,7 +14,7 @@ export function profileAnswerPrefill(questions: readonly Question[], profile: Co
 }
 
 export function openQuestionHint(key: string) {
-  if (key === "main_management_problem") return "Достаточно нескольких предложений: что мешает компании, почему это происходит и почему важно сейчас. Если ответ перенесён из профиля, уточните его при необходимости.";
-  if (key === "main_company_goal") return "Укажите до трёх главных целей на ближайший год. Если ответ перенесён из профиля, уточните его при необходимости.";
+  if (key === "main_management_problem") return "Достаточно нескольких предложений: что мешает компании, почему это происходит и почему важно сейчас.";
+  if (key === "main_company_goal") return "Укажите до трёх главных целей на ближайший год.";
   return null;
 }
