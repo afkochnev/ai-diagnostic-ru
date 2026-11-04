@@ -126,6 +126,25 @@ describe("versioned Individual failed-report recovery", () => {
     expect(state.rows.jobs.filter(j=>j.kind==="ai_report")).toEqual([expect.objectContaining({deduplication_key:"ai_report_v1"})]);
     expect(state.generate).not.toHaveBeenCalled();
   });
+  it("scoring an English diagnostic builds English evidence and enqueues EN-1.5 as its first report",async()=>{
+    const {buildAIInput}=await vi.importActual<typeof import("@/server/ai/report")>("@/server/ai/report");
+    state.buildInput.mockImplementation(buildAIInput);
+    state.rows.diagnostics=[{id:"diagnostic",status:"submitted",version_id:"methodology",locale:"en"}];
+    state.rows.ai_reports=[];state.rows.diagnostic_results=[];
+    state.rows.jobs=[{id:"score",diagnostic_id:"diagnostic",kind:"score_diagnostic",status:"processing",lease_token:"lease"}];
+    state.rows.diagnostic_blocks=Array.from({length:8},(_,i)=>({id:`block-${i}`,key:`area_${i}`,position:i+1,version_id:"methodology",weight:1,is_active:true}));
+    state.rows.questions=state.rows.diagnostic_blocks.map((b,i)=>({id:`q-${i}`,block_id:b.id,version_id:"methodology",weight:1,is_active:true,is_required:true,reverse_score:false,answer_type:"scale_0_4"}));
+    state.rows.answers=state.rows.questions.map(q=>({diagnostic_id:"diagnostic",question_id:q.id,numeric_value:2}));
+    state.rows.diagnostic_company_snapshots=[{diagnostic_id:"diagnostic",profile_data:{name:"English pilot company"}}];
+    state.rows.diagnostic_block_translations=state.rows.diagnostic_blocks.flatMap(b=>[{block_id:b.id,locale:"en",title:`English area ${b.position}`},{block_id:b.id,locale:"ru",title:"Русский блок"}]);
+    state.rows.maturity_levels=[{id:"developing",key:"developing",position:3,version_id:"methodology"}];
+    state.rows.maturity_level_translations=[{maturity_level_id:"developing",locale:"en",label:"Developing"},{maturity_level_id:"developing",locale:"ru",label:"Зона развития"}];
+    expect(await runScoringJob({job_id:"score",diagnostic_id:"diagnostic",lease_token:"lease",attempt_count:1})).toEqual({status:"completed"});
+    expect(state.rows.diagnostics[0]).toMatchObject({status:"completed",locale:"en"});
+    expect(state.rows.ai_reports).toEqual([expect.objectContaining({version:1,prompt_version:"EN-1.5",status:"queued",input_snapshot:expect.objectContaining({locale:"en",company_snapshot:expect.objectContaining({company_name:"English pilot company"}),deterministic_results:expect.objectContaining({manageability_index_display:"50",maturity_level_label:"Developing"}),block_results:expect.arrayContaining([expect.objectContaining({block_title:"English area 1",block_score_display:"50"})])})})]);
+    expect(state.rows.jobs.filter(j=>j.kind==="ai_report")).toEqual([expect.objectContaining({deduplication_key:"ai_report_v1"})]);
+    expect(state.generate).not.toHaveBeenCalled();
+  });
   it.each([1,2,3])("new generation v%i always persists current RU-1.5",async version=>{
     state.rows.ai_reports=[];state.rows.jobs=[];
     await enqueueAIReport("diagnostic",version);
