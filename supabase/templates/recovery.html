@@ -1,4 +1,4 @@
-{{ $en := or (eq .Data.locale "en") (eq .RedirectTo (print .SiteURL "/auth/confirm?type=recovery&locale=en")) }}
+{{ $en := or (eq .RedirectTo (print .SiteURL "/auth/confirm?type=recovery&locale=en")) (eq .RedirectTo (print .SiteURL "/auth/confirm?locale=en&type=recovery")) (and (eq .Data.locale "en") (or (eq .RedirectTo "") (eq .RedirectTo .SiteURL) (eq .RedirectTo (print .SiteURL "/auth/confirm?type=recovery")))) }}
 <!doctype html><html lang="{{ if $en }}en{{ else }}ru{{ end }}"><body>
 {{ if $en }}
 <h1>Reset your password</h1><p>Open this link to set a new password:</p>
