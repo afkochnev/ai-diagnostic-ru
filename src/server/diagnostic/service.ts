@@ -3,6 +3,7 @@ import { createAuthClient } from "@/server/supabase/server";
 import { AccountAccessError, requireCompanyRead, requireCompanyWrite, requireDiagnosticRead, requireDiagnosticWrite } from "@/server/account/authorization";
 import { getOwnCompany } from "@/server/company/queries";
 import { profileAnswerPrefill } from "./profile-prefill";
+import type {Locale} from "@/i18n/config";
 
 export type DiagnosticAnswerInput = { question_id: string; value: number | string | null };
 export type SaveDiagnosticResult = { revision: number; current_block_id: string };
@@ -30,7 +31,7 @@ export function selectCurrentPublishedVersion(
     .sort((left, right) => right.version_number - left.version_number)[0] ?? null;
 }
 
-export async function createDiagnostic(userId: string, companyId?: string) {
+export async function createDiagnostic(userId: string, companyId?: string, locale: Locale = "ru") {
   let company;
   try {
     company = companyId ? await requireCompanyWrite(companyId, userId) : await getOwnCompany(userId);
@@ -39,10 +40,11 @@ export async function createDiagnostic(userId: string, companyId?: string) {
     throw error;
   }
   const client = await createAuthClient();
+  if (locale === "en" && process.env.ENGLISH_PILOT_ENABLED !== "true") throw new DiagnosticError("not_found", "English pilot is unavailable");
   if (!company) throw new DiagnosticError("company_missing", "Company profile is required");
-  const { data: existing, error: existingError } = await client.from("diagnostics").select("id").eq("company_id", company.id).eq("status", "in_progress").maybeSingle();
+  const { data: existing, error: existingError } = await client.from("diagnostics").select("id,locale").eq("company_id", company.id).eq("status", "in_progress").maybeSingle();
   if (existingError) throw new DiagnosticError("invalid", "Diagnostic could not be loaded");
-  if (existing) return { id: existing.id, existing: true };
+  if (existing) return { id: existing.id, existing: true, locale: existing.locale === "en" ? "en" as const : "ru" as const, company_id: company.id };
   const { data: definition, error: definitionError } = await client.from("diagnostic_definitions").select("id").eq("key", MANAGEABILITY_DEFINITION_KEY).maybeSingle();
   if (definitionError || !definition) throw new DiagnosticError("not_found", "No published methodology");
   const { data: versions, error: versionError } = await client.from("diagnostic_versions").select("id,definition_id,version_number,status").eq("definition_id", definition.id).eq("status", "published");
@@ -50,10 +52,10 @@ export async function createDiagnostic(userId: string, companyId?: string) {
   if (versionError || !version) throw new DiagnosticError("not_found", "No published methodology");
   const { data: firstBlock } = await client.from("diagnostic_blocks").select("id").eq("version_id", version.id).eq("is_active", true).order("position").limit(1).maybeSingle();
   if (!firstBlock) throw new DiagnosticError("not_found", "Methodology has no blocks");
-  const { data, error } = await client.from("diagnostics").insert({ company_id: company.id, created_by_user_id: userId, version_id: version.id, locale: "ru", current_block_id: firstBlock.id }).select("id").single();
+  const { data, error } = await client.from("diagnostics").insert({ company_id: company.id, created_by_user_id: userId, version_id: version.id, locale, current_block_id: firstBlock.id }).select("id").single();
   if (error?.code === "23505") {
-    const { data: retry } = await client.from("diagnostics").select("id").eq("company_id", company.id).eq("status", "in_progress").single();
-    if (retry) return { id: retry.id, existing: true };
+    const { data: retry } = await client.from("diagnostics").select("id,locale").eq("company_id", company.id).eq("status", "in_progress").single();
+    if (retry) return { id: retry.id, existing: true, locale: retry.locale === "en" ? "en" as const : "ru" as const, company_id: company.id };
   }
   if (error || !data) throw new DiagnosticError("invalid", "Diagnostic could not be created");
   const { data: contextQuestions } = await client.from("questions").select("id,key,answer_type").eq("version_id", version.id).eq("is_active", true).in("key", ["main_management_problem", "main_company_goal"]);
@@ -63,13 +65,13 @@ export async function createDiagnostic(userId: string, companyId?: string) {
     const { error: prefillError } = await client.from("answers").upsert(prefill.map((answer) => ({ ...answer, diagnostic_id: data.id, version_id: version.id })), { onConflict: "diagnostic_id,question_id", ignoreDuplicates: true });
     if (prefillError) console.warn("[diagnostic]", { event: "profile_prefill_unavailable" });
   }
-  return { id: data.id, existing: false };
+  return { id: data.id, existing: false, locale, company_id: company.id };
 }
 
 export async function getActiveDiagnostic(userId: string, companyId: string) {
   await requireCompanyRead(companyId, userId);
   const client = await createAuthClient();
-  const { data, error } = await client.from("diagnostics").select("id,current_block_id,revision,last_saved_at,status").eq("company_id", companyId).eq("status", "in_progress").maybeSingle();
+  const { data, error } = await client.from("diagnostics").select("id,current_block_id,revision,last_saved_at,status,locale").eq("company_id", companyId).eq("status", "in_progress").maybeSingle();
   if (error) throw new DiagnosticError("invalid", "Diagnostic could not be loaded");
   return data;
 }
@@ -77,15 +79,15 @@ export async function getActiveDiagnostic(userId: string, companyId: string) {
 export async function getLatestDiagnostics(userId: string, companyId: string) {
   await requireCompanyRead(companyId, userId);
   const client = await createAuthClient();
-  const { data, error } = await client.from("diagnostics").select("id,status,revision,started_at,last_saved_at,submitted_at,completed_at").eq("company_id", companyId).order("started_at", { ascending: false }).limit(10);
+  const { data, error } = await client.from("diagnostics").select("id,status,revision,started_at,last_saved_at,submitted_at,completed_at,locale").eq("company_id", companyId).order("started_at", { ascending: false }).limit(10);
   if (error) throw new DiagnosticError("invalid", "Diagnostics could not be loaded");
   const rows = data ?? [];
   const completedIds = rows.filter((row) => row.status === "completed").map((row) => row.id);
   if (!completedIds.length) return rows.map((diagnostic) => ({ diagnostic, result: null }));
   const { data: results } = await client.from("diagnostic_results").select("diagnostic_id,display_manageability_index,maturity_level_id").in("diagnostic_id", completedIds);
   const maturityIds = (results ?? []).map((result) => result.maturity_level_id).filter((id): id is string => Boolean(id));
-  const { data: levels } = maturityIds.length ? await client.from("maturity_level_translations").select("maturity_level_id,label").eq("locale", "ru").in("maturity_level_id", maturityIds) : { data: [] };
-  const resultMap = new Map((results ?? []).map((result) => [result.diagnostic_id, { ...result, maturity_label: (levels ?? []).find((level) => level.maturity_level_id === result.maturity_level_id)?.label ?? "" }]));
+  const { data: levels } = maturityIds.length ? await client.from("maturity_level_translations").select("maturity_level_id,label,locale").in("locale", ["ru", "en"]).in("maturity_level_id", maturityIds) : { data: [] };
+  const resultMap = new Map((results ?? []).map((result) => [result.diagnostic_id, { ...result, maturity_label: (levels ?? []).find((level) => level.maturity_level_id === result.maturity_level_id && level.locale === (rows.find(row => row.id === result.diagnostic_id)?.locale === "en" ? "en" : "ru"))?.label ?? "" }]));
   return rows.map((diagnostic) => ({ diagnostic, result: resultMap.get(diagnostic.id) ?? null }));
 }
 
@@ -102,7 +104,7 @@ export async function getDiagnostic(diagnosticId: string, userId: string) {
     client.from("answers").select("question_id,text_value,numeric_value,revision").eq("diagnostic_id",diagnostic.id),
   ]);
   if(!company)throw new DiagnosticError("not_found","Diagnostic data not found");
-  return {diagnostic,company,blocks:await loadQuestionnaire(client,diagnostic.version_id,answers??[])};
+  return {diagnostic,company,blocks:await loadQuestionnaire(client,diagnostic.version_id,answers??[],diagnostic.locale === "en" ? "en" : "ru")};
 }
 
 export async function saveDiagnosticAnswers(diagnosticId: string, userId: string, expectedRevision: number, mutationId: string, currentBlockId: string, inputs: DiagnosticAnswerInput[], answersDirty = true): Promise<SaveDiagnosticResult> {

@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState } from "@/validation/auth";
 
 const state = vi.hoisted(() => ({ current: {} as AuthState }));
+vi.mock("@/i18n/context", () => ({ useLocale: () => "ru" }));
+vi.mock("@/server/locale", () => ({ formLocale: (form?: FormData) => form?.get("locale") === "en" ? "en" : "ru", requestLocale: async () => "ru", rememberLocale: async () => {} }));
 vi.mock("react", async (original) => ({ ...await original<typeof import("react")>(), useActionState: () => [state.current, vi.fn(), false] }));
 import { AuthForm } from "@/features/auth/auth-form";
 

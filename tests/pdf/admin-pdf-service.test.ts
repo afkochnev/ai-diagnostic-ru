@@ -46,6 +46,25 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("live-admin PDF entry and immutable shared renderer", () => {
+  it("uses a separate English template and translated inputs while keeping the Russian cache untouched", async () => {
+    tables.ai_reports[0].prompt_version = "EN-1.5"; tables.diagnostics[0].locale = "en";
+    (tables.diagnostic_company_snapshots[0].profile_data as Row).name = "Pilot company";
+    tables.maturity_level_translations[0].label = "Developing"; tables.maturity_level_translations[0].locale = "en";
+    tables.diagnostic_block_translations[0].title = "Strategy"; tables.diagnostic_block_translations[0].locale = "en";
+    const historical = stored({id: "30000000-0000-4000-8000-000000000002", template_version: "stage12-1j"});
+    tables.report_artifacts.push(historical); const before = JSON.stringify(historical);
+    const ready = await preparePdfForAdminReport(id);
+    expect(ready.template_version).toBe("individual-report-en-v1");
+    expect(m.render.mock.calls[0][0]).toMatchObject({locale: "en", index: "52.2", maturity: "Developing", blocks: [{title: "Strategy", score: "62.5"}]});
+    expect(JSON.stringify(historical)).toBe(before); expect(tables.report_artifacts).toHaveLength(2);
+    expect((await getPdfForReport(id, "actual-owner")).bytes).toEqual(pdf);
+  });
+  it("keeps a saved Russian report Russian even on a diagnostic with a different display preference", async () => {
+    tables.ai_reports[0].prompt_version = "RU-1.5"; tables.diagnostics[0].locale = "en";
+    expect((await preparePdfForAdminReport(id)).template_version).toBe("stage12-1j");
+    expect(m.render.mock.calls[0][0]).toMatchObject({locale: "ru", index: "52,2"});
+  });
+
   it.each(["anonymous", "unverified", "user", "revoked-role", "revoked-session", "service-role-header-only"])("direct service denies %s before privileged reads", async reason => {
     m.admin.mockRejectedValue(Error(`denied-${reason}`));
     await expect(preparePdfForAdminReport(id)).rejects.toThrow("denied"); await expect(getAdminPdfStatus(id)).rejects.toThrow("denied");

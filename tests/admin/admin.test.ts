@@ -30,7 +30,7 @@ describe("Stage 8A admin boundary", () => {
   });
 
   it("routes an administrator to the admin shell after aal2", () => {
-    expect(actions).toContain('redirect(role?.role === "administrator" ? "/ru/admin" : "/ru/company-profile")');
+    expect(actions).toContain('redirect(role?.role === "administrator" ? "/ru/admin" : `/${locale}/company-profile`)');
     expect(mfaPage).toContain('redirect(identity.role === "administrator" ? "/ru/admin" : "/ru/account")');
   });
 

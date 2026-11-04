@@ -1,3 +1,4 @@
+vi.mock("@/server/locale", () => ({ requestLocale: async () => "ru" }));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock('server-only',()=>({}));
 import * as React from "react";

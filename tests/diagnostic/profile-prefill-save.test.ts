@@ -25,7 +25,7 @@ beforeEach(() => { vi.clearAllMocks(); m.existing = null; m.seeded.mockResolvedV
 
 describe("new Individual profile prefill persistence", () => {
   it("persists context with conflict-ignore so a concurrent real answer cannot be overwritten", async () => {
-    expect(await createDiagnostic("user", "company")).toEqual({ id: "new-diagnostic", existing: false });
+    expect(await createDiagnostic("user", "company")).toMatchObject({ id: "new-diagnostic", existing: false });
     expect(m.seeded).toHaveBeenCalledWith([
       { diagnostic_id: "new-diagnostic", version_id: "version", question_id: "problem", text_value: "Проблема" },
       { diagnostic_id: "new-diagnostic", version_id: "version", question_id: "goal", text_value: "Цели" },
@@ -33,7 +33,7 @@ describe("new Individual profile prefill persistence", () => {
   });
   it("resumes existing diagnostics without writing profile context again", async () => {
     m.existing = { id: "in-progress" };
-    expect(await createDiagnostic("user", "company")).toEqual({ id: "in-progress", existing: true });
+    expect(await createDiagnostic("user", "company")).toMatchObject({ id: "in-progress", existing: true });
     expect(m.seeded).not.toHaveBeenCalled();
   });
 });

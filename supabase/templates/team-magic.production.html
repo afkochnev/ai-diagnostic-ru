@@ -1,9 +1,21 @@
+{{ $en := or (eq .RedirectTo (print .SiteURL "/auth/confirm?locale=en")) (and (eq .Data.locale "en") (or (eq .RedirectTo "") (eq .RedirectTo .SiteURL) (or (eq .RedirectTo "https://audit.iteamsystems.com/auth/confirm") (eq .RedirectTo "https://iteamsystems.com/auth/confirm") (eq .RedirectTo "https://audit.iteam.ru/auth/confirm")))) }}
+{{ $ru := eq .RedirectTo (print .SiteURL "/auth/confirm?locale=ru") }}
 {{ if or (eq .RedirectTo "https://audit.iteamsystems.com/ru/team/confirm") (eq .RedirectTo "https://iteamsystems.com/ru/team/confirm") (eq .RedirectTo "https://audit.iteam.ru/ru/team/confirm") }}
 <h2>Продолжите командную диагностику</h2>
 <p>Вы запросили вход по личному приглашению. Пароль не нужен.</p>
 <p><a style="display:inline-block;padding:14px 22px;background:#315c73;color:white;text-decoration:none;border-radius:8px" href="{{ .RedirectTo }}#token_hash={{ .TokenHash }}&amp;type=email">Продолжить командную диагностику</a></p>
 <p>Откройте кнопку в том же браузере, где дали согласие на странице приглашения.</p>
 <p>Не пересылайте это письмо: кнопка предназначена только для вас. Если вы не запрашивали вход, проигнорируйте письмо.</p>
+{{ else if $en }}
+<h2>Sign in to AI Company Audit</h2>
+<p>You requested a sign-in link. No password is needed.</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;locale=en">Sign in and open my results</a></p>
+<p>This link can be used once. If you did not request it, you can ignore this email.</p>
+{{ else if $ru }}
+<h2>Войдите в AI-аудит компании</h2>
+<p>Вы запросили ссылку для входа. Пароль не нужен.</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email">Войти и открыть мои результаты</a></p>
+<p>Ссылка одноразовая. Если вы не запрашивали вход, проигнорируйте это письмо.</p>
 {{ else if or (eq .RedirectTo "https://audit.iteamsystems.com/auth/confirm") (eq .RedirectTo "https://iteamsystems.com/auth/confirm") (eq .RedirectTo "https://audit.iteam.ru/auth/confirm") }}
 <h2>Войдите в AI-аудит компании</h2>
 <p>Вы запросили ссылку для входа. Пароль не нужен.</p>

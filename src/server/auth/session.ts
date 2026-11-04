@@ -6,6 +6,8 @@ import { isAuthConfigured } from "@/server/supabase/config";
 import { listAccessibleAccounts } from "@/server/account/queries";
 import { listAccessibleCompanies } from "@/server/company/queries";
 import { workspaceDestination } from "@/features/company/workspace-routing";
+import {requestLocale} from "@/server/locale";
+import type {Locale} from "@/i18n/config";
 import {safeMfaReturnTo} from "./mfa-return";
 
 export { workspaceDestination } from "@/features/company/workspace-routing";
@@ -26,21 +28,23 @@ export const getIdentity = cache(async () => {
 
 export async function requireIdentity(returnTo?: string) {
   const identity = await getIdentity();
-  if (!identity) redirect("/ru/login");
-  if (!identity.user.email_confirmed_at) redirect("/ru/verify-email");
+  const locale = await requestLocale();
+  if (!identity) redirect(`/${locale}/login`);
+  if (!identity.user.email_confirmed_at) redirect(`/${locale}/verify-email`);
   // A configured MFA factor requires step-up; the administrator role alone does not.
   if (identity.role === "administrator" && identity.nextAal === "aal2" && identity.aal !== "aal2") {
     const next = safeMfaReturnTo(returnTo);
-    redirect(next ? `/ru/mfa?next=${encodeURIComponent(next)}` : "/ru/mfa");
+    redirect(next ? `/${locale}/mfa?next=${encodeURIComponent(next)}` : `/${locale}/mfa`);
   }
   return identity;
 }
 
-export async function signedInDestination() {
+export async function signedInDestination(selectedLocale?: Locale) {
   const identity = await getIdentity();
-  if (!identity) return "/ru/login";
-  if (!identity.user.email_confirmed_at) return "/ru/verify-email";
+  const locale = selectedLocale ?? await requestLocale();
+  if (!identity) return `/${locale}/login`;
+  if (!identity.user.email_confirmed_at) return `/${locale}/verify-email`;
   if (identity.role === "administrator") return "/ru/admin";
   const [companies, accounts] = await Promise.all([listAccessibleCompanies(identity.user.id), listAccessibleAccounts(identity.user.id)]);
-  return workspaceDestination(companies.length, accounts.length);
+  return workspaceDestination(companies.length, accounts.length, locale);
 }

@@ -1,9 +1,13 @@
 "use client";
+import { pilotText as tr } from "@/i18n/pilot-copy";
+import { useLocale } from "@/i18n/context";
 import { useEffect, useState } from "react";
 
 type ProgressState = "generating" | "completed" | "failed";
 
 export function ReportGenerationProgress({ state, onClose, elapsedSeconds }: { state: ProgressState; onClose?: () => void; elapsedSeconds?: number }) {
+  const locale = useLocale();
+
   const [localElapsed, setElapsed] = useState(0);
   const elapsed = elapsedSeconds ?? localElapsed;
   useEffect(() => {
@@ -12,6 +16,6 @@ export function ReportGenerationProgress({ state, onClose, elapsedSeconds }: { s
     const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
     return () => window.clearInterval(timer);
   }, [state, elapsedSeconds]);
-  if (state === "failed") return <div role="dialog" aria-modal="true" aria-labelledby="report-generation-title" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-5"><div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"><h2 id="report-generation-title" className="text-xl font-semibold">Формируем отчёт</h2><p role="alert" className="mt-3 text-sm text-red-700">Не удалось сформировать отчёт. Попробуйте ещё раз.</p>{onClose && <button type="button" onClick={onClose} className="mt-5 rounded-xl border border-line px-4 py-2 text-sm font-semibold">Закрыть</button>}</div></div>;
-  return <div role="dialog" aria-modal="true" aria-labelledby="report-generation-title" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-5"><div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-xl"><h2 id="report-generation-title" className="text-xl font-semibold">Формируем отчёт</h2>{state === "completed" ? <p role="status" className="mt-3 text-sm text-muted">Отчёт готов.</p> : <><p className="mt-3 text-sm text-muted">Подготовка отчёта займёт от 1 до 2 минут.</p><p role="timer" aria-live="off" className="mt-4 text-sm font-medium tabular-nums">Прошло: {elapsed} сек.</p><p className="mt-2 text-xs text-muted">Отчёт формируется в фоновом режиме.</p>{elapsed > 120 && <p role="status" className="mt-3 text-sm text-muted">Формирование занимает немного больше времени. Можно продолжить ожидание.</p>}</>}{onClose && state === "generating" && <button type="button" onClick={onClose} className="mt-5 rounded-xl border border-line px-4 py-2 text-sm font-semibold">Скрыть</button>}</div></div>;
+  if (state === "failed") return <div role="dialog" aria-modal="true" aria-labelledby="report-generation-title" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-5"><div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"><h2 id="report-generation-title" className="text-xl font-semibold">{tr(locale, "Формируем отчёт")}</h2><p role="alert" className="mt-3 text-sm text-red-700">{tr(locale, "Не удалось сформировать отчёт. Попробуйте ещё раз.")}</p>{onClose && <button type="button" onClick={onClose} className="mt-5 rounded-xl border border-line px-4 py-2 text-sm font-semibold">{tr(locale, "Закрыть")}</button>}</div></div>;
+  return <div role="dialog" aria-modal="true" aria-labelledby="report-generation-title" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-5"><div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-xl"><h2 id="report-generation-title" className="text-xl font-semibold">{tr(locale, "Формируем отчёт")}</h2>{state === "completed" ? <p role="status" className="mt-3 text-sm text-muted">{tr(locale, "Отчёт готов.")}</p> : <><p className="mt-3 text-sm text-muted">{tr(locale, "Подготовка отчёта займёт от 1 до 2 минут.")}</p><p role="timer" aria-live="off" className="mt-4 text-sm font-medium tabular-nums">{tr(locale, "Прошло:")} {elapsed} {tr(locale, "сек.")}</p><p className="mt-2 text-xs text-muted">{tr(locale, "Отчёт формируется в фоновом режиме.")}</p>{elapsed > 120 && <p role="status" className="mt-3 text-sm text-muted">{tr(locale, "Формирование занимает немного больше времени. Можно продолжить ожидание.")}</p>}</>}{onClose && state === "generating" && <button type="button" onClick={onClose} className="mt-5 rounded-xl border border-line px-4 py-2 text-sm font-semibold">{tr(locale, "Скрыть")}</button>}</div></div>;
 }

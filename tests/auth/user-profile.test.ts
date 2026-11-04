@@ -2,6 +2,8 @@ import {renderToStaticMarkup} from "react-dom/server";
 import {createElement} from "react";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 const mocks=vi.hoisted(()=>({identity:vi.fn(),select:vi.fn(),eq:vi.fn(),single:vi.fn(),user:vi.fn(),claims:vi.fn(),recovery:vi.fn()}));
+vi.mock("@/i18n/context", () => ({ useLocale: () => "ru" }));
+vi.mock("@/server/locale", () => ({ formLocale: (form?: FormData) => form?.get("locale") === "en" ? "en" : "ru", requestLocale: async () => "ru", rememberLocale: async () => {} }));
 vi.mock("server-only",()=>({}));
 vi.mock("@/server/auth/session",()=>({requireIdentity:mocks.identity}));
 vi.mock("@/server/auth/actions",()=>({resetAction:vi.fn(),logoutAction:vi.fn()}));

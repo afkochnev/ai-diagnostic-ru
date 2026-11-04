@@ -18,7 +18,7 @@ describe("registration action", () => {
   });
 
   it("sends successful signup confirmation to a clear continuation screen", () => {
-    expect(action).toContain('redirect("/ru/verification-complete")');
+    expect(action).toContain('redirect(type === "signup" ? `/${locale}/verification-complete`');
     const confirmation = action.slice(action.indexOf("export async function confirmAction"), action.indexOf("export async function resetAction"));
     expect(confirmation).not.toContain('redirect("/ru/company-profile")');
     const landing = readFileSync("src/app/[locale]/(public)/page.tsx", "utf8");
@@ -28,6 +28,6 @@ describe("registration action", () => {
 
   it("preserves identity validation before confirmation continuation", () => {
     expect(action).toContain("hasCreatedAuthUser(data)");
-    expect(action).toContain('redirect("/ru/verification-complete")');
+    expect(action).toContain('redirect(type === "signup" ? `/${locale}/verification-complete`');
   });
 });

@@ -276,7 +276,7 @@ describe("explicit company selection and V1 start compatibility", () => {
 
   it("resumes the chosen company's historical attempt before current methodology lookup", async () => {
     state.tables.diagnostic_versions = [];
-    expect(await createDiagnostic(USER, COMPANY)).toEqual({ id: DIAGNOSTIC, existing: true });
+    expect(await createDiagnostic(USER, COMPANY)).toMatchObject({ id: DIAGNOSTIC, existing: true, locale: "ru", company_id: COMPANY });
     expect(state.queries).not.toContain("diagnostic_versions");
     expect(state.writes).toEqual([]);
   });
@@ -433,7 +433,7 @@ describe("V21B authoritative multi-company creation", () => {
     state.tables.diagnostics.push({ id: "second-diagnostic", company_id: second, status: "in_progress" });
     expect((await getLatestDiagnostics(USER, COMPANY)).map((row) => row.diagnostic.id)).toEqual([DIAGNOSTIC]);
     expect((await getLatestDiagnostics(USER, second)).map((row) => row.diagnostic.id)).toEqual(["second-diagnostic"]);
-    expect(await createDiagnostic(USER, second)).toEqual({ id: "second-diagnostic", existing: true });
+    expect(await createDiagnostic(USER, second)).toMatchObject({ id: "second-diagnostic", existing: true, locale: "ru", company_id: second });
     expect((await getActiveDiagnostic(USER, COMPANY))?.id).toBe(DIAGNOSTIC);
   });
 

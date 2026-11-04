@@ -1,3 +1,4 @@
+vi.mock("@/i18n/context", () => ({ useLocale: () => "ru" }));
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ values: [] as unknown[], index: 0, busy: { current: false } }));

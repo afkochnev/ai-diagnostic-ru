@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
   currentLevel: "aal1", nextLevel: "aal1", authError: null as unknown,
   assuranceError: null as unknown, assuranceMissing: false, assurance: vi.fn(), roleLookup: vi.fn(),
 }));
+vi.mock("@/server/locale", () => ({ formLocale: (form?: FormData) => form?.get("locale") === "en" ? "en" : "ru", requestLocale: async () => "ru", rememberLocale: async () => {} }));
 vi.mock("server-only", () => ({}));
 vi.mock("react", () => ({cache: (fn: unknown) => fn}));
 vi.mock("next/navigation", () => ({redirect: (path: string) => {throw Error(`redirect:${path}`);}}));

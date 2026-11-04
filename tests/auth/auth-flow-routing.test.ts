@@ -22,7 +22,7 @@ describe("staging auth flow contract", () => {
   });
 
   it("continues normal login into the workspace and keeps the public CTA onboarding-aware", () => {
-    expect(action).toContain('redirect("/ru/account");');
+    expect(action).toContain('redirect(`/${locale}/account`);');
     expect(landing).toContain("authenticated={Boolean(identity)}");
     expect(landingView).toContain('authenticated ? "/account" : "/register"');
   });

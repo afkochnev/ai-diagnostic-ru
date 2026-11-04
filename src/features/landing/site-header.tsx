@@ -14,9 +14,10 @@ export function SiteHeader({ locale, messages, signedIn }: { locale: Locale; mes
           <span>{messages.site.name}</span>
         </Link>
         <nav aria-label={messages.site.navigation} className="flex w-full min-w-0 flex-wrap items-center justify-end gap-3 text-sm sm:w-auto sm:shrink-0 sm:gap-6">
-          {signedIn && <Link className="flex min-h-11 items-center underline" href="/ru/companies">Компании</Link>}
-          {signedIn && <Link className="flex min-h-11 items-center underline" href="/ru/profile">Профиль пользователя</Link>}
-          {signedIn ? <form action={logoutAction}><button className="min-h-11 cursor-pointer underline">{messages.auth.logout}</button></form> : <Link className="flex min-h-11 items-center underline" href="/ru/login">{messages.auth.loginLink}</Link>}
+          {locale === "en" ? <Link className="flex min-h-11 items-center underline" href="/ru" lang="ru">Русский</Link> : process.env.ENGLISH_PILOT_ENABLED === "true" && <Link className="flex min-h-11 items-center underline" href="/en" lang="en">English pilot</Link>}
+          {signedIn && <Link className="flex min-h-11 items-center underline" href={localePath(locale, "/companies")}>{locale === "en" ? "Companies" : "Компании"}</Link>}
+          {signedIn && <Link className="flex min-h-11 items-center underline" href={localePath(locale, "/profile")}>{locale === "en" ? "Your profile" : "Профиль пользователя"}</Link>}
+          {signedIn ? <form action={logoutAction}><input type="hidden" name="locale" value={locale} /><button className="min-h-11 cursor-pointer underline">{messages.auth.logout}</button></form> : <Link className="flex min-h-11 items-center underline" href={localePath(locale, "/login")}>{messages.auth.loginLink}</Link>}
         </nav>
       </Container>
     </header>

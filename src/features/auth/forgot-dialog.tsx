@@ -1,14 +1,18 @@
 "use client";
 
+
+import { useLocale } from "@/i18n/context";
 import { useRef, useState } from "react";
 import { AuthForm } from "./auth-form";
 import { forgotAction } from "@/server/auth/actions";
 import { getMessages } from "@/i18n/messages";
 
 export function ForgotDialog() {
+  const locale = useLocale();
+
   const dialog = useRef<HTMLDialogElement>(null);
   const [formVersion, setFormVersion] = useState(0);
-  const copy = getMessages("ru").auth;
+  const copy = getMessages(locale).auth;
   return <>
     <button className="cursor-pointer text-sm underline" onClick={() => {setFormVersion(version => version + 1); dialog.current?.showModal();}}>{copy.forgotLink}</button>
     <dialog ref={dialog} aria-labelledby="forgot-title" className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-line bg-white p-6 text-brand shadow-card backdrop:bg-brand/30">

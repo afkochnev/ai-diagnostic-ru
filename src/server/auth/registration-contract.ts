@@ -3,12 +3,14 @@ export type SignupResult = { user?: unknown | null } | null | undefined;
 /** Values consumed by private.provision_identity must remain JSON booleans. */
 export function buildSignupMetadata(input: {
   full_name: string;
+  locale?: "ru" | "en";
   data_processing_consent: boolean;
   marketing_consent: boolean;
   versions: Record<string, string>;
 }) {
   return {
     full_name: input.full_name,
+    ...(input.locale ? { locale: input.locale } : {}),
     data_processing_consent: input.data_processing_consent === true,
     marketing_consent: input.marketing_consent === true,
     ...input.versions,

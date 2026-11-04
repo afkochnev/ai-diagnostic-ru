@@ -1,17 +1,19 @@
 import "server-only";
 import { createAdminClient } from "@/server/supabase/admin";
-import { preparePdfForReport, templateVersion } from "@/server/pdf/service";
+import { preparePdfForReport, pdfTemplateVersion } from "@/server/pdf/service";
 import { getEmailProvider } from "./provider";
 import { buildReportEmail } from "./content";
 import { AccountAccessError, requireDiagnosticRead } from "@/server/account/authorization";
+import { individualReportLocale } from "@/server/ai/prompt-version";
+import { formatDecimal } from "@/server/ai/format";
+import { authConfig } from "@/server/supabase/config";
 
 type Row = Record<string, unknown>;
-const safeCompanyName = (value: unknown) => String(value ?? "компании");
-const formatIndex = (value: unknown) => String(value ?? "—").replace(".", ",");
+
 
 export async function sendReportEmail(reportId: string, userId: string) {
   const db = createAdminClient();
-  const { data: report } = await db.from("ai_reports").select("id,diagnostic_id,version,status").eq("id", reportId).maybeSingle();
+  const { data: report } = await db.from("ai_reports").select("id,diagnostic_id,version,status,prompt_version").eq("id", reportId).maybeSingle();
   if (!report) throw new Error("email_access_denied");
   let diagnostic;
   try { diagnostic = await requireDiagnosticRead(report.diagnostic_id, userId); }
@@ -21,6 +23,8 @@ export async function sendReportEmail(reportId: string, userId: string) {
   }
   if (diagnostic.status !== "completed") throw new Error("email_access_denied");
   if (report.status !== "completed") throw new Error("email_report_not_ready");
+  const locale = individualReportLocale(report.prompt_version, diagnostic.locale);
+  const templateVersion = pdfTemplateVersion(locale);
   const authUser = await db.auth.admin.getUserById(userId);
   const recipient = authUser.data.user?.email;
   if (!recipient) throw new Error("email_recipient_missing");
@@ -36,8 +40,9 @@ export async function sendReportEmail(reportId: string, userId: string) {
   }
   if (!artifact.data?.id || !artifact.data.content_base64) throw new Error("email_pdf_artifact_missing");
   const profile = (snapshot.profile_data ?? {}) as Row;
-  const companyName = safeCompanyName(profile.name);
-  const maturity = result.maturity_level_id ? await db.from("maturity_level_translations").select("label").eq("maturity_level_id", result.maturity_level_id).eq("locale", "ru").maybeSingle() : { data: null };
+  const companyName = String(profile.name ?? (locale === "en" ? "Company" : "компании"));
+  const maturity = result.maturity_level_id ? await db.from("maturity_level_translations").select("label").eq("maturity_level_id", result.maturity_level_id).eq("locale", locale).maybeSingle() : { data: null };
+  if (locale === "en" && result.maturity_level_id && !maturity.data?.label) throw Error("email_result_missing");
   const provider = getEmailProvider();
   const active = await db.from("email_deliveries").select("id,status").eq("user_id", userId).eq("ai_report_id", report.id).in("status", ["queued", "sending"]).maybeSingle();
   if (active.data) return active.data;
@@ -47,7 +52,7 @@ export async function sendReportEmail(reportId: string, userId: string) {
     if (duplicate.data) return duplicate.data;
     throw new Error("email_delivery_create_failed");
   }
-  const email = buildReportEmail({ companyName, index: formatIndex(result.display_manageability_index), maturity: maturity.data?.label ?? "—", filename, contentBase64: String(artifact.data.content_base64) });
+  const email = buildReportEmail({ locale, reportUrl: locale === "en" ? `${authConfig().APP_URL}/en/diagnostics/${diagnostic.id}/result` : undefined, companyName, index: formatDecimal(result.display_manageability_index, locale), maturity: maturity.data?.label ?? "—", filename, contentBase64: String(artifact.data.content_base64) });
   email.to = recipient;
   try {
     const sent = await provider.send(email);
