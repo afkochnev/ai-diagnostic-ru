@@ -10,21 +10,26 @@ import { emailSchema, loginSchema, passwordSchema, registrationSchema, type Auth
 import { getMessages } from "@/i18n/messages";
 import { buildSignupMetadata, hasCreatedAuthUser, isDuplicateSignup } from "./registration-contract";
 import {safeMfaReturnTo} from "./mfa-return";
+import {formLocale, requestLocale, rememberLocale} from "@/server/locale";
+import type {Locale} from "@/i18n/config";
 import type { EmailOtpType } from "@supabase/supabase-js";
 
 const text = getMessages("ru").auth;
 const value = (form: FormData, name: string) => String(form.get(name) ?? "");
 
-async function actionClient() {
+async function actionClient(locale?: Locale) {
   const origin = (await headers()).get("origin");
   if (origin !== authConfig().APP_URL) throw new Error("Invalid action origin");
+  if (locale) await rememberLocale(locale);
   return createAuthClient();
 }
-function failure(error: { status?: number; code?: string } | null): AuthState {
-  return { error: error?.status === 429 ? text.rateLimit : text.technical };
+function failure(error: { status?: number; code?: string } | null, copy = text): AuthState {
+  return { error: error?.status === 429 ? copy.rateLimit : copy.technical };
 }
 
 export async function registerAction(_: AuthState, form: FormData): Promise<AuthState> {
+  const locale = formLocale(form);
+  const text = getMessages(locale).auth;
   const parsed = registrationSchema.safeParse({
     full_name: value(form, "full_name"), email: value(form, "email").trim(), password: value(form, "password"),
     confirm_password: value(form, "confirm_password"),
@@ -34,7 +39,7 @@ export async function registerAction(_: AuthState, form: FormData): Promise<Auth
   const dataProcessingConsent = form.get("data_processing_consent") === "on";
   if (!dataProcessingConsent) return { error: text.required };
   const marketingConsent = form.get("marketing_consent") === "on";
-  const client = await actionClient();
+  const client = await actionClient(locale);
   const { data: documents, error: policyError } = await client.from("consent_documents").select("kind, version");
   if (policyError || documents?.length !== 2) return { error: text.technical };
   const versions = Object.fromEntries(documents.map((doc) => [`${doc.kind}_version`, doc.version]));
@@ -42,75 +47,87 @@ export async function registerAction(_: AuthState, form: FormData): Promise<Auth
     if (value(form, key) !== version) return { error: text.required };
   }
   const { email, password, full_name } = parsed.data;
-  const metadata = buildSignupMetadata({ full_name, data_processing_consent: dataProcessingConsent, marketing_consent: marketingConsent, versions });
+  const metadata = buildSignupMetadata({ full_name, data_processing_consent: dataProcessingConsent, marketing_consent: marketingConsent, versions, locale });
   const { data, error } = await client.auth.signUp({ email, password, options: {
-    emailRedirectTo: `${authConfig().APP_URL}/auth/confirm`, data: metadata,
+    emailRedirectTo: `${authConfig().APP_URL}/auth/confirm?locale=${locale}`, data: metadata,
   } });
   if (isDuplicateSignup(error, data)) return { error: text.emailAlreadyRegistered };
   if (error) {
-    return failure(error);
+    return failure(error, text);
   }
   if (!hasCreatedAuthUser(data)) {
     return { error: text.technical };
   }
   await clearRecovery();
-  redirect("/ru/verify-email");
+  redirect(`/${locale}/verify-email`);
 }
 
 export async function loginAction(_: AuthState, form: FormData): Promise<AuthState> {
+  const locale = formLocale(form);
+  const text = getMessages(locale).auth;
   const parsed = loginSchema.safeParse({ email: value(form, "email").trim(), password: value(form, "password") });
   if (!parsed.success) return { error: text.emptyLogin };
-  const client = await actionClient();
-  const { error } = await client.auth.signInWithPassword(parsed.data);
+  const client = await actionClient(locale);
+  const { data, error } = await client.auth.signInWithPassword(parsed.data);
   if (error) return { error: error.status === 429 ? text.rateLimit : error.code === "email_not_confirmed" ? text.verifyRequired : text.badLogin };
+  if (data.user?.email_confirmed_at) await client.from("users").update({ locale }).eq("id", data.user.id);
   await clearRecovery();
   revalidatePath("/", "layout");
-  if (value(form, "next") === "team-invitation") redirect("/ru/team/join");
-  redirect("/ru/account");
+  if (value(form, "next") === "team-invitation") redirect(`/${locale}/team/join`);
+  redirect(`/${locale}/account`);
 }
 
 export async function emailLoginAction(_: AuthState, form: FormData): Promise<AuthState> {
+  const locale = formLocale(form);
+  const text = getMessages(locale).auth;
   const parsed = emailSchema.safeParse(value(form, "email").trim());
   if (!parsed.success) return { error: text.badEmail };
-  const client = await actionClient();
+  const client = await actionClient(locale);
   const { error } = await client.auth.signInWithOtp({
     email: parsed.data,
-    options: { shouldCreateUser: false, emailRedirectTo: `${authConfig().APP_URL}/auth/confirm` },
+    options: { shouldCreateUser: false, emailRedirectTo: `${authConfig().APP_URL}/auth/confirm?locale=${locale}` },
   });
-  if (error && !["otp_disabled", "user_not_found", "signup_disabled"].includes(error.code ?? "")) return failure(error);
+  if (error && !["otp_disabled", "user_not_found", "signup_disabled"].includes(error.code ?? "")) return failure(error, text);
   // The same acknowledgment covers existing and unknown accounts.
-  return { success: "Если этот email зарегистрирован, мы отправили ссылку для входа. Проверьте входящие и папку «Спам»." };
+  return { success: locale === "en" ? "If this email is registered, we have sent a sign-in link. Check your inbox and spam folder." : "Если этот email зарегистрирован, мы отправили ссылку для входа. Проверьте входящие и папку «Спам»." };
 }
 
 export async function logoutAction() {
-  const client = await actionClient();
+  const locale = await requestLocale();
+  const client = await actionClient(locale);
   const { error } = await client.auth.signOut({ scope: "global" });
   if (error) throw new Error("Sign out failed");
   await clearRecovery();
   revalidatePath("/", "layout");
-  redirect("/ru/login");
+  redirect(`/${locale}/login`);
 }
 
 export async function forgotAction(_: AuthState, form: FormData): Promise<AuthState> {
+  const locale = formLocale(form);
+  const text = getMessages(locale).auth;
   const parsed = emailSchema.safeParse(value(form, "email").trim());
   if (!parsed.success) return { error: text.badEmail };
-  const client = await actionClient();
-  const { error } = await client.auth.resetPasswordForEmail(parsed.data, { redirectTo: `${authConfig().APP_URL}/auth/confirm?type=recovery` });
-  if (error) return failure(error);
-  return { success: "Если этот email зарегистрирован, мы отправили письмо для восстановления пароля. Проверьте входящие и папку «Спам»." };
+  const client = await actionClient(locale);
+  const { error } = await client.auth.resetPasswordForEmail(parsed.data, { redirectTo: `${authConfig().APP_URL}/auth/confirm?type=recovery&locale=${locale}` });
+  if (error) return failure(error, text);
+  return { success: locale === "en" ? "If this email is registered, we have sent password reset instructions. Check your inbox and spam folder." : "Если этот email зарегистрирован, мы отправили письмо для восстановления пароля. Проверьте входящие и папку «Спам»." };
 }
 
 export async function resendAction(_: AuthState, form: FormData): Promise<AuthState> {
+  const locale = formLocale(form);
+  const text = getMessages(locale).auth;
   const parsed = emailSchema.safeParse(value(form, "email").trim());
   if (!parsed.success) return { error: text.badEmail };
-  const client = await actionClient();
-  const { error } = await client.auth.resend({ type: "signup", email: parsed.data, options: { emailRedirectTo: `${authConfig().APP_URL}/auth/confirm` } });
+  const client = await actionClient(locale);
+  const { error } = await client.auth.resend({ type: "signup", email: parsed.data, options: { emailRedirectTo: `${authConfig().APP_URL}/auth/confirm?locale=${locale}` } });
   if (error?.status === 429) return { error: text.rateLimit };
-  if (error && error.status && error.status >= 500) return failure(error);
+  if (error && error.status && error.status >= 500) return failure(error, text);
   return { success: text.sent };
 }
 
 export async function confirmAction(_: AuthState, form: FormData): Promise<AuthState> {
+  const locale = formLocale(form);
+  const text = getMessages(locale).auth;
   const type = value(form, "type");
   const token_hash = value(form, "token_hash");
   const code = value(form, "code");
@@ -126,7 +143,7 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
     pkce_verifier_present: cookieNames.some((name) => /code-verifier/i.test(name)),
     exchange_attempted: false,
   };
-  const client = await actionClient();
+  const client = await actionClient(locale);
   let data: Awaited<ReturnType<typeof client.auth.exchangeCodeForSession>>["data"] | Awaited<ReturnType<typeof client.auth.verifyOtp>>["data"] | null = null;
   let exchangeError: { name?: string; code?: string; status?: number } | null = null;
   if (code && /^[A-Za-z0-9._~-]{20,512}$/.test(code)) {
@@ -145,49 +162,54 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
     console.info("[auth-confirm]", { checkpoint: "verify_otp_result", verify_success: Boolean(data.user), session_present: Boolean(data.session), user_present: Boolean(data.user), safe_error_name: exchangeError?.name ?? null, safe_error_code: exchangeError?.code ?? null, safe_error_status: exchangeError?.status ?? null, safe_failure_category: exchangeError ? "otp_verification_failed" : null });
     console.info("[auth-confirm]", { checkpoint: "session_persisted", session_cookie_present: Boolean(data.session) });
   }
-  if (exchangeError?.status === 429 || (exchangeError?.status ?? 0) >= 500 || exchangeError?.name === "AuthRetryableFetchError") return failure(exchangeError);
+  if (exchangeError?.status === 429 || (exchangeError?.status ?? 0) >= 500 || exchangeError?.name === "AuthRetryableFetchError") return failure(exchangeError, text);
   if (!data?.user) {
     if (type === "signup") {
       const { data: current } = await client.auth.getUser();
       if (current.user?.email_confirmed_at) {
         await clearRecovery();
         revalidatePath("/", "layout");
-        redirect("/ru/verification-complete");
+        redirect(`/${locale}/verification-complete`);
       }
     }
     return { error: text.invalidLink, code: "invalid_link" };
   }
+  await client.from("users").update({ locale }).eq("id", data.user.id);
   if (type === "recovery") {
     const { data: claims } = await client.auth.getClaims();
     const sessionId = claims?.claims.session_id;
     if (typeof sessionId !== "string") return { error: text.invalidLink, code: "invalid_link" };
     await setRecovery(data.user.id, sessionId);
-    redirect("/ru/reset-password");
+    redirect(`/${locale}/reset-password`);
   }
   await clearRecovery();
   revalidatePath("/", "layout");
-  redirect(type === "signup" ? "/ru/verification-complete" : "/ru/account");
+  redirect(type === "signup" ? `/${locale}/verification-complete` : `/${locale}/account`);
 }
 
 export async function resetAction(_: AuthState, form: FormData): Promise<AuthState> {
+  const locale = formLocale(form);
+  const text = getMessages(locale).auth;
   const parsed = passwordSchema.safeParse(value(form, "password"));
   if (!parsed.success) return { error: text.badPassword };
-  const client = await actionClient();
+  const client = await actionClient(locale);
   const { data: { user } } = await client.auth.getUser();
   const { data: claims } = await client.auth.getClaims();
   const sessionId = claims?.claims.session_id;
   if (!user || typeof sessionId !== "string" || !await hasRecovery(user.id, sessionId)) return { error: text.invalidLink };
   const { error } = await client.auth.updateUser({ password: parsed.data });
-  if (error?.code === "same_password") return { error: "Новый пароль совпадает с текущим. Введите другой пароль." };
-  if (error) return failure(error);
+  if (error?.code === "same_password") return { error: locale === "en" ? "Your new password matches your current password. Enter a different password." : "Новый пароль совпадает с текущим. Введите другой пароль." };
+  if (error) return failure(error, text);
   await clearRecovery();
   await client.auth.signOut({ scope: "global" });
   revalidatePath("/", "layout");
-  redirect("/ru/login?password=updated");
+  redirect(`/${locale}/login?password=updated`);
 }
 
 export async function enrollMfaAction(): Promise<AuthState> {
-  const client = await actionClient();
+  const locale = await requestLocale();
+  const text = getMessages(locale).auth;
+  const client = await actionClient(locale);
   const { data: { user } } = await client.auth.getUser();
   if (!user?.email_confirmed_at) return { error: text.sessionExpired };
   const { data: role } = await client.from("user_roles").select("role").eq("user_id", user.id).single();
@@ -199,12 +221,14 @@ export async function enrollMfaAction(): Promise<AuthState> {
     if (factor.factor_type === "totp" && factor.status === "unverified") await client.auth.mfa.unenroll({ factorId: factor.id });
   }
   const { data, error } = await client.auth.mfa.enroll({ factorType: "totp", friendlyName: "Administrator" });
-  if (error) return failure(error);
+  if (error) return failure(error, text);
   return { factorId: data.id, secret: data.totp.secret };
 }
 
 export async function verifyMfaAction(_: AuthState, form: FormData): Promise<AuthState> {
-  const client = await actionClient();
+  const locale = formLocale(form);
+  const text = getMessages(locale).auth;
+  const client = await actionClient(locale);
   const { data: { user } } = await client.auth.getUser();
   if (!user?.email_confirmed_at) return { error: text.sessionExpired };
   const { data: role } = await client.from("user_roles").select("role").eq("user_id", user.id).single();
@@ -220,5 +244,5 @@ export async function verifyMfaAction(_: AuthState, form: FormData): Promise<Aut
   // The configured factor has passed Supabase's challenge. Return context grants no access.
   const returnTo = safeMfaReturnTo(value(form, "next"));
   if (returnTo) redirect(returnTo);
-  redirect(role?.role === "administrator" ? "/ru/admin" : "/ru/company-profile");
+  redirect(role?.role === "administrator" ? "/ru/admin" : `/${locale}/company-profile`);
 }

@@ -1,15 +1,17 @@
+import type {Locale} from "@/i18n/config";
+
 export type ConsentPointer = {kind: string; version: string; is_temporary: boolean};
 export type PublishedPrivacyDocument = {version: string; kind: string; policy_version: string | null};
 
 // A final pointer without its published exact document fails closed.
-export function consentLinks(pointers: ConsentPointer[], documents: PublishedPrivacyDocument[]) {
+export function consentLinks(pointers: ConsentPointer[], documents: PublishedPrivacyDocument[], locale: Locale = "ru") {
   if (pointers.length !== 2 || !["data_processing", "marketing"].every(kind => pointers.filter(p => p.kind === kind).length === 1)) throw new Error("Registration policy unavailable");
   const versions = Object.fromEntries(pointers.map(p => [p.kind, p.version]));
-  const path = (version: string) => `/ru/legal/privacy/${encodeURIComponent(version)}`;
+  const path = (version: string) => `/${locale}/legal/privacy/${encodeURIComponent(version)}`;
   const urls: Record<string, string> = {};
-  let policyUrl = "/ru/legal/data-processing";
+  let policyUrl = `/${locale}/legal/data-processing`;
   for (const p of pointers) {
-    if (p.is_temporary) { urls[p.kind] = `/ru/legal/${p.kind === "marketing" ? "marketing" : "data-processing"}`; continue; }
+    if (p.is_temporary) { urls[p.kind] = `/${locale}/legal/${p.kind === "marketing" ? "marketing" : "data-processing"}`; continue; }
     const doc = documents.find(d => d.version === p.version && d.kind === p.kind);
     const policy = documents.find(d => d.version === doc?.policy_version && d.kind === "policy");
     if (!doc || !policy) throw new Error("Registration policy unavailable");

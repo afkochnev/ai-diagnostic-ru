@@ -1,3 +1,4 @@
+vi.mock("@/server/locale", () => ({ requestLocale: async () => "ru" }));
 vi.mock("@/server/entitlements", () => ({
   requireEntitlement: vi.fn(),
   getAccountPlan: async () => ({ plan: data.advanced ? "advanced" : "free", display_name: data.advanced ? "Advanced" : "Free", entitlements: {multi_company: data.advanced, team_diagnostics: data.advanced} }),

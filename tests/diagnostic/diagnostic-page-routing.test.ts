@@ -1,3 +1,4 @@
+vi.mock("@/server/locale", () => ({ requestLocale: async () => "ru" }));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 

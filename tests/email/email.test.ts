@@ -3,6 +3,14 @@ import { readFileSync } from "node:fs";
 import { buildReportEmail } from "@/server/email/content";
 
 describe("report email", () => {
+  it("builds an English ready email with the exact saved result link and PDF", () => {
+    const reportUrl = "https://staging.example/en/diagnostics/diagnostic-id/result";
+    const email = buildReportEmail({locale: "en", reportUrl, companyName: "Pilot company", index: "62.5", maturity: "Developing", filename: "management-ai-audit-pilot.pdf", contentBase64: "JVBERi0="});
+    expect(email.subject).toBe("Your management audit report — Pilot company");
+    expect(email.text).toContain(reportUrl); expect(email.text).toContain("Management index: 62.5");
+    expect(email.text).not.toMatch(/[А-Яа-яЁё]/u); expect(email.text).not.toContain("/ru/");
+    expect(email.attachment).toEqual({filename: "management-ai-audit-pilot.pdf", contentBase64: "JVBERi0="});
+  });
   it("builds Russian subject, body and PDF attachment", async () => {
     const email = buildReportEmail({ companyName: "МедТех", index: "61,6", maturity: "Зона развития", filename: "management-ai-audit-medtech-2026-09-10.pdf", contentBase64: "JVBERi0=" });
     email.to = "owner@example.test";

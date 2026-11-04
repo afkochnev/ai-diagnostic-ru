@@ -1,5 +1,6 @@
 import {acquisitionEnabled,safeAttribution} from "@/server/acquisition/contracts";
 import { notFound } from "next/navigation";
+import { EnglishPilotLanding } from "@/features/landing/english-pilot-landing";
 import { LandingPage } from "@/features/landing/landing-page";
 import { isLocale } from "@/i18n/config";
 import { getMessages } from "@/i18n/messages";
@@ -9,5 +10,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const identity = await getIdentity();
+  if (locale === "en") return <EnglishPilotLanding authenticated={Boolean(identity)} />;
   return <LandingPage locale={locale} messages={getMessages(locale)} authenticated={Boolean(identity)} acquisition={acquisitionEnabled()} attribution={safeAttribution(await searchParams) as Record<string,string>} />;
 }

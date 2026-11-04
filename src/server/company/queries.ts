@@ -1,17 +1,18 @@
 import "server-only";
+import type {Locale} from "@/i18n/config";
 import { createAuthClient } from "@/server/supabase/server";
 import { listAccessibleAccounts } from "@/server/account/queries";
 import { AccountAccessError, authenticatedAccountClient, requireAccountRead, requireCompanyRead } from "@/server/account/authorization";
 
-export async function getReferenceData() {
+export async function getReferenceData(locale: Locale = "ru") {
   const client = await createAuthClient();
   const [{ data: industryRows }, { data: revenueRows }] = await Promise.all([
-    client.from("industries").select("key, sort_order, industry_translations!inner(name)").eq("is_active", true).eq("industry_translations.locale", "ru").order("sort_order"),
+    client.from("industries").select("key, sort_order, industry_translations!inner(name)").eq("is_active", true).eq("industry_translations.locale", locale).order("sort_order"),
     client.from("revenue_ranges").select("key, sort_order, revenue_range_translations!inner(name)").eq("is_active", true).eq("revenue_range_translations.locale", "ru").order("sort_order"),
   ]);
   return {
     industries: (industryRows ?? []).map((row) => ({ industry_key: row.key, name: row.industry_translations[0]?.name ?? row.key })),
-    revenues: (revenueRows ?? []).map((row) => ({ revenue_key: row.key, name: row.revenue_range_translations[0]?.name ?? row.key })),
+    revenues: (locale === "en" ? [] : revenueRows ?? []).map((row) => ({ revenue_key: row.key, name: row.revenue_range_translations[0]?.name ?? row.key })),
   };
 }
 

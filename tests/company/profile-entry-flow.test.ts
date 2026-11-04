@@ -3,6 +3,7 @@ import { companyProfileSchema } from "@/validation/company";
 import { encodeProfileDraft, profileDraftKey, readProfileDraft } from "@/features/company/profile-draft";
 
 const m = vi.hoisted(() => ({ own: vi.fn(), write: vi.fn(), insert: vi.fn(), revenue: vi.fn(), context: vi.fn() }));
+vi.mock("@/server/locale", () => ({ formLocale: (form?: FormData) => form?.get("locale") === "en" ? "en" : "ru", requestLocale: async () => "ru" }));
 vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw Error(`redirect:${path}`); } }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/server/auth/session", () => ({ requireIdentity: async () => ({ user: { id: "owner" } }) }));

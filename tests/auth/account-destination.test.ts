@@ -4,6 +4,7 @@ const state = vi.hoisted(() => ({
   signedIn: true, verified: true, role: "user", aal: "aal1", companyCount: 1, accountCount: 1,
   companies: vi.fn(), accounts: vi.fn(),
 }));
+vi.mock("@/server/locale", () => ({ formLocale: (form?: FormData) => form?.get("locale") === "en" ? "en" : "ru", requestLocale: async () => "ru", rememberLocale: async () => {} }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/server/supabase/config", () => ({ isAuthConfigured: () => true }));

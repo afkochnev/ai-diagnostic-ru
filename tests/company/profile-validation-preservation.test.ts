@@ -12,7 +12,7 @@ describe("company profile validation preservation", () => {
 
   it("returns submitted values with validation failures", () => {
     expect(action).toContain("function submittedValues(form: FormData)");
-    expect(action).toContain("fieldErrors: fieldErrors(parsed.error.issues), values");
+    expect(action).toContain("fieldErrors: fieldErrors(parsed.error.issues, locale), values");
   });
 
   it("keeps text, textarea and select controls bound to preserved values", () => {

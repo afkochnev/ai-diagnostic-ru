@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   getPlan: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
+vi.mock("@/server/locale", () => ({ requestLocale: async () => "ru" }));
 vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`redirect:${path}`); } }));
 vi.mock("@/server/account/queries", () => ({ listAccessibleAccounts: async () => state.accounts }));
 vi.mock("@/server/company/queries", () => ({

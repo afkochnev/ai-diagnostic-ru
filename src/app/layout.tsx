@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { defaultLocale } from "@/i18n/config";
+import { requestLocale } from "@/server/locale";
+import { LocaleProvider } from "@/i18n/context";
 import "./globals.css";
 
-export default function RootLayout({ children }: { children: ReactNode }) {
-  // Only Russian is enabled. Move the document shell into the locale layout
-  // when another locale is enabled so the document language follows its route.
-  return <html lang={defaultLocale}><body>{children}</body></html>;
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const locale = await requestLocale();
+  return <html lang={locale}><body><LocaleProvider locale={locale}>{children}</LocaleProvider></body></html>;
 }

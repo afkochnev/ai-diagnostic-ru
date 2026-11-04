@@ -1,7 +1,9 @@
+import type { Locale } from "@/i18n/config";
+
 /** Selection is explicit whenever a workspace contains more than one company. */
-export function workspaceDestination(companyCount: number, accountCount: number) {
-  if (companyCount > 1 || (companyCount === 0 && accountCount !== 1)) return "/ru/companies";
-  return companyCount === 1 ? "/ru/dashboard" : "/ru/company-profile";
+export function workspaceDestination(companyCount: number, accountCount: number, locale: Locale = "ru") {
+  if (companyCount > 1 || (companyCount === 0 && accountCount !== 1)) return `/${locale}/companies`;
+  return companyCount === 1 ? `/${locale}/dashboard` : `/${locale}/company-profile`;
 }
 
 export function resolveCompanySelection<T extends { id: string }>(companies: readonly T[], requestedId?: string) {

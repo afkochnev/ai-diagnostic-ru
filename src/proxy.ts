@@ -3,7 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { authConfig, isAuthConfigured } from "@/server/supabase/config";
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const requestHeaders = new Headers(request.headers);
+  const requestedLocale = request.nextUrl.pathname.startsWith("/en/") || request.nextUrl.pathname === "/en" ? "en" : request.nextUrl.pathname.startsWith("/ru/") || request.nextUrl.pathname === "/ru" ? "ru" : request.nextUrl.searchParams.get("locale") === "en" ? "en" : "ru";
+  requestHeaders.set("x-audit-locale", requestedLocale);
+  requestHeaders.set("x-audit-pathname", request.nextUrl.pathname);
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
   // Next's Node server can construct nextUrl with its internal bind host.
   const incomingHost = request.headers.get("host") ?? request.nextUrl.host;
   const canonicalRedirect = (request.method === "GET" || request.method === "HEAD")
@@ -24,7 +28,8 @@ export async function proxy(request: NextRequest) {
         getAll: () => request.cookies.getAll(),
         setAll(values) {
           values.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request });
+          requestHeaders.set("cookie", request.headers.get("cookie") ?? "");
+          response = NextResponse.next({ request: { headers: requestHeaders } });
           values.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
         },
       },
@@ -38,4 +43,4 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: ["/ru/:path*", "/auth/:path*"] };
+export const config = { matcher: ["/ru/:path*", "/en/:path*", "/auth/:path*"] };

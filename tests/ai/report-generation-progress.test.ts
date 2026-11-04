@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import * as React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ReportGenerationProgress } from "@/features/ai/report-generation-progress";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const progress = readFileSync("src/features/ai/report-generation-progress.tsx", "utf8");
 const section = readFileSync("src/features/ai/ai-report-section.tsx", "utf8");
@@ -11,7 +16,9 @@ describe("AI report generation progress UX", () => {
     expect(progress).toContain('aria-modal="true"');
     expect(progress).toContain("Формируем отчёт");
     expect(progress).toContain("Подготовка отчёта займёт от 1 до 2 минут.");
-    expect(progress).toContain("Прошло: {elapsed} сек.");
+    vi.stubGlobal("React", React);
+    const html = renderToStaticMarkup(React.createElement(ReportGenerationProgress, { state: "generating", elapsedSeconds: 42 }));
+    expect(html).toContain("Прошло: 42 сек.");
     expect(progress).toContain("elapsed > 120");
     expect(progress).not.toContain("progressbar");
   });

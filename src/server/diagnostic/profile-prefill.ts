@@ -13,7 +13,12 @@ export function profileAnswerPrefill(questions: readonly Question[], profile: Co
   });
 }
 
-export function openQuestionHint(key: string) {
+export function openQuestionHint(key: string, locale: "ru" | "en" = "ru") {
+  if (locale === "en") {
+    if (key === "main_management_problem") return "A few sentences are enough: what is holding the company back, why this happens and why it matters now.";
+    if (key === "main_company_goal") return "List up to three main goals for the coming year.";
+    return null;
+  }
   if (key === "main_management_problem") return "Достаточно нескольких предложений: что мешает компании, почему это происходит и почему важно сейчас.";
   if (key === "main_company_goal") return "Укажите до трёх главных целей на ближайший год.";
   return null;

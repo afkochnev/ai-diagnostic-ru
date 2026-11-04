@@ -18,6 +18,15 @@ const input: PdfInput = {
 };
 
 describe("PDF report template", () => {
+  it("renders an English report and dot-decimal results without translating saved report content", () => {
+    const report = Object.fromEntries(Object.entries(input.report).map(([key, value]) => [key, Array.isArray(value) ? value.map(() => "Saved English recommendation.") : "Saved English analysis."]));
+    const english = { ...input, locale: "en" as const, companyName: "Pilot company", index: "61.6", maturity: "Developing", blocks: [{ title: "Strategy", score: "62.5" }], report };
+    const before = JSON.stringify(english), html = buildPdfHtml(english);
+    for (const label of ["Management<br>AI audit", "Executive summary", "30-day plan", "60-day plan", "90-day plan", "Confidential report", "Strategy", "61.6", "62.5", "Saved English analysis."]) expect(html).toContain(label);
+    expect(html).toContain('<html lang="en">'); expect(html).not.toMatch(/[А-Яа-яЁё]/u);
+    expect(JSON.stringify(english)).toBe(before);
+  });
+
   it("contains company, results, all blocks and numbered report sections", () => {
     const html = buildPdfHtml(input);
     expect(html).toContain("МедТех");

@@ -5,6 +5,7 @@ const m = vi.hoisted(() => ({
   updateUser: vi.fn(), signOut: vi.fn(), getUser: vi.fn(), getClaims: vi.fn(),
   documents: vi.fn(), recovery: vi.fn(), clear: vi.fn(),
 }));
+vi.mock("@/server/locale", () => ({ formLocale: (form?: FormData) => form?.get("locale") === "en" ? "en" : "ru", requestLocale: async () => "ru", rememberLocale: async () => {} }));
 vi.mock("next/headers", () => ({ headers: async () => ({ get: m.origin }), cookies: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw Error("redirect:" + path); } }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -26,7 +27,7 @@ beforeEach(() => {
   vi.clearAllMocks(); m.origin.mockReturnValue("https://staging.example.test");
   m.documents.mockResolvedValue({ data: [{ kind: "data_processing", version: "temporary-ru-v1" }, { kind: "marketing", version: "temporary-ru-v1" }], error: null });
   m.signUp.mockResolvedValue({ data: { user: { identities: [{ provider: "email" }] } }, error: null });
-  m.signInWithPassword.mockResolvedValue({ error: null });
+  m.signInWithPassword.mockResolvedValue({ data: { user: null }, error: null });
   m.resetPasswordForEmail.mockResolvedValue({ error: null }); m.updateUser.mockResolvedValue({ error: null });
   m.signOut.mockResolvedValue({ error: null }); m.getUser.mockResolvedValue({ data: { user: { id: "synthetic-user" } } });
   m.getClaims.mockResolvedValue({ data: { claims: { session_id: "synthetic-session" } } }); m.recovery.mockResolvedValue(true);
@@ -35,8 +36,8 @@ describe("V24 password-policy regression without live Auth writes or mail", () =
   it("keeps normal registration consent versions and confirmation redirect", async () => {
     await expect(registerAction({}, registration())).rejects.toThrow("redirect:/ru/verify-email");
     expect(m.signUp).toHaveBeenCalledWith(expect.objectContaining({ options: {
-      emailRedirectTo: "https://staging.example.test/auth/confirm", data: {
-        full_name: "V24 synthetic user", data_processing_consent: true, marketing_consent: false,
+      emailRedirectTo: "https://staging.example.test/auth/confirm?locale=ru", data: {
+        full_name: "V24 synthetic user", locale: "ru", data_processing_consent: true, marketing_consent: false,
         data_processing_version: "temporary-ru-v1", marketing_version: "temporary-ru-v1",
       },
     } }));
@@ -57,7 +58,7 @@ describe("V24 password-policy regression without live Auth writes or mail", () =
   });
   it("keeps the recovery redirect and returns the same safe acknowledgment", async () => {
     expect((await forgotAction({}, registration())).success).toContain("Если этот email зарегистрирован");
-    expect(m.resetPasswordForEmail).toHaveBeenCalledWith("synthetic@example.test", { redirectTo: "https://staging.example.test/auth/confirm?type=recovery" });
+    expect(m.resetPasswordForEmail).toHaveBeenCalledWith("synthetic@example.test", { redirectTo: "https://staging.example.test/auth/confirm?type=recovery&locale=ru" });
   });
   it("explains a current-password match without clearing the verified recovery session", async () => {
     m.updateUser.mockResolvedValue({error: {code: "same_password", status: 422, message: "private provider body"}});

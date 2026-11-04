@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const m = vi.hoisted(() => ({ origin: vi.fn(), signInWithOtp: vi.fn(), verifyOtp: vi.fn(), getUser: vi.fn(), clear: vi.fn() }));
+vi.mock("@/server/locale", () => ({ formLocale: (form?: FormData) => form?.get("locale") === "en" ? "en" : "ru", requestLocale: async () => "ru", rememberLocale: async () => {} }));
 vi.mock("next/headers", () => ({ headers: async () => ({ get: m.origin }), cookies: async () => ({ getAll: () => [] }) }));
 vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw Error(`redirect:${path}`); } }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/server/supabase/config", () => ({ authConfig: () => ({ APP_URL: "https://staging.example.test" }) }));
-vi.mock("@/server/supabase/server", () => ({ createAuthClient: async () => ({ auth: m }) }));
+vi.mock("@/server/supabase/server", () => ({ createAuthClient: async () => ({ auth: m, from: () => ({ update: () => ({ eq: async () => ({ error: null }) }) }) }) }));
 vi.mock("@/server/auth/recovery", () => ({ clearRecovery: m.clear, hasRecovery: vi.fn(), setRecovery: vi.fn() }));
 import { confirmAction, emailLoginAction } from "@/server/auth/actions";
 
@@ -19,10 +20,17 @@ beforeEach(() => {
 });
 
 describe("email sign-in and confirmation continuation", () => {
+  it("preserves English through sign-in mail and a verified callback", async () => {
+    const form = emailForm(); form.set("locale", "en");
+    expect((await emailLoginAction({}, form)).success).toContain("If this email is registered");
+    expect(m.signInWithOtp).toHaveBeenCalledWith(expect.objectContaining({options:{shouldCreateUser:false,emailRedirectTo:"https://staging.example.test/auth/confirm?locale=en"}}));
+    const callback=confirmation("email"); callback.set("locale","en");
+    await expect(confirmAction({}, callback)).rejects.toThrow("redirect:/en/account");
+  });
   it("requests an existing-account link without creating users or accepting external redirects", async () => {
     const form = emailForm(); form.set("next", "https://foreign.example");
     expect((await emailLoginAction({}, form)).success).toBeTruthy();
-    expect(m.signInWithOtp).toHaveBeenCalledWith({ email: "synthetic@example.test", options: { shouldCreateUser: false, emailRedirectTo: "https://staging.example.test/auth/confirm" } });
+    expect(m.signInWithOtp).toHaveBeenCalledWith({ email: "synthetic@example.test", options: { shouldCreateUser: false, emailRedirectTo: "https://staging.example.test/auth/confirm?locale=ru" } });
   });
   it("does not reveal whether the email exists, but reports actual technical failure", async () => {
     const existing = await emailLoginAction({}, emailForm());

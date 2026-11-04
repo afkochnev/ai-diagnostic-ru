@@ -1,3 +1,4 @@
+vi.mock("@/i18n/context", () => ({ useLocale: () => "ru" }));
 import {afterEach,beforeEach,describe,expect,it,vi} from "vitest";
 import * as React from "react";
 import type {ReactNode,ReactElement} from "react";

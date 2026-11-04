@@ -2,18 +2,21 @@ import "server-only";
 import crypto from "node:crypto";
 import { createAdminClient } from "@/server/supabase/admin";
 import { renderPdf } from "./render";
+import { individualReportLocale, type IndividualReportLocale } from "@/server/ai/prompt-version";
+import { formatDecimal } from "@/server/ai/format";
 import { requireAdmin } from "@/server/auth/admin";
 import { createAuthClient } from "@/server/supabase/server";
 import reportSchema from "../../../AI_REPORT_SCHEMA_RU_1_0.json";
 import { AccountAccessError, requireDiagnosticRead } from "@/server/account/authorization";
 
 const templateVersion = "stage12-1j";
+export const pdfTemplateVersion = (locale: IndividualReportLocale) => locale === "en" ? "individual-report-en-v1" : templateVersion;
 type Row = Record<string, unknown>;
 const transliterate = (value: string) => value.toLowerCase().replace(/[а-яё]/g, (char) => ({ а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"e",ж:"zh",з:"z",и:"i",й:"y",к:"k",л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"ts",ч:"ch",ш:"sh",щ:"sch",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya" }[char] ?? char)).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "company";
 
 async function loadAuthorizedReport(reportId: string, userId: string) {
   const db = createAdminClient();
-  const { data: report, error: reportError } = await db.from("ai_reports").select("id,diagnostic_id,version,status,structured_content").eq("id", reportId).maybeSingle();
+  const { data: report, error: reportError } = await db.from("ai_reports").select("id,diagnostic_id,version,status,structured_content,prompt_version").eq("id", reportId).maybeSingle();
   if (reportError) throw Error("pdf_prepare_failed");
   if (!report) throw new Error("pdf_access_denied");
   let diagnostic;
@@ -36,6 +39,8 @@ const validReportId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}
 const artifactColumns = "id,report_id,ai_report_version,format,template_version,status,content_base64,checksum";
 type Context = Awaited<ReturnType<typeof loadAuthorizedReport>>;
 type Authorize = () => Promise<Context>;
+const contextLocale = ({report, diagnostic}: Context) => individualReportLocale(report.prompt_version, diagnostic.locale);
+const contextTemplate = (context: Context) => pdfTemplateVersion(contextLocale(context));
 export type AdminPdfReady = { report_id: string; ai_report_version: number; template_version: string; artifact_id: string; checksum: string; status: "ready"; download_url: string };
 type Prepared = { ready: AdminPdfReady; fileName: string; sourceDigest: string; reused: boolean };
 const hash = (value: Buffer | string) => crypto.createHash("sha256").update(value).digest("hex");
@@ -76,7 +81,7 @@ async function loadAdminAuthorizedReport(reportId: string): Promise<Context> {
   await adminActor();
   if (!validReportId(reportId)) throw Error("pdf_access_denied");
   const db = createAdminClient();
-  const { data: report, error } = await db.from("ai_reports").select("id,diagnostic_id,version,status,structured_content").eq("id", reportId).maybeSingle();
+  const { data: report, error } = await db.from("ai_reports").select("id,diagnostic_id,version,status,structured_content,prompt_version").eq("id", reportId).maybeSingle();
   if (error) throw Error("pdf_prepare_failed");
   if (!report) throw Error("pdf_access_denied");
   const { data: diagnostic, error: diagnosticError } = await db.from("diagnostics").select("*").eq("id", report.diagnostic_id).maybeSingle();
@@ -87,9 +92,10 @@ async function loadAdminAuthorizedReport(reportId: string): Promise<Context> {
   return { db, report, diagnostic };
 }
 
-async function artifactFor({ db, report }: Context) {
+async function artifactFor(context: Context) {
+  const {db, report} = context;
   // Do not filter out failed/wrong-version rows: their presence must deny overwrite.
-  const { data, error } = await db.from("report_artifacts").select(artifactColumns).eq("report_id", report.id).eq("format", "pdf").eq("template_version", templateVersion).maybeSingle();
+  const { data, error } = await db.from("report_artifacts").select(artifactColumns).eq("report_id", report.id).eq("format", "pdf").eq("template_version", contextTemplate(context)).maybeSingle();
   if (error) throw Error("pdf_prepare_failed");
   return data;
 }
@@ -103,13 +109,15 @@ function pdfBytes(encoded: string, checksum: string) {
 
 function validatedArtifact(context: Context, artifact: Awaited<ReturnType<typeof artifactFor>>) {
   if (!artifact) throw Error("pdf_artifact_not_ready");
-  if (artifact.report_id !== context.report.id || artifact.ai_report_version !== context.report.version || artifact.format !== "pdf" || artifact.template_version !== templateVersion || artifact.status !== "ready") throw Error("pdf_artifact_conflict");
+  if (artifact.report_id !== context.report.id || artifact.ai_report_version !== context.report.version || artifact.format !== "pdf" || artifact.template_version !== contextTemplate(context) || artifact.status !== "ready") throw Error("pdf_artifact_conflict");
   const bytes = pdfBytes(artifact.content_base64, artifact.checksum);
-  const ready: AdminPdfReady = { report_id: context.report.id, ai_report_version: context.report.version, template_version: templateVersion, artifact_id: artifact.id, checksum: artifact.checksum, status: "ready", download_url: `/api/admin/report-artifacts/${artifact.id}` };
+  const ready: AdminPdfReady = { report_id: context.report.id, ai_report_version: context.report.version, template_version: contextTemplate(context), artifact_id: artifact.id, checksum: artifact.checksum, status: "ready", download_url: `/api/admin/report-artifacts/${artifact.id}` };
   return { bytes, ready };
 }
 
-async function sources({ db, report, diagnostic }: Context) {
+async function sources(context: Context) {
+  const {db, report, diagnostic} = context;
+  const locale = contextLocale(context);
   const [{ data: snapshot, error: se }, { data: result, error: re }] = await Promise.all([
     db.from("diagnostic_company_snapshots").select("profile_data").eq("diagnostic_id", diagnostic.id).maybeSingle(),
     db.from("diagnostic_results").select("id,display_manageability_index,maturity_level_id").eq("diagnostic_id", diagnostic.id).maybeSingle(),
@@ -117,10 +125,10 @@ async function sources({ db, report, diagnostic }: Context) {
   if (se || re) throw Error("pdf_prepare_failed");
   if (!snapshot || !result) throw Error("pdf_result_missing");
   const responses = await Promise.all([
-    db.from("maturity_level_translations").select("label").eq("maturity_level_id", result.maturity_level_id).eq("locale", "ru").maybeSingle(),
+    db.from("maturity_level_translations").select("label").eq("maturity_level_id", result.maturity_level_id).eq("locale", locale).maybeSingle(),
     db.from("diagnostic_blocks").select("id,key,weight,position").eq("version_id", diagnostic.version_id).eq("is_active", true).order("position"),
     db.from("diagnostic_block_results").select("block_id,display_score").eq("result_id", result.id),
-    db.from("diagnostic_block_translations").select("block_id,title").eq("locale", "ru"),
+    db.from("diagnostic_block_translations").select("block_id,title").eq("locale", locale),
   ]);
   if (responses.some(r => r.error)) throw Error("pdf_prepare_failed");
   const [maturity, blocks, blockResults, blockTexts] = responses.map(r => r.data) as [Row | null, Row[] | null, Row[] | null, Row[] | null];
@@ -128,7 +136,8 @@ async function sources({ db, report, diagnostic }: Context) {
   const resultMap = new Map((blockResults ?? []).map(row => [row.block_id, row]));
   const titleMap = new Map((blockTexts ?? []).map(row => [row.block_id, row.title]));
   const profile = (snapshot.profile_data ?? {}) as Row;
-  const input = { companyName: String(profile.name ?? "Компания"), completedAt: diagnostic.completed_at, index: String(result.display_manageability_index ?? "—").replace(".", ","), maturity: String(maturity?.label ?? "—"), blocks: scoringBlocks.map(block => ({ title: String(titleMap.get(block.id) ?? block.key), score: String(resultMap.get(block.id)?.display_score ?? "—").replace(".", ",") })), report: savedContent(report.structured_content) };
+  if (locale === "en" && (!maturity?.label || scoringBlocks.some(block => !titleMap.get(block.id)))) throw Error("pdf_result_missing");
+  const input = { locale, companyName: String(profile.name ?? (locale === "en" ? "Company" : "Компания")), completedAt: diagnostic.completed_at, index: formatDecimal(result.display_manageability_index as string | number | null, locale), maturity: String(maturity?.label ?? "—"), blocks: scoringBlocks.map(block => ({ title: String(titleMap.get(block.id) ?? block.key), score: formatDecimal(resultMap.get(block.id)?.display_score as string | number | null, locale) })), report: savedContent(report.structured_content) };
   return { input, digest: hash(canonical({ report, diagnostic, snapshot, result, input })) };
 }
 
@@ -138,7 +147,7 @@ export async function getPdfForReport(reportId: string, userId: string): Promise
   const { bytes } = validatedArtifact(context, await artifactFor(context));
   const { data: snapshot, error } = await context.db.from("diagnostic_company_snapshots").select("profile_data").eq("diagnostic_id", context.diagnostic.id).maybeSingle();
   if (error || !snapshot) throw Error("pdf_result_missing");
-  return { bytes, fileName: fileName(String((snapshot.profile_data as Row)?.name ?? "Компания"), context.diagnostic.completed_at) };
+  return { bytes, fileName: fileName(String((snapshot.profile_data as Row)?.name ?? (contextLocale(context) === "en" ? "Company" : "Компания")), context.diagnostic.completed_at) };
 }
 
 const preparationLocks = new Map<string, Promise<Prepared>>();
@@ -154,7 +163,7 @@ async function preparePdfForReportUnlocked(context: Context, authorize: Authoriz
   pdfBytes(bytes.toString("base64"), checksum);
   const current = await authorize();
   if ((await sources(current)).digest !== source.digest) throw Error("pdf_source_conflict");
-  const { error } = await current.db.from("report_artifacts").insert({ report_id: context.report.id, ai_report_version: context.report.version, format: "pdf", template_version: templateVersion, status: "ready", storage_path: `reports/${context.report.id}/${templateVersion}.pdf`, content_base64: bytes.toString("base64"), checksum });
+  const { error } = await current.db.from("report_artifacts").insert({ report_id: context.report.id, ai_report_version: context.report.version, format: "pdf", template_version: contextTemplate(context), status: "ready", storage_path: `reports/${context.report.id}/${contextTemplate(context)}.pdf`, content_base64: bytes.toString("base64"), checksum });
   if (error && error.code !== "23505") throw Error("pdf_prepare_failed");
   // Both a successful insert and a competing insert must have an exact durable readback.
   const ready = validatedArtifact(current, await artifactFor(current)).ready;
@@ -163,7 +172,7 @@ async function preparePdfForReportUnlocked(context: Context, authorize: Authoriz
 
 async function prepare(authorize: Authorize): Promise<Prepared> {
   const context = await authorize();
-  const key = `${context.report.id}:${context.report.version}:pdf:${templateVersion}`;
+  const key = `${context.report.id}:${context.report.version}:pdf:${contextTemplate(context)}`;
   let operation = preparationLocks.get(key);
   if (!operation) {
     operation = preparePdfForReportUnlocked(context, authorize);

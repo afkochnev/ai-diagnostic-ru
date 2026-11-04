@@ -132,13 +132,26 @@ describe("versioned Individual failed-report recovery", () => {
     expect(state.rows.ai_reports[0]).toMatchObject({version,prompt_version:"RU-1.5"});
     expect(state.rows.jobs[0].deduplication_key).toBe(`ai_report_v${version}`);
   });
-  it.each(["RU-1.0","RU-1.1","RU-1.2","RU-1.3","RU-1.5"])("worker uses persisted %s on generation v2",async prompt_version=>{
+  it.each(["RU-1.0","RU-1.1","RU-1.2","RU-1.3","RU-1.5","EN-1.5"])("worker uses persisted %s on generation v2",async prompt_version=>{
     state.rows.ai_reports=[{id:"v2",diagnostic_id:"diagnostic",version:2,status:"queued",prompt_version}];
     state.rows.jobs=[{id:"job2",lease_token:"lease",status:"processing"}];
     await runAIJob({job_id:"job2",diagnostic_id:"diagnostic",lease_token:"lease",attempt_count:1,deduplication_key:"ai_report_v2"});
-    expect(state.selects).toContainEqual({table:"ai_reports",columns:"id,version,status,prompt_version"});
+    expect(state.selects).toContainEqual({table:"ai_reports",columns:"id,version,status,prompt_version,input_snapshot"});
     expect(state.generate).toHaveBeenCalledExactlyOnceWith({synthetic:true},prompt_version,expect.any(Number),"diagnostic");
     expect(state.rows.ai_reports[0]).toMatchObject({version:2,prompt_version,status:"completed"});
+  });
+  it("pins English prompt and saved evidence without changing historical Russian reports", async () => {
+    const before = structuredClone(state.rows.ai_reports[0]);
+    const input = { locale: "en", company_snapshot: { company_name: "Pilot company" }, deterministic_results: { manageability_index_display: "62.5" } };
+    state.buildInput.mockResolvedValue(input);
+    await enqueueAIReport("diagnostic", 2);
+    expect(state.rows.ai_reports[1]).toMatchObject({ prompt_version: "EN-1.5", input_snapshot: input, schema_version: "RU-1.0" });
+    state.buildInput.mockClear(); state.buildInput.mockRejectedValue(Error("live input must not replace saved evidence"));
+    state.rows.jobs[1].lease_token = "lease";
+    await runAIJob({job_id:String(state.rows.jobs[1].id),diagnostic_id:"diagnostic",lease_token:"lease",attempt_count:1,deduplication_key:"ai_report_v2"});
+    expect(state.buildInput).not.toHaveBeenCalled();
+    expect(state.generate).toHaveBeenCalledExactlyOnceWith(input, "EN-1.5", expect.any(Number), "diagnostic");
+    expect(state.rows.ai_reports[0]).toEqual(before);
   });
   it.each(["RU-9.9","",null,undefined,3])("unsupported persisted prompt %s fails terminally without input/provider/fallback",async prompt_version=>{
     state.rows.ai_reports=[{id:"bad",diagnostic_id:"diagnostic",version:2,status:"queued",prompt_version}];

@@ -2,6 +2,7 @@ import {renderToStaticMarkup} from "react-dom/server";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 
 const mocks = vi.hoisted(() => ({identity: vi.fn(), user: vi.fn(), role: vi.fn(), factors: vi.fn(), verify: vi.fn(), origin: vi.fn()}));
+vi.mock("@/server/locale", () => ({ formLocale: (form?: FormData) => form?.get("locale") === "en" ? "en" : "ru", requestLocale: async () => "ru", rememberLocale: async () => {} }));
 vi.mock("server-only", () => ({}));
 vi.mock("react", async original => ({...await original<typeof import("react")>(), useActionState: () => [{}, vi.fn(), false]}));
 vi.mock("next/navigation", () => ({redirect: (path: string) => {throw Error(`redirect:${path}`);}}));
