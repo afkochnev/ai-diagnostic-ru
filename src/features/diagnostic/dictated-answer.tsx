@@ -13,6 +13,7 @@ const subscribe = () => () => {};
 const serverSupported = () => false;
 const browserSupported = () => Boolean(getSpeechRecognition(window));
 const buttonClass = "min-h-10 rounded-lg border border-line px-3 py-2 text-sm font-semibold";
+const fallbackMessage = "В Windows поставьте курсор в поле ответа и нажмите Win + H. Если диктовка недоступна во встроенном браузере, попробуйте открыть анкету в Chrome.";
 const pendingMessages = {
   starting: "Включаем микрофон…",
   listening: "Идёт диктовка.",
@@ -86,6 +87,7 @@ export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props 
       maxLength={maxLength}
       onChange={(event) => onChange(event.target.value)}
     />
+    {!supported && <p className="mt-2 text-sm text-muted">В этом браузере кнопка диктовки недоступна. {fallbackMessage}</p>}
     {supported && <div ref={controls} className="mt-2 space-y-2">
       <button ref={startButton} type="button" disabled={disabled} aria-disabled={pending || preview || undefined} aria-describedby={privacyId} className={buttonClass + " aria-disabled:opacity-50"} onClick={start}>
         Диктовать ответ
@@ -94,6 +96,7 @@ export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props 
       {state && <p role="status" aria-live="polite" className="text-sm text-muted">
         {state.phase === "finished" ? state.message ?? "Проверьте распознанный текст перед вставкой." : pendingMessages[state.phase]}
       </p>}
+      {state?.phase === "finished" && state.message && <p className="text-sm text-muted">{fallbackMessage}</p>}
       {pending && <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={disabled || state?.phase !== "listening"} className={buttonClass} onClick={() => capture.current?.stop()}>Остановить диктовку</button>
         <button type="button" disabled={disabled} className={buttonClass} onClick={cancel}>Отменить</button>
