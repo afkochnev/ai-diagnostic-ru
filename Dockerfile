@@ -8,8 +8,15 @@ FROM base AS deps
 COPY package.json package-lock.json ./
 RUN npm ci
 
+FROM python:3.12-slim-bookworm AS dictation-assets
+WORKDIR /app
+COPY scripts/prepare-dictation-assets.py ./scripts/
+COPY --from=deps /app/node_modules/@lichess-org/vosk-browser ./node_modules/@lichess-org/vosk-browser
+RUN python3 scripts/prepare-dictation-assets.py
+
 FROM deps AS build
 COPY . .
+COPY --from=dictation-assets /app/public/dictation ./public/dictation
 # Build-time placeholders keep static route generation independent of runtime
 # credentials. Render injects real values only when the service starts.
 ENV SUPABASE_URL=https://build.invalid \

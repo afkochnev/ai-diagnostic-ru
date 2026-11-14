@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type TextareaHTMLAttributes } from "react";
 import { AutoResizeTextarea } from "@/components/ui/auto-resize-textarea";
+import { isLocalSpeechSupported, startLocalSpeechDictation } from "./local-speech-dictation";
 import { appendDictation, getSpeechRecognition, startSpeechDictation, type SpeechCapture, type SpeechUpdate } from "./speech-dictation";
 
 type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "defaultValue" | "value" | "onChange"> & {
@@ -10,18 +11,19 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "defaultValue" | 
 };
 
 const subscribe = () => () => {};
-const serverSupported = () => false;
-const browserSupported = () => Boolean(getSpeechRecognition(window));
+type DictationMode = "local" | "browser" | "unavailable";
+const serverMode = (): DictationMode => "unavailable";
+const browserMode = (): DictationMode => {
+  if (isLocalSpeechSupported(window)) return "local";
+  return getSpeechRecognition(window) ? "browser" : "unavailable";
+};
 const buttonClass = "min-h-10 rounded-lg border border-line px-3 py-2 text-sm font-semibold";
 const fallbackMessage = "В Windows поставьте курсор в поле ответа и нажмите Win + H. Если диктовка недоступна во встроенном браузере, попробуйте открыть анкету в Chrome.";
-const pendingMessages = {
-  starting: "Включаем микрофон…",
-  listening: "Идёт диктовка.",
-  stopping: "Завершаем распознавание…",
-};
+const localPrivacy = "Речь распознаётся на вашем устройстве. При первом запуске скачается модель русского языка (около 46 МБ). В диагностике сохраняется только вставленный текст.";
+const browserPrivacy = "Браузер может передать звук своему сервису распознавания. В диагностике сохраняется только вставленный текст.";
 
 export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props }: Props) {
-  const supported = useSyncExternalStore(subscribe, browserSupported, serverSupported);
+  const mode = useSyncExternalStore(subscribe, browserMode, serverMode);
   const [state, setState] = useState<SpeechUpdate | null>(null);
   const capture = useRef<SpeechCapture | null>(null);
   const answer = useRef<HTMLTextAreaElement>(null);
@@ -51,16 +53,16 @@ export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props 
   }, [disabled, preview, state?.phase]);
 
   function start() {
-    if (disabled || capture.current || pending || preview) return;
-    const recognition = getSpeechRecognition(window);
-    if (!recognition) return;
+    if (disabled || capture.current || pending || preview || mode === "unavailable") return;
     manageFocus.current = true;
     let finished = false;
-    const session = startSpeechDictation(recognition, (update) => {
+    const report = (update: SpeechUpdate) => {
       finished = update.phase === "finished";
       if (finished) capture.current = null;
       setState(update);
-    });
+    };
+    const recognition = mode === "browser" ? getSpeechRecognition(window) : null;
+    const session = mode === "local" ? startLocalSpeechDictation(report) : recognition && startSpeechDictation(recognition, report);
     if (!finished) capture.current = session;
   }
 
@@ -87,18 +89,18 @@ export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props 
       maxLength={maxLength}
       onChange={(event) => onChange(event.target.value)}
     />
-    {!supported && <p className="mt-2 text-sm text-muted">В этом браузере кнопка диктовки недоступна. {fallbackMessage}</p>}
-    {supported && <div ref={controls} className="mt-2 space-y-2">
+    {mode === "unavailable" && <p className="mt-2 text-sm text-muted">В этом браузере кнопка диктовки недоступна. {fallbackMessage}</p>}
+    {mode !== "unavailable" && <div ref={controls} className="mt-2 space-y-2">
       <button ref={startButton} type="button" disabled={disabled} aria-disabled={pending || preview || undefined} aria-describedby={privacyId} className={buttonClass + " aria-disabled:opacity-50"} onClick={start}>
         Диктовать ответ
       </button>
-      <p id={privacyId} className="text-sm text-muted">Браузер может передать звук своему сервису распознавания. В диагностике сохраняется только вставленный текст.</p>
+      <p id={privacyId} className="text-sm text-muted">{mode === "local" ? localPrivacy : browserPrivacy}</p>
       {state && <p role="status" aria-live="polite" className="text-sm text-muted">
-        {state.phase === "finished" ? state.message ?? "Проверьте распознанный текст перед вставкой." : pendingMessages[state.phase]}
+        {speechStatus(state, mode)}
       </p>}
       {state?.phase === "finished" && state.message && <p className="text-sm text-muted">{fallbackMessage}</p>}
       {pending && <div className="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={disabled || state?.phase !== "listening"} className={buttonClass} onClick={() => capture.current?.stop()}>Остановить диктовку</button>
+        {state?.phase === "listening" && <button type="button" disabled={disabled} className={buttonClass} onClick={() => capture.current?.stop()}>Остановить диктовку</button>}
         <button type="button" disabled={disabled} className={buttonClass} onClick={cancel}>Отменить</button>
       </div>}
       {preview && <div className="space-y-2">
@@ -120,4 +122,17 @@ export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props 
       </div>}
     </div>}
   </>;
+}
+
+function speechStatus(state: SpeechUpdate, mode: DictationMode) {
+  switch (state.phase) {
+    case "starting":
+      return mode === "local" ? "Подготавливаем распознавание. При запросе разрешите доступ к микрофону." : "Включаем микрофон…";
+    case "listening":
+      return "Идёт диктовка.";
+    case "stopping":
+      return "Завершаем распознавание…";
+    case "finished":
+      return state.message ?? "Проверьте распознанный текст перед вставкой.";
+  }
 }

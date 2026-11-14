@@ -7,3 +7,7 @@ out/
 .DS_Store
 test-results/
 playwright-report/
+/public/dictation/vosk-model-small-ru-0.22.tar.gz
+/public/dictation/vosk.worker.js
+/public/dictation/vosk.wasm
+/public/dictation/.prepare-*/
