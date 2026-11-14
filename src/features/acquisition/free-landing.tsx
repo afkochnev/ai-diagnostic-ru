@@ -51,7 +51,7 @@ export function LandingPromises() {
 }
 
 export function LandingOutcome() {
-  return <p className="mt-4 max-w-xl text-lg leading-relaxed text-muted sm:text-xl">За 20 минут вы получите объемную картину своей компании и увидите направление необходимых изменений.</p>;
+  return <p className="mt-4 max-w-xl text-lg leading-relaxed text-muted sm:text-xl">За 30–40 минут вы получите объёмную картину своей компании и увидите направление необходимых изменений.</p>;
 }
 
 export function FreeLanding({authenticated, attribution}: {authenticated: boolean; attribution: Record<string, string>}) {

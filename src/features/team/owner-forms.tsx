@@ -28,10 +28,10 @@ export function InviteTeamForm({ teamId, participantId }: { teamId: string; part
     {!participantId && !issued && <><label className="block">Имя участника<input name="displayName" required maxLength={100} className={input} /></label><label className="block">Email участника<input name="email" type="email" required maxLength={254} className={input} /></label></>}
     {state.error && <p role="alert">{state.error}</p>}
     {sent && <p role="status">Приглашение отправлено на {state.recipient}.</p>}
-    {failed && <div role="alert"><p>Участник добавлен, но письмо отправить не удалось.</p><p>Можно повторить отправку или скопировать защищённую ссылку вручную.</p></div>}
+    {failed && <div role="alert"><p>Участник добавлен, но письмо отправить не удалось.</p><p>{state.invitationUrl ? "Можно повторить отправку или скопировать защищённую ссылку вручную." : "Можно повторить отправку."}</p></div>}
     {mock && <p role="status">Приглашение создано в тестовом режиме. Внешнее письмо не отправлено.</p>}
     {(!sent || participantId) && <button name="intent" value={issued ? "retry" : "invite"} disabled={pending} className={button}>{pending ? "Отправляем приглашение…" : participantId || issued ? "Отправить повторно" : "Пригласить"}</button>}
-    {(failed || mock) && state.invitationUrl && <div><button type="button" disabled={pending} className="underline" onClick={async () => { try { await navigator.clipboard.writeText(state.invitationUrl!); setCopied(true); } catch { setCopied(false); } }}>Скопировать ссылку</button>{copied && <p role="status">Защищённая ссылка скопирована.</p>}<p className="mt-2 text-sm">Ссылка действует 7 дней. Повторная отправка заменяет предыдущую ссылку.</p></div>}
+    {(failed || mock) && state.invitationUrl && <div><button type="button" disabled={pending} className="underline" onClick={async () => { try { await navigator.clipboard.writeText(state.invitationUrl!); setCopied(true); } catch { setCopied(false); } }}>Скопировать ссылку</button>{copied && <p role="status">Защищённая ссылка скопирована.</p>}<p className="mt-2 text-sm">Ссылка действует 24 часа с момента выдачи. Повторная отправка заменяет предыдущую ссылку.</p></div>}
     {!participantId && issued && <button name="intent" value="reset" formNoValidate disabled={pending} className="block underline">Пригласить другого участника</button>}
   </form>;
 }

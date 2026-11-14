@@ -1,11 +1,11 @@
 import { createAdminClient } from "@/server-runtime/supabase/admin";
 import { generateTeamReport, synthesizeTeamTexts, teamAIProvider } from "./report-provider";
 import { emptyTeamCallCounts, generateTeamReportV2, synthesizeTeamTextsV2, repairSynthesisFields, repairReportFields } from "./report-v2-provider";
-import { parseQualitativeInputV2 } from "./report-v2-contracts";
+import { parseQualitativeInputForRuV3, parseQualitativeInputV2, type QualitativeInputV2 } from "./report-v2-contracts";
 import { inspectSynthesisPrivacy, privacyCorpusSchema, type PrivacyCorpus } from "./synthesis-privacy";
 import { validateAndRepairSynthesis } from "./synthesis-repair";
 import { generateTeamReportV3, synthesizeTeamTextsV3, repairV3Fields } from "./report-v3-provider";
-import { qualitativeCoverage, validateCoreQuality } from "./report-v3-contracts";
+import { isRuV3TeamQuestionnaire, qualitativeCoverage, validateCoreQuality } from "./report-v3-contracts";
 import { validateAndRepairReport } from "./report-privacy";
 import {launchEnvironment} from '@/server-runtime/launch-gates';
 import {controlledTeamRequired} from '@/server-runtime/team-smoke';
@@ -33,9 +33,12 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
     rich = v3 || prepared.pipeline_version === "TEAM-RU-2";
     const config = teamAIProvider(v3?"TEAM-RU-3":rich ? "TEAM-RU-2" : "TEAM-RU-1");
     if(v3 && prepared.provider_mode!==config.provider) throw new Error("team_provider_mismatch");
+    const ruV3 = v3 && isRuV3TeamQuestionnaire(prepared.report_input);
+    let ruV3Qualitative: QualitativeInputV2 | undefined;
     let summary: unknown;
     if(rich) {
-      const input=parseQualitativeInputV2(prepared.qualitative_input);
+      if (ruV3) ruV3Qualitative = parseQualitativeInputForRuV3(prepared.qualitative_input);
+      const input = ruV3Qualitative ?? parseQualitativeInputV2(prepared.qualitative_input);
       corpus=privacyCorpusSchema.parse(await call("get_team_synthesis_privacy_corpus"));
       if(prepared.synthesis) {
         // A successful cached synthesis is immutable: validate, never repair/overwrite it.
@@ -43,11 +46,11 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
         if(check.policyViolation || check.overlaps.length) throw new Error("team_privacy_rejected");
         summary=prepared.synthesis;
       } else {
-        const initial=await (v3?synthesizeTeamTextsV3(input,counts):synthesizeTeamTextsV2(input,counts));
+        const initial=await (v3?synthesizeTeamTextsV3(input,counts,ruV3):synthesizeTeamTextsV2(input,counts));
         summary=await validateAndRepairSynthesis(initial,input,corpus,
-          fields=>v3?repairV3Fields(fields,counts):repairSynthesisFields(fields,counts),event=>console.info("[team-ai]",event));
+          fields=>v3?repairV3Fields(fields,counts,false,ruV3):repairSynthesisFields(fields,counts),event=>console.info("[team-ai]",event));
       }
-      if(v3) qualitativeCoverage(prepared.qualitative_input,summary,coverage=>console.info("[team-ai]",{event:"team_qualitative_coverage",...coverage}));
+      if(v3) qualitativeCoverage(prepared.qualitative_input,summary,coverage=>console.info("[team-ai]",{event:"team_qualitative_coverage",...coverage}),ruV3Qualitative);
       localPass=true;
     } else summary=prepared.synthesis ?? await synthesizeTeamTexts(prepared.qualitative_groups);
     if (!prepared.synthesis) {
@@ -56,9 +59,9 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
       storingSynthesis=false;
       if (stored === "superseded") return stored;
     }
-    const generated = await (v3?generateTeamReportV3(prepared.report_input,summary,counts):rich ? generateTeamReportV2(prepared.report_input, summary,counts) : generateTeamReport(prepared.report_input, summary));
+    const generated = await (v3?generateTeamReportV3(prepared.report_input,summary,counts,ruV3Qualitative):rich ? generateTeamReportV2(prepared.report_input, summary,counts) : generateTeamReport(prepared.report_input, summary));
     const content=rich && corpus ? await validateAndRepairReport(generated,prepared.report_input,corpus,config.provider,
-      fields=>v3?repairV3Fields(fields,counts,true):repairReportFields(fields,counts),event=>console.info("[team-ai]",event)) : generated;
+      fields=>v3?repairV3Fields(fields,counts,true,ruV3):repairReportFields(fields,counts),event=>console.info("[team-ai]",event)) : generated;
     if(v3) validateCoreQuality(content as import("./report-v2-contracts").TeamReportV2,config.provider,summary as import("./report-v2-contracts").TeamSynthesisV2);
     reportLocalPass=rich;
     publishing=true;

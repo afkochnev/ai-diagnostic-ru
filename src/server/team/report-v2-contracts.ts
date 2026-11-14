@@ -46,13 +46,14 @@ export const teamReportInputV2Schema = z.strictObject({
   blocks: z.array(teamBlockV2Schema).length(8), questions: z.array(teamQuestionV2Schema).length(80),
 });
 export type TeamReportInputV2 = z.infer<typeof teamReportInputV2Schema>;
+const qualitativeGroupSchema = z.strictObject({
+  question: text, question_position: z.number().int().positive(), block_title: text, response_count: count,
+  texts: z.array(text).min(3), relevant_block: teamBlockV2Schema.nullable(),
+});
 export const qualitativeInputV2Schema = z.strictObject({
   company_context: companyContext,
   block_aggregates: z.array(teamBlockV2Schema).length(8),
-  groups: z.array(z.strictObject({
-    question: text, question_position: z.number().int().positive(), block_title: text, response_count: count,
-    texts: z.array(text).min(3), relevant_block: teamBlockV2Schema.nullable(),
-  })).max(4),
+  groups: z.array(qualitativeGroupSchema).max(4),
 });
 export type QualitativeInputV2 = z.infer<typeof qualitativeInputV2Schema>;
 
@@ -80,7 +81,25 @@ export function mainTeamReportInputV2(aggregates: unknown, summary: unknown) {
 }
 
 export function parseQualitativeInputV2(value: unknown) {
-  const input = qualitativeInputV2Schema.parse(value);
-  if (input.groups.some(g => g.response_count !== g.texts.length)) throw new Error("team_numeric_integrity");
+  return checkQualitativeCounts(qualitativeInputV2Schema.parse(value));
+}
+
+export const RU_V3_MAX_OPEN_GROUPS = 13;
+const ruV3QualitativeInput = qualitativeInputV2Schema.extend({
+  groups: z.array(qualitativeGroupSchema).max(RU_V3_MAX_OPEN_GROUPS),
+});
+
+export function parseQualitativeInputForRuV3(value: unknown) {
+  const input = checkQualitativeCounts(ruV3QualitativeInput.parse(value));
+  if (new Set(input.groups.map(group => group.question_position)).size !== input.groups.length) {
+    throw new Error("team_numeric_integrity");
+  }
+  return input;
+}
+
+function checkQualitativeCounts(input: QualitativeInputV2) {
+  if (input.groups.some(group => group.response_count !== group.texts.length)) {
+    throw new Error("team_numeric_integrity");
+  }
   return input;
 }

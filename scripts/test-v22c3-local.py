@@ -71,6 +71,10 @@ try:
   if path.name=='20261013000100_account_foundation.sql':sql((ROOT/'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
   if 'team_aggregation_report' in path.name:sql((ROOT/'supabase/tests/team-foundation.sql').read_text());sql("update public.accounts set status='active'")
   sql(path.read_text())
+ if args.regeneration:
+  methodology_migration=next((ROOT/'supabase/migrations').glob('*_methodology_ru_3_draft.sql'))
+  sql(methodology_migration.read_text(encoding='utf-8'))
+  assert sql("select status from public.diagnostic_versions where version_number=5")=='draft'
  sql((ROOT/'supabase/tests/fixtures/team-rich-methodology.sql').read_text())
  for n in range(6,10):
   meta={'full_name':f'Synthetic identity {n}','data_processing_consent':True,'marketing_consent':False,'data_processing_version':'temporary-ru-v1','marketing_version':'temporary-ru-v1'}
@@ -108,7 +112,7 @@ try:
  groups=prepared['qualitative_input']['groups'];assert 0<len(groups)<4 and all(g['response_count']==3 for g in groups)
  required=json.loads(sql(f"select jsonb_agg(pos) from private.team_questionnaires tq cross join jsonb_array_elements(tq.questions) with ordinality x(q,pos) where team_diagnostic_id='{team}' and q->>'answer_type'='text' and (q->>'required')::boolean"))
  assert all(any(g['question_position']==pos for g in groups) for pos in required)
- m=node_mock(prepared);assert m['coverage']['groups_sent_to_synthesis']>=1 and m['coverage']['non_empty_synthesis_sections']>=1
+ m=node_mock(prepared,j);assert m['coverage']['groups_sent_to_synthesis']>=1 and m['coverage']['non_empty_synthesis_sections']>=1
  empty={k:[] for k in m['synthesis']};rpc('store_team_synthesis',j,','+lit(empty)+",'mock','team-mock-v3'",error='team_qualitative_insufficient')
  rpc('store_team_synthesis',j,','+lit(m['synthesis'])+",'mock','team-mock-v3'");rpc('publish_team_report',j,','+lit(m['report'])+",'team-mock-v3'")
  assert sql(f"select count(*) from public.team_ai_reports where team_diagnostic_id='{team}' and status='completed'")=='2'
@@ -205,5 +209,96 @@ try:
   assert historical==sql(f"select jsonb_object_agg(id,to_jsonb(r)) from public.team_ai_reports r where team_diagnostic_id='{team}' and id not in ('{refreshed}','{next_report}')")
   assert claim3()==[] and old_pdf==sql("select jsonb_agg(to_jsonb(a) order by id) from public.team_report_artifacts a")
   passed('retry targets latest failed version; completed replay idempotent; subsequent real refresh preserves all reports/PDFs and owner authorization')
+
+  legacy_report=sql(f"select to_jsonb(r) from public.team_ai_reports r where id='{rid3}'")
+  legacy_source=sql(f"select fingerprint from private.team_source('{team}')")
+  legacy_synthesis=sql(f"select to_jsonb(s) from private.team_qualitative_syntheses s where team_diagnostic_id='{team}' and prompt_version='TEAM-SYNTHESIS-RU-3' and provider='mock'")
+  editorial_lists=next((ROOT/'supabase/migrations').glob('*_team_report_editorial_lists.sql'))
+  sql(editorial_lists.read_text(encoding='utf-8'))
+  # Retire the higher-numbered synthetic fixture so the ordinary create RPC selects RU-V3.
+  sql("update public.diagnostic_versions set status='retired' where version_number=100")
+  sql("update public.diagnostic_versions set status='published',published_at=clock_timestamp() where version_number=5 and status='draft'")
+  raw_sample='Согласование показателей клиента и сроков требует особой проверки. v22c-6@example.test'
+  draft_sample='Отдельный пример из черновика без завершения диагностики.'
+
+  def submit_ru_v3(team_id, low_coverage):
+   expected_positions=None
+   sparse_positions=set()
+   for respondent in range(6,10):
+    token=secrets.token_hex(32)
+    participant=actor(1,f"select public.invite_team_participant('{team_id}','v22c-{respondent}@example.test','Synthetic member {respondent}',encode(sha256(convert_to('{token}','UTF8')),'hex'))")
+    actor(respondent,f"select public.accept_team_invitation('{token}')")
+    questionnaire=json.loads(actor(respondent,f"select public.read_team_response('{participant}')"))['questions']
+    open_questions=[(pos,q) for pos,q in enumerate(questionnaire,1) if q['answer_type']=='text']
+    assert len(questionnaire)==93 and len(open_questions)==13
+    assert sum(q['required'] for _,q in open_questions)==2
+    positions={pos for pos,_ in open_questions}
+    if expected_positions is None:
+     expected_positions=positions
+     if low_coverage:
+      sparse_positions={pos for pos,q in open_questions if not q['required'] and pos>=92}
+      assert len(sparse_positions)==2
+    else:
+     assert positions==expected_positions
+
+    if respondent==9:
+     answers={open_questions[-1][1]['id']:draft_sample}
+    else:
+     answers={q['id']:2 for q in questionnaire if q['answer_type']=='scale_0_4'}
+     for pos,q in open_questions:
+      if respondent==8 and pos in sparse_positions:
+       if pos==min(sparse_positions):
+        answers[q['id']]='   '
+       continue
+      answers[q['id']]=raw_sample if respondent==6 and pos==min(positions) else (
+       f'Согласование, показатели, клиент и сроки требуют проверки в рабочей ситуации {respondent}.'
+      )
+    submitting='false' if respondent==9 else 'true'
+    actor(respondent,f"select public.save_team_response('{participant}',0,{lit(answers)},{submitting})")
+   return expected_positions-sparse_positions,sparse_positions
+
+  for low_coverage in (False,True):
+   new_team=actor(1,f"select public.create_team_diagnostic('{company}','RU-V3 qualitative coverage fixture')")
+   positions,excluded_positions=submit_ru_v3(new_team,low_coverage)
+   job,=claim3()
+   assert job['kind']=='team_aggregate'
+   assert rpc('process_team_aggregate',job)=='completed'
+   report_id=actor(1,f"select public.request_team_report_v3('{new_team}','mock')")
+   job,=claim3()
+   assert job['team_report_id']==report_id
+   new_prepared=json.loads(rpc('prepare_team_report_job',job))
+   evidence=new_prepared['report_input']
+   assert evidence['methodology']['version_number']==5 and evidence['participant_count']==3
+   assert len(evidence['blocks'])==8 and len(evidence['questions'])==80
+   assert all(block['mean']==50 for block in evidence['blocks'])
+   groups=new_prepared['qualitative_input']['groups']
+   assert len(groups)==(11 if low_coverage else 13)
+   assert {group['question_position'] for group in groups}==positions
+   assert all(group['response_count']==len(group['texts'])==3 for group in groups)
+   masked=json.dumps(groups,ensure_ascii=False)
+   assert 'v22c-6@example.test' not in masked and '[скрыто]' in masked
+   assert draft_sample not in masked
+   new_corpus=json.loads(rpc('get_team_synthesis_privacy_corpus',job))
+   assert any(answer['text']==raw_sample for answer in new_corpus['answers'])
+   assert any(answer['text']==draft_sample for answer in new_corpus['answers'])
+   for pos in excluded_positions:
+    assert sum(answer['question_index']==pos and answer['text'].strip() not in ('',draft_sample) for answer in new_corpus['answers'])==2
+   mock=node_mock(new_prepared,job)
+   assert mock['coverage']['usable_qualitative_groups']==len(groups)
+   assert {theme['question_position'] for theme in mock['synthesis']['themes']}==positions
+   if excluded_positions:
+    rejected={**mock['synthesis'],'themes':[{**mock['synthesis']['themes'][0],'question_position':min(excluded_positions)}]}
+    rpc('store_team_synthesis',job,','+lit(rejected)+",'mock','team-mock-v3'",error='team_schema_rejected')
+   assert rpc('store_team_synthesis',job,','+lit(mock['synthesis'])+",'mock','team-mock-v3'")=='stored'
+   assert json.loads(rpc('prepare_team_report_job',job))['synthesis']==mock['synthesis']
+   assert not mock['report']['strengths']
+   assert rpc('publish_team_report',job,','+lit(mock['report'])+",'team-mock-v3'")=='completed'
+   assert sql(f"select fingerprint from private.team_source('{new_team}')")!=legacy_source
+
+  assert claim3()==[]
+  assert legacy_source==sql(f"select fingerprint from private.team_source('{team}')")
+  assert legacy_report==sql(f"select to_jsonb(r) from public.team_ai_reports r where id='{rid3}'")
+  assert legacy_synthesis==sql(f"select to_jsonb(s) from private.team_qualitative_syntheses s where team_diagnostic_id='{team}' and prompt_version='TEAM-SYNTHESIS-RU-3' and provider='mock'")
+  passed('RU-V3 retains 8/80 numeric evidence; 13 full groups and 11 mixed groups publish with privacy and per-question eligibility; historical report and synthesis intact')
  print(json.dumps({'status':'PASS','groups':len(checks),'realAIRequests':0,'productionTouched':False}))
 finally:execute('drop database if exists '+db+' with (force)',database='postgres')

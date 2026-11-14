@@ -212,7 +212,33 @@ describe("diagnostic runner autosave", () => {
     (leave?.props.onClick as (event: { preventDefault: () => void }) => void)({ preventDefault: vi.fn() });
     await vi.advanceTimersByTimeAsync(0);
     expect(navigation.push).not.toHaveBeenCalled();
-    expect(elements(renderAnonymous()).some((element) => element.props.role === "alert" && String(element.props.children).includes("Не удалось сохранить"))).toBe(true);
+    expect(elements(renderAnonymous()).some((element) => element.props.role === "alert" && String(element.props.children).includes("Ответы остались на экране"))).toBe(true);
+  });
+
+  it.each([false, true])("replays a timed out save before sending a later answer (anonymous=%s)", async anonymous => {
+    const renderRunner = () => hooks.render(() => DiagnosticRunner({ data, anonymous }));
+    let timedOutSignal!: AbortSignal;
+    fetchMock.mockImplementationOnce((_url, { signal }: { signal: AbortSignal }) => {
+      timedOutSignal = signal;
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+    });
+    edit(renderRunner(), 3);
+    renderRunner();
+    await vi.advanceTimersByTimeAsync(15_900);
+    expect(timedOutSignal.aborted).toBe(true);
+    const retry = elements(renderRunner()).find(element => element.props.children === "Повторить сохранение");
+    expect(retry).toBeDefined();
+    edit(renderRunner(), 4);
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ revision: 8 }) });
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ revision: 9 }) });
+    (retry?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [first, replay, newSave] = fetchMock.mock.calls.map(([, options]) => JSON.parse(options.body));
+    expect(replay).toEqual(first);
+    expect(newSave.mutation_id).not.toEqual(first.mutation_id);
+    expect(newSave).toMatchObject({ expected_revision: 8, answers: [{ question_id: "question-1", value: 4 }] });
+    expect(elements(renderRunner()).some(element => element.props.role === "alert")).toBe(false);
   });
 
   it("keeps the explicit save and submit sequence", async () => {

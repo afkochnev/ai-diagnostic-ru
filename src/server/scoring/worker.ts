@@ -10,7 +10,8 @@ export async function runScoringJob(job: ClaimedScoringJob) {
   const { diagnostic_id: diagnosticId, job_id: jobId, lease_token: lease } = job;
   console.info("[job-claim]", { diagnostic_id: diagnosticId, job_id: jobId, kind: "score_diagnostic", attempt: job.attempt_count, status: "running" });
   try {
-    await db.from("diagnostics").update({ status: "scoring" }).eq("id", diagnosticId).eq("status", "submitted");
+    const { error: statusError } = await db.from("diagnostics").update({ status: "scoring" }).eq("id", diagnosticId).in("status", ["submitted", "scoring_failed"]);
+    if (statusError) throw statusError;
     const { data: d, error: diagnosticError } = await db.from("diagnostics").select("id,version_id").eq("id", diagnosticId).single();
     if (diagnosticError || !d) throw new Error("scoring_diagnostic_missing");
     const [{ data: blocks, error: blocksError }, { data: questions, error: questionsError }, { data: answers, error: answersError }, { data: maturity, error: maturityError }] = await Promise.all([

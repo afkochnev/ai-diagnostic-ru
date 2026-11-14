@@ -72,6 +72,28 @@ describe("live-admin PDF entry and immutable shared renderer", () => {
     tables.report_artifacts.push(stored()); const before = JSON.stringify(tables.report_artifacts);
     expect((await preparePdfForAdminReport(id)).artifact_id).toBe(artifactId); expect(JSON.stringify(tables.report_artifacts)).toBe(before); expect(m.render).not.toHaveBeenCalled(); expect(m.insert).not.toHaveBeenCalled();
   });
+  it("keeps the old report PDF readable after a new prompt generation creates its own PDF", async () => {
+    const newerId = "10000000-0000-4000-8000-000000000005";
+    const newerArtifactId = "30000000-0000-4000-8000-000000000005";
+    const newerPdf = Buffer.from("%PDF-1.7\nsynthetic-new-prompt-generation\n%%EOF\n");
+    const previous = stored();
+    tables.report_artifacts.push(previous);
+    tables.ai_reports[0].prompt_version = "RU-1.5";
+    tables.ai_reports.push({ ...tables.ai_reports[0], id: newerId, version: 3, prompt_version: "RU-1.6" });
+    m.render.mockResolvedValueOnce(newerPdf);
+    m.insert.mockImplementationOnce(async (row: Row) => {
+      tables.report_artifacts.push({ id: newerArtifactId, ...row });
+      return { error: null };
+    });
+
+    expect(await preparePdfForAdminReport(newerId)).toMatchObject({
+      report_id: newerId, ai_report_version: 3, artifact_id: newerArtifactId, template_version: templateVersion,
+    });
+    expect((await getPdfForReport(id, "actual-owner")).bytes).toEqual(pdf);
+    expect((await getPdfForReport(newerId, "actual-owner")).bytes).toEqual(newerPdf);
+    expect(tables.report_artifacts[0]).toEqual(previous);
+    expect(m.render).toHaveBeenCalledOnce();
+  });
   it("creates the current PDF without reusing or changing the previous domain's artifact", async () => {
     const historical = stored({ id: "30000000-0000-4000-8000-000000000002", template_version: "stage12-1i" });
     tables.report_artifacts.push(historical); const before = JSON.stringify(historical);

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { AnswerScale, AnswerScaleGuide } from "@/features/diagnostic/answer-scale";
 import { QuestionnaireIntro } from "@/features/diagnostic/questionnaire-intro";
-import { AutoResizeTextarea } from "@/components/ui/auto-resize-textarea";
+import { DictatedAnswer } from "@/features/diagnostic/dictated-answer";
 import { questionHelpForDisplay } from "@/shared/question-help";
 import { saveTeamResponseAction } from "@/server/team/actions";
 import type { TeamActionState, TeamQuestion, TeamResponse } from "@/server/team/contracts";
@@ -156,7 +156,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
         <legend className="sr-only">Вопрос {index + 1}</legend>
         <label htmlFor={question.answer_type === "text" ? `q-${question.id}` : undefined} className="block font-medium">{index + 1}. {question.prompt}{question.required ? " *" : ""}</label>
         {help && <p id={`help-${question.id}`} className="mt-2 text-sm text-muted">{help}</p>}
-        {question.answer_type === "scale_0_4" ? <AnswerScale name={question.id} label={question.prompt} value={answers[question.id]} invalid={invalid} describedBy={`team-answer-scale-guide${help ? ` help-${question.id}` : ""}`} onChange={(value) => update(question, value)} /> : <AutoResizeTextarea id={`q-${question.id}`} name={question.id} value={String(answers[question.id] ?? "")} onChange={(event) => update(question, event.target.value)} maxLength={10000} rows={4} aria-invalid={invalid || undefined} aria-describedby={help ? `help-${question.id}` : undefined} className="mt-4 min-h-32 w-full rounded-xl border border-line p-3" />}
+        {question.answer_type === "scale_0_4" ? <AnswerScale name={question.id} label={question.prompt} value={answers[question.id]} invalid={invalid} describedBy={`team-answer-scale-guide${help ? ` help-${question.id}` : ""}`} onChange={(value) => update(question, value)} /> : <DictatedAnswer id={`q-${question.id}`} name={question.id} disabled={navigationPending || !hydrated} value={String(answers[question.id] ?? "")} onChange={(value) => update(question, value)} maxLength={10000} rows={4} aria-invalid={invalid || undefined} aria-describedby={help ? `help-${question.id}` : undefined} className="mt-4 min-h-32 w-full rounded-xl border border-line p-3" />}
         {invalid && <p className="mt-2 text-sm text-red-800">Ответьте на этот вопрос.</p>}
       </fieldset>;
     })}

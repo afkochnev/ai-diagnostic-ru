@@ -26,7 +26,7 @@ describe("authenticated report regeneration", () => {
     expect(page).toContain("ReportRegenerationButton");
     expect(page).toContain('data.aiReport?.status === "completed"');
     expect(control).toContain("Сформировать новый отчёт");
-    expect(control).toContain("window.location.reload()");
+    expect(control).toContain("router.refresh()");
     expect(control).toContain("disabled={state === \"preparing\" || state === \"queued\"}");
   });
 });

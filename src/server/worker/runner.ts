@@ -44,7 +44,7 @@ export async function runWorkerOnce(state?: WorkerSignal) {
   if(stopped())return result();
   const ai = await claim("claim_ai_report_jobs", { p_limit: config.aiConcurrency, p_max_attempts: config.aiMaxAttempts, p_lease_seconds: config.leaseSeconds });
   aiCount=ai.length;
-  await Promise.all(ai.map((job) => runAIJob(job as unknown as ClaimedAIJob)));
+  await Promise.all(ai.map((job) => runAIJob(job as unknown as ClaimedAIJob, config.aiMaxAttempts)));
 
   if(stopped())return result();
   await runPendingConsultationNotifications(1);

@@ -1,19 +1,62 @@
-import 'server-only';
-import type {SupabaseClient} from '@supabase/supabase-js';
-import type {Database} from '@/types/database.generated';
-import {openQuestionHint} from './profile-prefill';
-export type QuestionnaireAnswer={question_id:string;text_value:string|null;numeric_value:number|null;revision:number};
+import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.generated";
+import { openQuestionHint } from "./profile-prefill";
+
+export type QuestionnaireAnswer = {
+  question_id: string;
+  text_value: string | null;
+  numeric_value: number | null;
+  revision: number;
+};
+
 /** Both entry paths read the same pinned methodology and translation/option semantics. */
-export async function loadQuestionnaire(client:SupabaseClient<Database>,versionId:string,answers:QuestionnaireAnswer[]){
- const [{data:blocks},{data:blockTranslations},{data:questions},{data:questionTranslations},{data:options},{data:optionTranslations}]=await Promise.all([
-  client.from('diagnostic_blocks').select('id,key,position,weight,is_active').eq('version_id',versionId).eq('is_active',true).order('position'),
-  client.from('diagnostic_block_translations').select('block_id,title,description').eq('locale','ru'),
-  client.from('questions').select('id,block_id,key,position,answer_type,weight,is_required,is_active,reverse_score').eq('version_id',versionId).eq('is_active',true).order('position'),
-  client.from('question_translations').select('question_id,prompt,help_text').eq('locale','ru'),
-  client.from('question_options').select('id,question_id,key,position,score_value').order('position'),
-  client.from('question_option_translations').select('option_id,label').eq('locale','ru')]);
- if(!blocks?.length||!questions?.length)throw Error('questionnaire_unavailable');
- const bt=new Map((blockTranslations??[]).map(r=>[r.block_id,r])),qt=new Map((questionTranslations??[]).map(r=>[r.question_id,r])),ot=new Map((optionTranslations??[]).map(r=>[r.option_id,r.label])),am=new Map(answers.map(r=>[r.question_id,r]));
- return blocks.map(b=>({...b,title:bt.get(b.id)?.title??b.key,questions:questions.filter(q=>q.block_id===b.id).sort((a,b)=>a.position-b.position).map(q=>({...q,prompt:qt.get(q.id)?.prompt??'',help_text:qt.get(q.id)?.help_text||openQuestionHint(q.key),options:(options??[]).filter(o=>o.question_id===q.id).map(o=>({id:o.id,position:o.position,score_value:o.score_value,label:ot.get(o.id)??String(o.position)})),answer:am.get(q.id)??null}))}));
+export async function loadQuestionnaire(
+  client: SupabaseClient<Database>,
+  versionId: string,
+  answers: QuestionnaireAnswer[],
+) {
+  const [blockResult, questionResult] = await Promise.all([
+    client.from("diagnostic_blocks")
+      .select("id,key,position,weight,is_active,diagnostic_block_translations(title)")
+      .eq("version_id", versionId)
+      .eq("is_active", true)
+      .eq("diagnostic_block_translations.locale", "ru")
+      .order("position"),
+    client.from("questions")
+      .select("id,block_id,key,position,answer_type,weight,is_required,is_active,reverse_score,question_translations(prompt,help_text),question_options(id,position,score_value,question_option_translations(label))")
+      .eq("version_id", versionId)
+      .eq("is_active", true)
+      .eq("question_translations.locale", "ru")
+      .eq("question_options.question_option_translations.locale", "ru")
+      .order("position")
+      .order("position", { referencedTable: "question_options" }),
+  ]);
+  const blocks = blockResult.data;
+  const questions = questionResult.data;
+  if (blockResult.error || questionResult.error || !blocks?.length || !questions?.length) {
+    throw Error("questionnaire_unavailable");
+  }
+
+  const answersByQuestion = new Map(answers.map((answer) => [answer.question_id, answer]));
+  return blocks.map(({ diagnostic_block_translations: titles, ...block }) => ({
+    ...block,
+    title: titles[0]?.title ?? block.key,
+    questions: questions.filter((question) => question.block_id === block.id).map(({
+      question_translations: translations,
+      question_options: options,
+      ...question
+    }) => ({
+      ...question,
+      prompt: translations[0]?.prompt ?? "",
+      help_text: translations[0]?.help_text ?? openQuestionHint(question.key),
+      options: options.map(({ question_option_translations: labels, ...option }) => ({
+        ...option,
+        label: labels[0]?.label ?? String(option.position),
+      })),
+      answer: answersByQuestion.get(question.id) ?? null,
+    })),
+  }));
 }
-export type QuestionnaireBlocks=Awaited<ReturnType<typeof loadQuestionnaire>>;
+
+export type QuestionnaireBlocks = Awaited<ReturnType<typeof loadQuestionnaire>>;

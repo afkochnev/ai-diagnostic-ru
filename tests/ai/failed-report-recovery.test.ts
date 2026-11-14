@@ -17,6 +17,7 @@ vi.mock("@/server-runtime/free-smoke", () => ({ assertFreeSmokeDiagnostic: vi.fn
 import { requestAIReportRegeneration, requestNextAIReportVersion } from "@/server/ai/regeneration";
 import { AccountAccessError } from "@/server/account/authorization";
 import { runAIJob } from "@/server/ai/worker";
+import { RU_V3_INDIVIDUAL_INPUT_VERSION } from "@/server/ai/prompt-version";
 import { enqueueAIReport } from "@/server/ai/worker";
 import { runScoringJob } from "@/server/scoring/worker";
 
@@ -60,7 +61,7 @@ beforeEach(() => {
   state.authorize.mockResolvedValue({ id: "diagnostic", status: "completed" });
   state.generate.mockResolvedValue({ content: { summary: "Synthetic completed report" }, requestId: "synthetic" });
   state.rows = {
-    diagnostics: [{ id: "diagnostic", status: "completed" }],
+    diagnostics: [{ id: "diagnostic", status: "completed", methodology: { version_number: 4, definition: { key: "manageability" } } }],
     diagnostic_results: [{ id: "result", diagnostic_id: "diagnostic" }],
     ai_reports: [{ id: "v1", diagnostic_id: "diagnostic", version: 1, status: "failed", prompt_version: "RU-1.0", error_code: "historical_provider_401", input_snapshot: { historical: true } }],
     jobs: [{ id: "job1", kind: "ai_report", diagnostic_id: "diagnostic", deduplication_key: "ai_report_v1", status: "failed", attempts: 3, last_error_code: "historical" }],
@@ -112,8 +113,8 @@ describe("versioned Individual failed-report recovery", () => {
     expect(state.generate).toHaveBeenCalledWith({synthetic:true},"RU-1.5",expect.any(Number),"diagnostic");
     expect(JSON.stringify([state.rows.ai_reports[0],state.rows.jobs[0]])).toBe(before);
   });
-  it("scoring completion enqueues the first report with the current prompt and v1 job key",async()=>{
-    state.rows.diagnostics=[{id:"diagnostic",status:"submitted",version_id:"methodology"}];
+  it.each(["submitted", "scoring_failed"])("scoring completion from %s enqueues the first report with the current prompt and v1 job key",async(status)=>{
+    state.rows.diagnostics[0] = { ...state.rows.diagnostics[0], status, version_id: "methodology" };
     state.rows.ai_reports=[];state.rows.diagnostic_results=[];
     state.rows.jobs=[{id:"score",diagnostic_id:"diagnostic",kind:"score_diagnostic",status:"processing",lease_token:"lease"}];
     state.rows.diagnostic_blocks=Array.from({length:8},(_,i)=>({id:`block-${i}`,version_id:"methodology",weight:1,is_active:true}));
@@ -136,10 +137,60 @@ describe("versioned Individual failed-report recovery", () => {
     state.rows.ai_reports=[{id:"v2",diagnostic_id:"diagnostic",version:2,status:"queued",prompt_version}];
     state.rows.jobs=[{id:"job2",lease_token:"lease",status:"processing"}];
     await runAIJob({job_id:"job2",diagnostic_id:"diagnostic",lease_token:"lease",attempt_count:1,deduplication_key:"ai_report_v2"});
-    expect(state.selects).toContainEqual({table:"ai_reports",columns:"id,version,status,prompt_version"});
+    expect(state.selects).toContainEqual({table:"ai_reports",columns:"id,version,status,prompt_version,input_snapshot"});
+    expect(state.buildInput).toHaveBeenCalledExactlyOnceWith("diagnostic",prompt_version);
     expect(state.generate).toHaveBeenCalledExactlyOnceWith({synthetic:true},prompt_version,expect.any(Number),"diagnostic");
     expect(state.rows.ai_reports[0]).toMatchObject({version:2,prompt_version,status:"completed"});
   });
+  it("selects the new input only for pinned RU-v3 and reuses the snapshot on automatic retry", async () => {
+    state.rows.diagnostics[0].methodology = { version_number: 5, definition: { key: "manageability" } };
+    const snapshot = { input_version: RU_V3_INDIVIDUAL_INPUT_VERSION, open_answers: [{ answer: "Синтетический пример" }] };
+    state.buildInput.mockResolvedValue(snapshot);
+    const previous = structuredClone(state.rows.ai_reports[0]);
+    await requestNextAIReportVersion("diagnostic");
+    expect(state.rows.ai_reports[1]).toMatchObject({ version: 2, prompt_version: "RU-1.6", schema_version: "RU-1.0", input_snapshot: snapshot });
+    expect(state.buildInput).toHaveBeenCalledExactlyOnceWith("diagnostic", "RU-1.6");
+
+    state.buildInput.mockReset().mockResolvedValue({ replacement: true });
+    state.generate.mockRejectedValueOnce(Error("provider timeout: synthetic private context"));
+    const job = state.rows.jobs[1];
+    job.lease_token = "lease-1";
+    const claim = {job_id:String(job.id), diagnostic_id:"diagnostic", lease_token:"lease-1", attempt_count:1, deduplication_key:"ai_report_v2"};
+    expect(await runAIJob(claim)).toEqual({status:"failed"});
+    expect(state.rows.ai_reports[1]).toMatchObject({status:"queued",error_code:null,error_message:null});
+    expect(job).toMatchObject({status:"failed",attempts:1,last_error_code:"provider_retryable",last_error_message:"AI report generation failed"});
+    expect(Date.parse(String(job.available_at))).toBeGreaterThan(Date.now());
+    expect(await requestNextAIReportVersion("diagnostic")).toMatchObject({version:2,status:"queued"});
+    expect(state.rows.ai_reports).toHaveLength(2);
+
+    job.lease_token = "lease-2";
+    expect(await runAIJob({...claim,lease_token:"lease-2",attempt_count:2})).toEqual({status:"completed"});
+    expect(state.generate).toHaveBeenNthCalledWith(1,snapshot,"RU-1.6",expect.any(Number),"diagnostic");
+    expect(state.generate).toHaveBeenNthCalledWith(2,snapshot,"RU-1.6",expect.any(Number),"diagnostic");
+    expect(state.buildInput).not.toHaveBeenCalled();
+    expect(state.rows.ai_reports[1]).toMatchObject({status:"completed",input_snapshot:snapshot});
+    expect(state.rows.ai_reports[0]).toEqual(previous);
+  });
+
+  it("fails an invalid new snapshot without rebuilding it or invoking the provider", async () => {
+    state.rows.ai_reports=[{id:"v2",diagnostic_id:"diagnostic",version:2,status:"queued",prompt_version:"RU-1.6",input_snapshot:{historical:true}}];
+    state.rows.jobs=[{id:"job2",lease_token:"lease",status:"processing"}];
+    expect(await runAIJob({job_id:"job2",diagnostic_id:"diagnostic",lease_token:"lease",attempt_count:1,deduplication_key:"ai_report_v2"})).toEqual({status:"failed"});
+    expect(state.rows.jobs[0]).toMatchObject({status:"failed", attempts:3, last_error_code:"invalid_individual_input_version"});
+    expect(state.buildInput).not.toHaveBeenCalled();
+    expect(state.generate).not.toHaveBeenCalled();
+  });
+
+  it("reads completion without rebuilding evidence or writing the report", async () => {
+    const report={id:"v2",diagnostic_id:"diagnostic",version:2,status:"completed",prompt_version:"RU-1.6",structured_content:{summary:"Синтетический отчёт"}};
+    state.rows.ai_reports=[report];
+    state.rows.jobs=[{id:"job2",lease_token:"lease",status:"processing"}];
+    expect(await runAIJob({job_id:"job2",diagnostic_id:"diagnostic",lease_token:"lease",attempt_count:1,deduplication_key:"ai_report_v2"})).toEqual({status:"completed"});
+    expect(state.rows.ai_reports[0]).toEqual(report);
+    expect(state.buildInput).not.toHaveBeenCalled();
+    expect(state.generate).not.toHaveBeenCalled();
+  });
+
   it.each(["RU-9.9","",null,undefined,3])("unsupported persisted prompt %s fails terminally without input/provider/fallback",async prompt_version=>{
     state.rows.ai_reports=[{id:"bad",diagnostic_id:"diagnostic",version:2,status:"queued",prompt_version}];
     state.rows.jobs=[{id:"bad-job",status:"processing",lease_token:"lease"}];

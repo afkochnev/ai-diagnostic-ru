@@ -256,6 +256,65 @@ try:
  rendered=json.dumps(final_capture)
  assert HEADER not in rendered and all(x['cmac'] not in rendered and x['token'] not in rendered for x in participants)
  ok('all six original spent rows exact; private receipts immutable, only keyed opaque issuance commitments persist, no token/key column')
+
+ # Exercise the deployed ordinary RPCs after the historical Auth inventory checks.
+ service(f"select public.stop_controlled_team_window('{run}','{window}','invitation_expiry_fixture')")
+ for migration in (
+  '20261029194903_team_report_regeneration.sql',
+  '20261029201435_team_report_regeneration_active_functions.sql',
+  '20261031164322_ordinary_team_product_access.sql',
+  '20261101163343_team_invitation_day_access.sql',
+ ):
+  sql((ROOT/'supabase/migrations'/migration).read_text())
+ service('select public.activate_team_product_access()')
+ ordinary_owner,_=user('ordinary-team-expiry-owner')
+ ordinary_account=sql(f"select id from public.accounts where legacy_origin_user_id='{ordinary_owner}'")
+ service(f"select public.assign_account_plan('{ordinary_account}','advanced')")
+ ordinary_company=auth(f"insert into public.company_profiles(owner_user_id,account_id,name,industry_key,products,employee_count,key_problems,main_goals) values('{ordinary_owner}','{ordinary_account}','Invitation expiry fixture','manufacturing','Synthetic',20,'Synthetic','Synthetic') returning id",ordinary_owner)
+ ordinary_team=auth(f"select public.create_team_diagnostic('{ordinary_company}','Invitation expiry fixture')",ordinary_owner)
+
+ def invite_expiry_fixture(label):
+  address=f'{label}@example.test'
+  digest=hashlib.sha256(secrets.token_hex(32).encode()).hexdigest()
+  pid=auth(f"select public.invite_team_participant('{ordinary_team}','{address}','Synthetic invitation','{digest}')",ordinary_owner)
+  return pid,digest,address
+
+ def expiration(pid):
+  return sql(f"select expires_at from private.team_invitations where participant_id='{pid}'")
+
+ def check_one_day(pid):
+  assert sql(f"select expires_at between clock_timestamp()+interval '23 hours 59 minutes' and clock_timestamp()+interval '24 hours' from private.team_invitations where participant_id='{pid}'")=='t'
+
+ legacy_pid,legacy_digest,legacy_address=invite_expiry_fixture('ordinary-expiry-before')
+ legacy_expiry=expiration(legacy_pid)
+ controlled_pid=participants[0]['pid']
+ controlled_expiry=expiration(controlled_pid)
+ assert sql(f"select count(*) from private.team_invitations where participant_id in ('{legacy_pid}','{controlled_pid}') and expires_at>clock_timestamp()+interval '6 days'")=='2'
+ sql((ROOT/'supabase/migrations/20261114010200_team_invitation_24_hour_expiry.sql').read_text())
+ assert expiration(legacy_pid)==legacy_expiry
+ assert json.loads(service(f"select public.resolve_team_invitation_auth('{legacy_digest}')"))['email']==legacy_address
+ # Touch the controlled fixture with a no-op token write to exercise the trigger's exclusion.
+ sql(f"update private.team_invitations set token_hash=token_hash where participant_id='{controlled_pid}'")
+ assert expiration(controlled_pid)==controlled_expiry
+
+ ordinary_pid,ordinary_digest,ordinary_address=invite_expiry_fixture('ordinary-expiry-after')
+ check_one_day(ordinary_pid)
+ assert json.loads(service(f"select public.resolve_team_invitation_auth('{ordinary_digest}')"))['email']==ordinary_address
+ issued_expiry=expiration(ordinary_pid)
+ issued=json.loads(service(f"select public.team_invitation_day_access('issue','{ordinary_digest}')"))
+ assert issued['status']=='issued' and expiration(ordinary_pid)==issued_expiry
+ auth(f"select public.renew_team_invitation('{ordinary_pid}','{ordinary_digest}')",ordinary_owner,'team_invalid_input')
+
+ replacement=hashlib.sha256(secrets.token_hex(32).encode()).hexdigest()
+ auth(f"select public.renew_team_invitation('{ordinary_pid}','{replacement}')",ordinary_owner)
+ check_one_day(ordinary_pid)
+ service(f"select public.resolve_team_invitation_auth('{ordinary_digest}')",'controlled_team_unavailable')
+ assert json.loads(service(f"select public.resolve_team_invitation_auth('{replacement}')"))['email']==ordinary_address
+ sql(f"update private.team_invitations set expires_at=clock_timestamp() where participant_id='{ordinary_pid}'")
+ service(f"select public.resolve_team_invitation_auth('{replacement}')",'team_invitation_unavailable')
+ service(f"select public.team_invitation_day_access('issue','{replacement}')",'team_invitation_unavailable')
+ service(f"select public.team_invitation_day_access('claim','{replacement}')",'team_invitation_unavailable')
+ ok('ordinary invitations and renewals expire in 24 hours; email issue does not extend; the old token, expired token, and controlled rows preserve their contract')
  print(json.dumps({'status':'PASS','checks':len(checks),'network':'none','realAuthProviderCalls':0,'newProductionWindows':0,'captureTimings':capture_timings}))
 finally:
  sql('drop database if exists '+db+' with(force)',database='postgres')

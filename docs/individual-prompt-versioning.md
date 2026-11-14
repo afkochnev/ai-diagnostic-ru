@@ -1,9 +1,9 @@
 # Individual prompt revisions
 
-`ai_reports.version` is the generation sequence for one diagnostic. It controls history ordering, unique version allocation and the `ai_report_vN` job key. It never selects a prompt.
+`ai_reports.version` is the generation sequence for one diagnostic. It controls history ordering, unique version allocation and the `ai_report_vN` job key.
 
-Every newly enqueued row persists `CURRENT_INDIVIDUAL_PROMPT_VERSION` (`RU-1.3`). Initial v1 and regenerated v2/v3 therefore use the same current prompt. Existing rows are not backfilled. Historical prompt assets RU-1.0 through RU-1.3 remain unchanged.
+A new initial or regenerated report for a diagnostic pinned to `manageability` methodology version 5 stores prompt `RU-1.6` and input `individual-ru-1.6`. The new input drops blank answers, orders substantive answers by questionnaire position and tags each answer with the question, block and purpose. It carries block scores and preserves tied rankings. Numeric answers to individual questions are outside this input contract. Earlier methodologies use `RU-1.5` for new generations.
 
-The worker selects the persisted `prompt_version` and passes it explicitly to `generateReport`. Both boundaries allow only RU-1.0, RU-1.1, RU-1.2 and RU-1.3. Missing or unsupported values fail closed with `invalid_individual_prompt_version`, without loading AI input or calling the provider; no fallback or prompt rewrite occurs. `generateReport` has no default prompt argument.
+The worker dispatches by the prompt version saved on the report row. `RU-1.6` replays the saved input on its initial execution and automatic retries. `RU-1.0` through `RU-1.5` retain their previous input rebuilding and prompt assets. An unsupported prompt or a missing version marker for a new input fails before the provider call. Existing rows are retained. Regeneration puts the new generation in its own row.
 
-Regression tests execute scoring-to-enqueue, failed-report recovery, next-version concurrency, historical persisted-version dispatch and the actual prompt-asset loader with a mocked OpenAI transport. No methodology, prompt text, scoring, schema or PDF template change is required.
+The structured output stays on `RU-1.0`. Completed-report views read the stored output. PDF artifacts use report ID, report generation and PDF template version. Regeneration creates a separate PDF identity while earlier PDFs remain readable. For a recoverable provider failure, the job schedules a retry and the report remains queued until the next attempt. When retries are exhausted, the report moves to failed.

@@ -19,7 +19,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ diagnostic
     throw error;
   }
   const db = await createAuthClient();
-  const { data: report } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).order("version", { ascending: false }).limit(1).maybeSingle();
+  const { data: report, error: reportError } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).order("version", { ascending: false }).limit(1).maybeSingle();
+  if (reportError) return NextResponse.json({ error: "status_unavailable" }, { status: 503, headers: statusHeaders });
   if (!report) return NextResponse.json({ status: "missing" }, { headers: statusHeaders });
   return NextResponse.json({ status: report.status, report_id: report.id, version: report.version, ...(report.status === "failed" ? { error_code: "AI_REPORT_FAILED" } : {}) }, { headers: statusHeaders });
 }

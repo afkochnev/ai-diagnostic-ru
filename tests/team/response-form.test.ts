@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as React from "react";
 import type { ReactElement, ReactNode } from "react";
 import { TeamResponseForm } from "@/features/team/response-form";
-import { AutoResizeTextarea } from "@/components/ui/auto-resize-textarea";
+import { DictatedAnswer } from "@/features/diagnostic/dictated-answer";
 import type { TeamResponse } from "@/server/team/contracts";
 
 const hooks = vi.hoisted(() => {
@@ -91,7 +91,7 @@ describe("team response blocks and saving", () => {
     const cached = { ...response, answers: { "question-2": "Saved goals" }, questions: [{ ...response.questions[1], help: "Укажите три главные цели. Если ответ перенесён из профиля, уточните его при необходимости." }] };
     const tree = hooks.render(() => TeamResponseForm({ response: cached }));
     expect(elements(tree).find((element) => element.props.id === "help-question-2")?.props.children).toBe("Укажите три главные цели.");
-    expect(elements(tree).find((element) => element.type === AutoResizeTextarea)?.props.value).toBe("Saved goals");
+    expect(elements(tree).find((element) => element.type === DictatedAnswer)?.props.value).toBe("Saved goals");
     expect(mocks.save).not.toHaveBeenCalled();
   });
   it("does not write on opening and saves every block using the latest revision", async () => {
@@ -107,8 +107,8 @@ describe("team response blocks and saving", () => {
     expect(mocks.save).toHaveBeenCalledTimes(1);
     expect(mocks.save.mock.calls[0][1].get("revision")).toBe("4");
     const second = render();
-    const textarea = elements(second).find((element) => element.type === AutoResizeTextarea)!;
-    (textarea.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "Current situation" } });
+    const textarea = elements(second).find((element) => element.type === DictatedAnswer)!;
+    (textarea.props.onChange as (value: string) => void)("Current situation");
     render();
     await vi.advanceTimersByTimeAsync(1500);
     expect(mocks.save).toHaveBeenCalledTimes(2);

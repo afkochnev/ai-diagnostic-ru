@@ -102,12 +102,25 @@ try:
         return value, digest, participant
     def day_rpc(operation, digest):
         return json.loads(service(f"select public.team_invitation_day_access('{operation}','{digest}')"))
+    _, legacy_hash, legacy_pid = day_invite('legacy-invitation@example.test')
+    legacy_expiry_query = f"select expires_at from private.team_invitations where participant_id='{legacy_pid}'"
+    legacy_expiry = sql(legacy_expiry_query)
+    assert sql(f"select expires_at>clock_timestamp()+interval '6 days' from private.team_invitations where participant_id='{legacy_pid}'") == 't'
+    sql((ROOT / 'supabase/migrations/20261114010200_team_invitation_24_hour_expiry.sql').read_text())
+    assert sql(legacy_expiry_query) == legacy_expiry
+    assert json.loads(service(f"select public.resolve_team_invitation_auth('{legacy_hash}')"))['email'] == 'legacy-invitation@example.test'
+
     day_token, day_hash, day_pid = day_invite('account-fixture-2@example.test')
+    def day_deadline(pid):
+        assert sql(f"select expires_at>clock_timestamp()+interval '23 hours 59 minutes' and expires_at<=clock_timestamp()+interval '24 hours' from private.team_invitations where participant_id='{pid}'") == 't'
+    day_deadline(day_pid)
+    assert json.loads(service(f"select public.resolve_team_invitation_auth('{day_hash}')"))['email'] == 'account-fixture-2@example.test'
+    before_email_expiry = sql(f"select expires_at from private.team_invitations where participant_id='{day_pid}'")
     for role in ('anon', 'authenticated'):
         actor(1, f"select public.team_invitation_day_access('issue','{day_hash}')", 'permission denied', role)
     issued = day_rpc('issue', day_hash)
     assert issued['status'] == 'issued' and issued['email'] == 'account-fixture-2@example.test'
-    assert sql(f"select expires_at>clock_timestamp()+interval '23 hours 59 minutes' and expires_at<=clock_timestamp()+interval '24 hours' from private.team_invitations where participant_id='{day_pid}'") == 't'
+    assert sql(f"select expires_at from private.team_invitations where participant_id='{day_pid}'") == before_email_expiry
     assert day_rpc('issue', day_hash)['expires_at'] == issued['expires_at']
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         claimed = list(pool.map(lambda _: day_rpc('claim', day_hash), range(2)))
@@ -120,7 +133,9 @@ try:
     assert actor(2, day_finalize) == day_pid
     assert day_rpc('claim', day_hash)['status'] == 'spent'
     replacement = secrets.token_hex(32)
+    actor(1, f"select public.renew_team_invitation('{day_pid}','{day_hash}')", 'team_invalid_input')
     actor(1, f"select public.renew_team_invitation('{day_pid}','{replacement}')")
+    day_deadline(day_pid)
     assert sql(f"select auth_claimed_at is null and redeemed_at is null from private.team_invitations where participant_id='{day_pid}'") == 't'
     service(f"select public.team_invitation_day_access('claim','{day_hash}')", 'team_invitation_unavailable')
     assert day_rpc('issue', replacement)['status'] == 'issued'
@@ -128,9 +143,11 @@ try:
     day_rpc('issue', revoked_hash)
     actor(1, f"select public.revoke_team_participant('{revoked_pid}')")
     service(f"select public.team_invitation_day_access('claim','{revoked_hash}')", 'team_invitation_unavailable')
-    _, expired_hash, expired_pid = day_invite('day-expired@example.test')
-    day_rpc('issue', expired_hash)
-    sql(f"update private.team_invitations set expires_at=clock_timestamp()-interval '1 second' where participant_id='{expired_pid}'")
+    expired_token, expired_hash, expired_pid = day_invite('account-fixture-3@example.test')
+    sql(f"update private.team_invitations set expires_at=clock_timestamp() where participant_id='{expired_pid}'")
+    actor(3, f"select public.accept_team_invitation('{expired_token}')", 'team_invitation_unavailable')
+    service(f"select public.resolve_team_invitation_auth('{expired_hash}')", 'team_invitation_unavailable')
+    service(f"select public.team_invitation_day_access('issue','{expired_hash}')", 'team_invitation_unavailable')
     service(f"select public.team_invitation_day_access('claim','{expired_hash}')", 'team_invitation_unavailable')
     _, limited_hash, limited_pid = day_invite('day-limited@example.test')
     day_rpc('issue', limited_hash)

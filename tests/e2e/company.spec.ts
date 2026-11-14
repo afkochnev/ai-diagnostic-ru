@@ -34,6 +34,22 @@ async function fillProfile(page: Page, suffix: string) {
 
 test("profile lifecycle, dashboard, edit, validation, ownership and idempotent save", async ({ page, request }) => {
   test.setTimeout(120000);
+  await page.addInitScript(() => {
+    class SpeechRecognitionStub {
+      onstart: (() => void) | null = null;
+      onend: (() => void) | null = null;
+      onresult: ((event: { results: unknown[] }) => void) | null = null;
+
+      start() { this.onstart?.(); }
+      stop() {
+        this.onresult?.({ results: [Object.assign([{ transcript: "Распознанная фраза." }], { isFinal: true })] });
+        this.onend?.();
+      }
+      abort() {}
+    }
+
+    Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: SpeechRecognitionStub });
+  });
   const email = `stage3-${randomUUID()}@example.test`;
   const password = "stage3-password";
   await page.goto("/ru/register");
@@ -93,10 +109,41 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
   await expect(page).toHaveURL("/ru/dashboard");
   await expect(page.getByRole("heading", { name: "Общая информация", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  await page.locator("textarea").nth(0).fill("Согласовать ответственность за ключевые решения.");
+  await expect(page.getByText(/потребуется 30–40 минут/)).toBeVisible();
+  const original = "Согласовать ответственность за ключевые решения.";
+  const firstQuestion = page.locator("article").first();
+  const answer = firstQuestion.locator("textarea").first();
+  await answer.fill(original);
+  const microphone = firstQuestion.getByRole("button", { name: "Диктовать ответ" });
+  await microphone.focus();
+  await expect(microphone).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(firstQuestion.getByText("Идёт диктовка.")).toBeVisible();
+  await firstQuestion.getByRole("button", { name: "Отменить" }).click();
+  await expect(answer).toHaveValue(original);
+
+  await microphone.click();
+  await firstQuestion.getByRole("button", { name: "Остановить диктовку" }).click();
+  const recognized = firstQuestion.getByLabel("Распознанный текст");
+  await expect(recognized).toHaveValue("Распознанная фраза.");
+  await expect(answer).toHaveValue(original);
+  const correction = "Уточнить сроки.";
+  await recognized.fill(correction);
+  const inserted = page.waitForResponse(
+    (response) => response.request().method() === "PATCH" && response.url().endsWith("/answers")
+      && Boolean(response.request().postData()?.includes(correction)) && response.ok(),
+  );
+  await firstQuestion.getByRole("button", { name: "Добавить к ответу" }).click();
+  await expect(answer).toHaveValue(`${original} ${correction}`);
+  await inserted;
+  await page.reload();
+  await expect(answer).toHaveValue(`${original} ${correction}`);
   await page.locator("textarea").nth(1).fill("Ускорить рост без потери управляемости.");
+  await microphone.click();
+  await expect(firstQuestion.getByText("Идёт диктовка.")).toBeVisible();
   await page.getByRole("button", { name: "Далее", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Стратегия", exact: true })).toBeVisible();
+  await expect(page.getByText("Идёт диктовка.")).toHaveCount(0);
   await page.locator("article").nth(0).getByRole("button", { name: "5", exact: true }).click();
   await page.locator("article").nth(1).getByRole("button", { name: "4", exact: true }).click();
   await page.getByRole("button", { name: "Далее", exact: true }).click();

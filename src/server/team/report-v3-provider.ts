@@ -4,39 +4,48 @@ import { join } from "node:path";
 import { z } from "zod";
 import { teamAIProvider } from "./report-provider";
 import { type TeamCallCounts } from "./report-v2-provider";
-import { parseQualitativeInputV2, type QualitativeInputV2, type TeamSynthesisV2 } from "./report-v2-contracts";
-import { TEAM_REPORT_V3, mainTeamReportInputV3, teamReportV3Schema, teamSynthesisV3Schema, type TeamEvidenceV3 } from "./report-v3-contracts";
+import { parseQualitativeInputForRuV3, parseQualitativeInputV2, type QualitativeInputV2, type TeamSynthesisV2 } from "./report-v2-contracts";
+import { OPEN_GROUPS_WITHOUT_USABLE_EVIDENCE, TEAM_REPORT_V3, mainTeamReportInputV3, openGroupContext, teamReportV3Schema, teamSynthesisV3Schema, type TeamEvidenceV3 } from "./report-v3-contracts";
 import { repairResponseSchema, type RepairField } from "./synthesis-repair";
 import { currentControlledTeamAI } from "./controlled-ai-transport";
 import {controlledTeamRequired} from '@/server-runtime/team-smoke';
 import { reportEditorialStyle } from "./quality/editorial-style";
 
-async function structured<T>(kind:"synthesis"|"report"|"repair"|"report_repair",input:unknown,schema:z.ZodType<T>,counts:TeamCallCounts) {
+async function structured<T>(kind:"synthesis"|"report"|"repair"|"report_repair",input:unknown,schema:z.ZodType<T>,counts:TeamCallCounts,ruV3=false) {
   if(controlledTeamRequired()&&!currentControlledTeamAI())throw Error('controlled_team_claim_required');
   const config=teamAIProvider(TEAM_REPORT_V3);
   const promptFile=kind==="synthesis"?"TEAM_SYNTHESIS_PROMPT_RU_3.md":kind==="report"?"TEAM_REPORT_PROMPT_RU_3.md":kind==="repair"?"TEAM_SYNTHESIS_REPAIR_PROMPT_RU_2.md":"TEAM_REPORT_REPAIR_PROMPT_RU_2.md";
   counts[kind==="synthesis"?"synthesis_call_count":kind==="report"?"report_call_count":"repair_call_count"]++;
-  const sourcePrompt=readFileSync(join(process.cwd(),promptFile),"utf8");
+  const extension = ruV3 && (kind === "synthesis" || kind === "report")
+    ? readFileSync(join(process.cwd(), kind === "synthesis" ? "TEAM_SYNTHESIS_QUESTIONNAIRE_RU_3.md" : "TEAM_REPORT_QUESTIONNAIRE_RU_3.md"), "utf8")
+    : "";
+  const sourcePrompt = readFileSync(join(process.cwd(), promptFile), "utf8") + (extension ? "\n\n" + extension : "");
   const prompt=kind==="report"?`${sourcePrompt}\n\n## Редакторские правила\n${reportEditorialStyle}`:sourcePrompt;
   const body={model:config.model,store:false,max_output_tokens:kind==="report"?14000:6000,
     input:[{role:"system" as const,content:prompt},{role:"user" as const,content:`<UNTRUSTED_TEAM_EVIDENCE>\n${JSON.stringify(input)}\n</UNTRUSTED_TEAM_EVIDENCE>`}],
-    text:{format:{type:"json_schema" as const,name:`team_${kind}_ru_3`,strict:true as const,schema:z.toJSONSchema(schema)}}};
+    text:{format:{type:"json_schema" as const,name:`team_${kind}_ru_3${ruV3 ? "_questionnaire_5" : ""}`,strict:true as const,schema:z.toJSONSchema(schema)}}};
   const controlled=currentControlledTeamAI();
   const response=controlled?await controlled.create(kind==="report"?"main_report":kind==="repair"?"synthesis_repair":kind,body):await new OpenAI({apiKey:process.env.OPENAI_API_KEY,maxRetries:0,timeout:180000,fetch:(input,init)=>fetch(input,{...init,redirect:"error"})}).responses.create(body);
   if(response.status!=="completed" || !response.output_text) throw new Error("team_schema_rejected");
   return schema.parse(JSON.parse(response.output_text));
 }
-export async function synthesizeTeamTextsV3(value:unknown,counts:TeamCallCounts) {
-  const input=parseQualitativeInputV2(value);
-  return !input.groups.length || teamAIProvider(TEAM_REPORT_V3).provider==="mock"?mockTeamSynthesisV3(input):structured("synthesis",input,teamSynthesisV3Schema,counts);
+export async function synthesizeTeamTextsV3(value: unknown, counts: TeamCallCounts, ruV3 = false) {
+  const input = ruV3 ? parseQualitativeInputForRuV3(value) : parseQualitativeInputV2(value);
+  if (!input.groups.length || teamAIProvider(TEAM_REPORT_V3).provider === "mock") return mockTeamSynthesisV3(input, ruV3);
+  const evidence = ruV3
+    ? { ...input, groups: input.groups.map(group => ({ ...group, scope: openGroupContext(group).scope })) }
+    : input;
+  return structured("synthesis", evidence, teamSynthesisV3Schema, counts, ruV3);
 }
-export async function repairV3Fields(fields:RepairField[],counts:TeamCallCounts,report=false) {
+export async function repairV3Fields(fields:RepairField[],counts:TeamCallCounts,report=false,ruV3=false) {
   if(teamAIProvider(TEAM_REPORT_V3).provider==="mock") throw new Error("team_privacy_rejected");
-  return structured(report?"report_repair":"repair",{fields:fields.map(({path,value})=>({path,value}))},repairResponseSchema(fields.map(f=>f.path)),counts);
+  return structured(report?"report_repair":"repair",{fields:fields.map(({path,value})=>({path,value}))},repairResponseSchema(fields.map(f=>f.path)),counts,ruV3);
 }
-export async function generateTeamReportV3(aggregates:unknown,summary:unknown,counts:TeamCallCounts) {
-  const input=mainTeamReportInputV3(aggregates,summary);
-  return teamAIProvider(TEAM_REPORT_V3).provider==="mock"?mockTeamReportV3(input):structured("report",input,teamReportV3Schema,counts);
+export async function generateTeamReportV3(aggregates: unknown, summary: unknown, counts: TeamCallCounts, qualitative?: QualitativeInputV2) {
+  const input = mainTeamReportInputV3(aggregates, summary, qualitative);
+  return teamAIProvider(TEAM_REPORT_V3).provider === "mock"
+    ? mockTeamReportV3(input)
+    : structured("report", input, teamReportV3Schema, counts, Boolean(qualitative));
 }
 const signals=[
   {match:/согласов|полномоч|владел|ответствен|решени|утвержд/iu,title:"Устройство исполнения",summary:"Из описаний рабочих эпизодов следует потребность сократить движение задачи по инстанциям и сделать устойчивыми границы полномочий.",diagnosis:"Прохождение задач зависит от возврата решений на вышестоящий уровень; это ограничивает самостоятельное исполнение.",action:"Закрепить границы решений для сквозного процесса и критерий передачи готовой работы."},
@@ -45,14 +54,20 @@ const signals=[
   {match:/встреч|совещан|ритм|планир|срок/iu,title:"Регулярность управления",summary:"Качественный материал позволяет проверить, как планирование, рабочие встречи и контроль сроков превращают решение в завершённую работу.",diagnosis:"Контроль исполнения требует устойчивого рабочего цикла, связывающего принятые решения с завершением задач.",action:"Установить короткий цикл планирования, проверки исполнения и снятия препятствий."},
 ];
 /** Semantic templates, never arbitrary input strings. All output still passes the corpus gate. */
-export function mockTeamSynthesisV3(input:QualitativeInputV2):TeamSynthesisV2 {
-  const themes=input.groups.flatMap(g=>{
-    const selected=signals.filter(s=>g.texts.some(t=>s.match.test(t)));
-    return selected.map(s=>({title:s.title,summary:s.summary,question_position:g.question_position,response_count:g.response_count}));
-  }).slice(0,20);
+export function mockTeamSynthesisV3(input: QualitativeInputV2, ruV3 = false): TeamSynthesisV2 {
+  const byQuestion = input.groups.map(group => signals
+    .filter(signal => group.texts.some(answer => signal.match.test(answer)))
+    .map(signal => ({
+      title: signal.title, summary: signal.summary,
+      question_position: group.question_position, response_count: group.response_count,
+    })));
+  // Under the new questionnaire, reserve room for every classifiable group.
+  const themes = (ruV3
+    ? [...byQuestion.flatMap(themes => themes.slice(0, 1)), ...byQuestion.flatMap(themes => themes.slice(1))]
+    : byQuestion.flat()).slice(0, 20);
   // Unknown substantive evidence must fail coverage rather than fabricate a theme.
   const chosen=signals.filter(s=>themes.some(t=>t.title===s.title));
-  return teamSynthesisV3Schema.parse({themes,strengths:[],problem_patterns:chosen.map(s=>s.diagnosis),growth_constraints:chosen.map(s=>s.diagnosis),risks:chosen.map(s=>`Требует проверки управленческое последствие: ${s.diagnosis}`),opportunities:chosen.map(s=>s.action),management_implications:chosen.map(s=>s.action),alignment_signals:[],divergence_signals:[],contradictions:[],discussion_topics:chosen.map(s=>`Как проверить результат изменения практики «${s.title}»?`)});
+  return teamSynthesisV3Schema.parse({themes,strengths:[],problem_patterns:chosen.map(s=>s.diagnosis),growth_constraints:chosen.map(s=>s.diagnosis),risks:chosen.map(s=>`Требует проверки управленческое последствие: ${s.diagnosis}`),opportunities:chosen.map(s=>s.action),management_implications:ruV3 && input.groups.length && !chosen.length ? [OPEN_GROUPS_WITHOUT_USABLE_EVIDENCE] : chosen.map(s=>s.action),alignment_signals:[],divergence_signals:[],contradictions:[],discussion_topics:chosen.map(s=>`Как проверить результат изменения практики «${s.title}»?`)});
 }
 const number=(n:number)=>n.toLocaleString("ru-RU",{maximumFractionDigits:1});
 export function mockTeamReportV3(e:TeamEvidenceV3) {
@@ -60,13 +75,38 @@ export function mockTeamReportV3(e:TeamEvidenceV3) {
   const ranked=[...c.blocks].sort((a,b)=>b.mean-a.mean||a.position-b.position),strong=ranked[0],weak=ranked.at(-1)!;
   const s=c.qualitative_summary as Pick<TeamSynthesisV2,"themes"|"strengths"|"problem_patterns"|"growth_constraints"|"risks"|"opportunities"|"management_implications">;
   const chosen=signals.filter(x=>s.themes.some(t=>t.title===x.title));
+  if (c.equal_block_means) {
+    const signal = chosen[0];
+    const limitation = signal
+      ? `Качественный сигнал требует проверки: ${signal.diagnosis}`
+      : "Оснований выделить приоритет по открытым ответам пока недостаточно.";
+    return teamReportV3Schema.parse({
+      participant_count: c.participant_count,
+      summary: `Средние оценки восьми блоков совпадают. ${limitation}`,
+      main_diagnosis: "Для определения приоритета требуется проверка практик внутри блоков и описанных рабочих случаев.",
+      manageability_index_text: `Индекс управляемости составляет ${number(c.overall_mean)}, уровень «${c.maturity}». Одинаковые средние блоков не устанавливают их приоритет.`,
+      strengths: [],
+      key_problem_zones: signal ? [limitation] : [],
+      growth_constraint: "Связь наблюдений с ограничениями роста следует проверить на реальном рабочем цикле.",
+      implementation_risks: ["Опора только на средние баллы может привести к выбору изменения без достаточного основания."],
+      first_actions: [signal?.action ?? "Разобрать один недавний случай применения практики, значимой для годовой цели."],
+      plan_30_days: ["Согласовать исходный результат и проверить, где именно возникает затруднение."],
+      plan_60_days: ["Если причина подтвердится, проверить изменение на одном рабочем участке."],
+      plan_90_days: ["Сопоставить полученный эффект с исходным уровнем и решить, расширять ли изменение."],
+      next_step: "Назначить разбор недавней рабочей ситуации и собрать сведения о её результате.",
+      team_analysis: {
+        alignment: [], divergence: [], qualitative_signals: [],
+        discussion_questions: ["Какие наблюдения помогут проверить, влияет ли выбранная практика на результат?"],
+      },
+    });
+  }
   const evidence=chosen.length?`Качественные ответы дополняют средний профиль: ${chosen.map(x=>x.diagnosis).join(" ")}`:"Допустимый качественный материал отсутствует; выводы опираются на средний профиль практик.";
   const action=chosen.length?chosen.map(x=>x.action).join(" "):"Уточнить рабочую практику в наиболее слабом блоке и согласовать наблюдаемый результат улучшения.";
   const lowQuestions=c.questions.filter(q=>q.block_position===weak.position).sort((a,b)=>a.mean-b.mean||a.question_position-b.question_position).slice(0,3);
   const problem=`Основное ограничение связано с блоком «${weak.title}»: средняя оценка ${number(weak.mean)}; слабые практики имеют средние ${lowQuestions.map(q=>number(q.mean)).join(", ")} по шкале 0–4.`;
   const plans=(phase:number)=>[
     phase===30?`Выбрать процесс, в котором проявляется ограничение блока «${weak.title}». Описать текущий результат, владельца и связь с бизнес-целью.`:phase===60?`Провести пилот нового правила в процессе, выбранном по слабому блоку «${weak.title}». Проверить завершение задач на реальном рабочем цикле.`:`Оценить эффект пилота блока «${weak.title}» и закрепить правило, которое улучшило предсказуемость исполнения.`,
-    !chosen.length?"Уточнить действие по среднему профилю слабой практики; использовать наблюдение за исполнением пилота без ссылок на отсутствующие качественные свидетельства.":phase===30?`По качественным ответам сформировать предмет изменения. ${action}`:phase===60?`По описанным ситуациям проверить применение нового правила. ${action}`:`По качественным наблюдениям уточнить границы применимости практики. ${action}`,
+    !chosen.length ? (c.open_question_context ? (phase === 30 ? "Уточнить, в каких рабочих ситуациях проявляется выбранная практика." : phase === 60 ? "Проверить исполнение правила в выбранных ситуациях и записать отклонения." : "Использовать результаты проверки, чтобы определить, нужна ли корректировка.") : "Уточнить действие по среднему профилю слабой практики; использовать наблюдение за исполнением пилота без ссылок на отсутствующие качественные свидетельства.") :phase===30?`По качественным ответам сформировать предмет изменения. ${action}`:phase===60?`По описанным ситуациям проверить применение нового правила. ${action}`:`По качественным наблюдениям уточнить границы применимости практики. ${action}`,
     phase===30?"Зафиксировать исходное время и качество результата процесса; согласовать способ измерения без назначения вымышленных целевых значений.":phase===60?"Сопоставить фактический результат пилота с исходной базой. Устранить причину повторной работы, подтверждённую наблюдением.":"Проверить устойчивость результата на следующем цикле и договориться о дальнейших критериях оценки.",
     phase===30?`Выбрать работающую практику из блока «${strong.title}» и определить, как применить её в пилоте слабой области.`:phase===60?`Применить сильную практику блока «${strong.title}» в пилоте и проверить качество передачи результата.`:`Распространить доказавшую полезность практику блока «${strong.title}» на следующую задачу с назначенным владельцем.`,
     phase===30?"Владелец изменения согласует контрольную точку: описание процесса, правило решения и ожидаемый продукт пилота.":phase===60?"Владелец пилота предъявляет результаты выполнения и перечень устранённых препятствий; руководитель принимает решение о корректировке.":"Руководитель утверждает закреплённые правила, ответственных и следующий цикл улучшений, связанный с бизнес-приоритетами.",

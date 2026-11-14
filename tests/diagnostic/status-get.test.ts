@@ -26,7 +26,7 @@ type Query = {
   eq: (column: string, value: unknown) => Query;
   order: (column: string, options: { ascending: boolean }) => Query;
   limit: (count: number) => Query;
-  maybeSingle: () => Promise<{ data: Row; error: null }>;
+  maybeSingle: () => Promise<{ data: Row; error: { message: string } | null }>;
   insert: () => never;
   update: () => never;
   upsert: () => never;
@@ -35,6 +35,7 @@ type Query = {
 
 let rows: Record<string, Row>;
 let reads: ReadCall[];
+let reportError: { message: string } | null;
 let cookieUser: { id: string; email_confirmed_at: string | null } | null;
 const mutation = vi.fn(() => { throw new Error("Status reads must not mutate data"); });
 const network = vi.fn(() => { throw new Error("Status tests must not contact services"); });
@@ -43,6 +44,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("fetch", network);
   reads = [];
+  reportError = null;
   cookieUser = { id: userId, email_confirmed_at: "2026-09-19T00:00:00Z" };
   rows = {
     // Authority comes from current membership, not legacy creator fields.
@@ -64,7 +66,7 @@ beforeEach(() => {
         eq: (column, value) => { read.filters.push([column, value]); return query; },
         order: (column, options) => { read.orders.push([column, options]); return query; },
         limit: (count) => { read.limits.push(count); return query; },
-        maybeSingle: async () => ({ data: rows[table], error: null }),
+        maybeSingle: async () => ({ data: rows[table], error: table === "ai_reports" ? reportError : null }),
         insert: mutation, update: mutation, upsert: mutation, delete: mutation,
       };
       return query;
@@ -160,6 +162,15 @@ describe("authenticated read-only diagnostic status GET", () => {
     expect(reads.map((read) => read.table)).toEqual(["diagnostics", "company_profiles", "account_memberships", "accounts"]);
     expect(reads[1].filters).toEqual([["id", companyId]]);
     expect(reads[2].filters).toEqual([["account_id", accountId], ["user_id", userId], ["role", "owner"], ["status", "active"]]);
+  });
+
+  it("reports a temporary AI status read error separately from a missing report", async () => {
+    rows.ai_reports = null;
+    reportError = { message: "temporary database outage" };
+    const response = await getAI(request(), context());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "status_unavailable" });
+    expectPrivate(response);
   });
 
   it("reads a missing AI report without creating one", async () => {
