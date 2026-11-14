@@ -120,7 +120,11 @@ export function startSpeechDictation(Recognition: SpeechConstructor, report: (up
     report({ phase: stopping ? "stopping" : "listening", transcript });
   };
   recognition.onerror = (event) => finish(errorMessage(event.error), true);
-  recognition.onend = () => finish(transcript ? undefined : errorMessage("no-speech"));
+  recognition.onend = () => {
+    if (transcript) finish();
+    else if (stopping) finish(errorMessage("no-speech"));
+    else finish("Браузер завершил диктовку без распознанного текста.");
+  };
   timer = setTimeout(() => finish("Браузер не запустил диктовку. Проверьте доступ к микрофону.", true), startTimeoutMs);
   report({ phase: "starting", transcript });
   try {

@@ -60,6 +60,18 @@ describe("Russian browser dictation", () => {
     expect(speech.abort).not.toHaveBeenCalled();
   });
 
+  it("reports an unexpected end immediately after listening starts and allows retrying", () => {
+    startSpeechDictation(SpeechStub, update);
+    expect(update).toHaveBeenLastCalledWith({ phase: "listening", transcript: "" });
+    SpeechStub.last.onend?.();
+    expect(update).toHaveBeenLastCalledWith({ phase: "finished", transcript: "", message: "Браузер завершил диктовку без распознанного текста." });
+    expect(vi.getTimerCount()).toBe(0);
+
+    const retry = startSpeechDictation(SpeechStub, update);
+    expect(retry).not.toBeNull();
+    retry?.cancel();
+  });
+
   it("handles a permission refusal and allows a fresh attempt", () => {
     startSpeechDictation(SpeechStub, update);
     SpeechStub.last.onerror?.({ error: "not-allowed" });
