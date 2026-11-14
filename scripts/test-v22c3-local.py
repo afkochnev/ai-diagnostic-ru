@@ -54,8 +54,8 @@ def aggregate(v2=True):
   jobs=claim(v2)
   if not jobs:break
   for j in jobs:assert j['kind']=='team_aggregate';assert rpc('process_team_aggregate',j) in ('completed','superseded')
-def node_mock(prepared):
- prepared={**prepared,"privacy_corpus":json.loads(rpc("get_team_synthesis_privacy_corpus",j))}
+def node_mock(prepared, job):
+ prepared={**prepared,"privacy_corpus":json.loads(rpc("get_team_synthesis_privacy_corpus",job))}
  r=subprocess.run(['node','--import','tsx','scripts/v22c3-mock-providers.ts'],cwd=ROOT,input=json.dumps(prepared),capture_output=True,text=True,env={**os.environ,'TEAM_AI_PROVIDER':'mock'})
  assert r.returncode==0,'mock provider fixture failed (payload omitted)'
  return json.loads(r.stdout)
@@ -112,7 +112,7 @@ try:
  groups=prepared['qualitative_input']['groups'];assert 0<len(groups)<4 and all(g['response_count']==3 for g in groups)
  required=json.loads(sql(f"select jsonb_agg(pos) from private.team_questionnaires tq cross join jsonb_array_elements(tq.questions) with ordinality x(q,pos) where team_diagnostic_id='{team}' and q->>'answer_type'='text' and (q->>'required')::boolean"))
  assert all(any(g['question_position']==pos for g in groups) for pos in required)
- m=node_mock(prepared);assert m['coverage']['groups_sent_to_synthesis']>=1 and m['coverage']['non_empty_synthesis_sections']>=1
+ m=node_mock(prepared,j);assert m['coverage']['groups_sent_to_synthesis']>=1 and m['coverage']['non_empty_synthesis_sections']>=1
  empty={k:[] for k in m['synthesis']};rpc('store_team_synthesis',j,','+lit(empty)+",'mock','team-mock-v3'",error='team_qualitative_insufficient')
  rpc('store_team_synthesis',j,','+lit(m['synthesis'])+",'mock','team-mock-v3'");rpc('publish_team_report',j,','+lit(m['report'])+",'team-mock-v3'")
  assert sql(f"select count(*) from public.team_ai_reports where team_diagnostic_id='{team}' and status='completed'")=='2'
@@ -283,7 +283,7 @@ try:
    assert any(answer['text']==draft_sample for answer in new_corpus['answers'])
    for pos in excluded_positions:
     assert sum(answer['question_index']==pos and answer['text'].strip() not in ('',draft_sample) for answer in new_corpus['answers'])==2
-   mock=node_mock(new_prepared)
+   mock=node_mock(new_prepared,job)
    assert mock['coverage']['usable_qualitative_groups']==len(groups)
    assert {theme['question_position'] for theme in mock['synthesis']['themes']}==positions
    if excluded_positions:
