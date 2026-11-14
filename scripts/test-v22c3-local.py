@@ -112,7 +112,7 @@ try:
  groups=prepared['qualitative_input']['groups'];assert 0<len(groups)<4 and all(g['response_count']==3 for g in groups)
  required=json.loads(sql(f"select jsonb_agg(pos) from private.team_questionnaires tq cross join jsonb_array_elements(tq.questions) with ordinality x(q,pos) where team_diagnostic_id='{team}' and q->>'answer_type'='text' and (q->>'required')::boolean"))
  assert all(any(g['question_position']==pos for g in groups) for pos in required)
- m=node_mock(prepared,j);assert m['coverage']['groups_sent_to_synthesis']>=1 and m['coverage']['non_empty_synthesis_sections']>=1
+ m=node_mock(prepared);assert m['coverage']['groups_sent_to_synthesis']>=1 and m['coverage']['non_empty_synthesis_sections']>=1
  empty={k:[] for k in m['synthesis']};rpc('store_team_synthesis',j,','+lit(empty)+",'mock','team-mock-v3'",error='team_qualitative_insufficient')
  rpc('store_team_synthesis',j,','+lit(m['synthesis'])+",'mock','team-mock-v3'");rpc('publish_team_report',j,','+lit(m['report'])+",'team-mock-v3'")
  assert sql(f"select count(*) from public.team_ai_reports where team_diagnostic_id='{team}' and status='completed'")=='2'
@@ -283,7 +283,7 @@ try:
    assert any(answer['text']==draft_sample for answer in new_corpus['answers'])
    for pos in excluded_positions:
     assert sum(answer['question_index']==pos and answer['text'].strip() not in ('',draft_sample) for answer in new_corpus['answers'])==2
-   mock=node_mock(new_prepared,job)
+   mock=node_mock(new_prepared)
    assert mock['coverage']['usable_qualitative_groups']==len(groups)
    assert {theme['question_position'] for theme in mock['synthesis']['themes']}==positions
    if excluded_positions:
