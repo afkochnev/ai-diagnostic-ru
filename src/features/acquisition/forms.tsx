@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
 import {useRouter} from 'next/navigation';
-import {useActionState,useEffect,useState} from 'react';
+import {useActionState,useEffect,useId,useState} from 'react';
 import {AutoResizeTextarea} from '@/components/ui/auto-resize-textarea';
+import {DictatedAnswer} from '@/features/diagnostic/dictated-answer';
 import {startAnonymous,saveShortProfile,sendAccess,finishClaim,confirmAccess,type AcquisitionState} from '@/server/acquisition/actions';
 import type {Choices} from '@/server/acquisition/service';
 type Policy={versions:Record<string,string>;temporary:boolean;dataUrl:string;marketingUrl:string;policyUrl?:string};
@@ -17,9 +18,18 @@ export function StartForm({policy,attribution={}}:{policy:Policy;attribution?:Re
 export function ShortProfileForm({industries,revenues,draft,prefilled=false}:{industries:{industry_key:string;name:string}[];revenues:{revenue_key:string;name:string}[];draft?:Record<string,string|number|null>|null;prefilled?:boolean}){
  const [state,action,pending]=useActionState(saveShortProfile,{});
  const [values,setValues]=useState<Record<string,string>>(()=>Object.fromEntries(Object.entries(draft??{}).map(([key,value])=>[key,String(value??'')])));
- const input=(name:string)=>({value:values[name]??'',onChange:(event:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>)=>setValues(previous=>({...previous,[name]:event.target.value}))});
+ const profileId=useId();
+ const update=(name:string,value:string)=>setValues(previous=>({...previous,[name]:value}));
+ const input=(name:string)=>({value:values[name]??'',onChange:(event:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>)=>update(name,event.target.value)});
  const labelClass='block min-w-0 text-base leading-6 font-medium';
  const text=(name:string,label:string,area=false,required=true)=><label className={labelClass}>{label}{required?' *':''}{area?<AutoResizeTextarea name={name} rows={3} required={required} maxLength={5000} {...input(name)} className={field+' min-h-28'}/>:<input name={name} required={required} maxLength={200} {...input(name)} className={field+' h-12'}/>}</label>;
+ const dictated=(name:'key_problems'|'main_goals',label:string)=>{
+  const id=profileId+'-'+name;
+  return <div>
+   <label htmlFor={id} className={labelClass}>{label} *</label>
+   <DictatedAnswer id={id} name={name} rows={3} required maxLength={5000} value={values[name]??''} onChange={(value)=>update(name,value)} className={field+' min-h-28'}/>
+  </div>;
+ };
  return <form action={action} className="mt-7 space-y-7 text-base leading-6">
   <Notice state={state}/>
   {prefilled&&<p className="rounded-xl bg-tint p-4">Проблема и цели перенесены из ваших ответов. Здесь их можно уточнить.</p>}
@@ -32,8 +42,8 @@ export function ShortProfileForm({industries,revenues,draft,prefilled=false}:{in
   </div>
   <div className="space-y-6">
    {text('products','Основные продукты / услуги',true)}
-   {text('key_problems','Главная проблема / ограничения',true)}
-   {text('main_goals','Главные цели компании',true)}
+   {dictated('key_problems','Главная проблема / ограничения')}
+   {dictated('main_goals','Главные цели компании')}
   </div>
   <details className="rounded-xl border border-line p-4 sm:p-5">
    <summary className="cursor-pointer font-medium">Добавить больше контекста для более точного отчёта</summary>

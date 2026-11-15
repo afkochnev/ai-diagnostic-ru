@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
+import { DictatedAnswer } from "@/features/diagnostic/dictated-answer";
 import type { CompanyProfileState } from "@/validation/company";
 import { encodeProfileDraft, profileDraftKey, profileFields, readProfileDraft } from "./profile-draft";
 
@@ -9,7 +10,7 @@ type Company = Record<string, string | number | null> | null;
 type Props = { action: (state: CompanyProfileState, form: FormData) => Promise<CompanyProfileState>; company: Company; industries: Reference[]; revenues: Reference[]; returnTo?: string; accountId: string; userId: string };
 const input = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
 const fields = [
-  ["name", "Название компании", "text"], ["country", "Страна", "text"], ["products", "Продукты", "textarea"], ["customer_segments", "Клиенты / клиентские сегменты", "textarea"], ["sales_channels", "Каналы продаж", "textarea"], ["employee_count", "Число сотрудников", "number"], ["company_age_years", "Возраст компании", "number"], ["management_levels", "Количество уровней управления", "number"], ["key_problems", "Назовите главные ограничения, препятствующие эффективности и динамичному развитию компании", "textarea"], ["main_goals", "Назовите стратегические цели компании в области финансов, достижений на рынке, развития собственных процессов и ресурсов", "textarea"],
+  ["name", "Название компании", "text"], ["country", "Страна", "text"], ["products", "Продукты", "textarea"], ["customer_segments", "Клиенты / клиентские сегменты", "textarea"], ["sales_channels", "Каналы продаж", "textarea"], ["employee_count", "Число сотрудников", "number"], ["company_age_years", "Возраст компании", "number"], ["management_levels", "Количество уровней управления", "number"], ["key_problems", "Назовите главные ограничения, препятствующие эффективности и динамичному развитию компании", "dictated"], ["main_goals", "Назовите стратегические цели компании в области финансов, достижений на рынке, развития собственных процессов и ресурсов", "dictated"],
 ] as const;
 
 export function CompanyProfileForm({ action, company, industries, revenues, accountId, userId, returnTo = "/ru/dashboard" }: Props) {
@@ -82,4 +83,16 @@ export function CompanyProfileForm({ action, company, industries, revenues, acco
   </form>;
 }
 function Error({ text }: { text: string }) { return <span className="mt-1 block text-sm text-red-700" role="alert">{text}</span>; }
-function Field({ name, label, type, value, onChange, error, hint, required = true }: { name: string; label: string; type: string; value: string; onChange: (name: string, value: string) => void; error?: string; hint?: string; required?: boolean }) { return <label className="block text-sm font-medium">{label}{hint && <span id={`${name}-hint`} className="mt-1 block text-sm font-normal text-muted">{hint}</span>}{type === "textarea" ? <textarea className={`${input} min-h-24`} name={name} required={required} value={value} onChange={(event) => onChange(name, event.target.value)} maxLength={5000} aria-describedby={hint ? `${name}-hint` : undefined} /> : <input className={input} name={name} type={type} required={required} value={value} onChange={(event) => onChange(name, event.target.value)} min={type === "number" ? name === "company_age_years" ? 0 : 1 : undefined} step={type === "number" ? 1 : undefined} maxLength={type === "text" ? 200 : undefined} />}{error && <Error text={error} />}</label>; }
+function Field({ name, label, type, value, onChange, error, hint, required = true }: { name: string; label: string; type: "text" | "number" | "textarea" | "dictated"; value: string; onChange: (name: string, value: string) => void; error?: string; hint?: string; required?: boolean }) {
+  const id = useId();
+  const hintId = hint ? id + "-hint" : undefined;
+  const textareaProps = { id, name, value, required, maxLength: 5000, className: input + " min-h-24", "aria-describedby": hintId };
+  return <div className="text-sm">
+    <label htmlFor={id} className="block font-medium">{label}</label>
+    {hint && <p id={hintId} className="mt-1 text-muted">{hint}</p>}
+    {type === "dictated" ? <DictatedAnswer {...textareaProps} onChange={(next) => onChange(name, next)} />
+      : type === "textarea" ? <textarea {...textareaProps} onChange={(event) => onChange(name, event.target.value)} />
+        : <input id={id} className={input} name={name} type={type} required={required} value={value} onChange={(event) => onChange(name, event.target.value)} min={type === "number" ? name === "company_age_years" ? 0 : 1 : undefined} step={type === "number" ? 1 : undefined} maxLength={type === "text" ? 200 : undefined} />}
+    {error && <Error text={error} />}
+  </div>;
+}

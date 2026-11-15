@@ -48,6 +48,7 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
       abort() {}
     }
 
+    Object.defineProperty(window, "AudioWorkletNode", { configurable: true, value: undefined });
     Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: SpeechRecognitionStub });
   });
   const email = `stage3-${randomUUID()}@example.test`;
@@ -67,6 +68,24 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
   await page.getByRole("button", { name: "Сохранить и перейти в кабинет", exact: true }).click();
   await expect(page.locator('p[role="alert"]')).toContainText("Проверьте обязательные поля");
   await fillProfile(page, "A");
+  const openProfileFields = [
+    { name: "key_problems", original: "Рост без единых процессов", correction: "Уточнить ответственность." },
+    { name: "main_goals", original: "Улучшить управляемость", correction: "Согласовать сроки." },
+  ];
+  await expect(page.getByRole("button", { name: "Диктовать ответ", exact: true })).toHaveCount(2);
+  for (const { name, original, correction } of openProfileFields) {
+    const answer = page.locator(`textarea[name="${name}"]`);
+    const field = answer.locator("..");
+    await expect(answer).toHaveValue(original);
+    await field.getByRole("button", { name: "Диктовать ответ", exact: true }).click();
+    await field.getByRole("button", { name: "Остановить диктовку", exact: true }).click();
+    const preview = field.getByLabel("Распознанный текст", { exact: true });
+    await expect(preview).toHaveValue("Распознанная фраза.");
+    await expect(answer).toHaveValue(original);
+    await preview.fill(correction);
+    await field.getByRole("button", { name: "Добавить к ответу", exact: true }).click();
+    await expect(answer).toHaveValue(`${original} ${correction}`);
+  }
   await page.getByRole("button", { name: "Сохранить и перейти в кабинет", exact: true }).click();
   await expect(page).toHaveURL("/ru/dashboard");
   await expect(page.getByRole("heading", { name: "ООО «Тест A»", exact: true })).toBeVisible();
@@ -75,6 +94,9 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
 
   await page.getByRole("link", { name: "Редактировать профиль", exact: true }).click();
   await expect(page).toHaveURL(/\/ru\/company-profile\?returnTo=\/ru\/dashboard/);
+  for (const { name, original, correction } of openProfileFields) {
+    await expect(page.locator(`textarea[name="${name}"]`)).toHaveValue(`${original} ${correction}`);
+  }
   await page.locator('input[name="name"]').fill("ООО «Тест B»");
   await page.getByRole("button", { name: "Сохранить и перейти в кабинет", exact: true }).click();
   await expect(page).toHaveURL("/ru/dashboard");

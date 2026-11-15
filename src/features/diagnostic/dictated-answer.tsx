@@ -18,9 +18,9 @@ const browserMode = (): DictationMode => {
   return getSpeechRecognition(window) ? "browser" : "unavailable";
 };
 const buttonClass = "min-h-10 rounded-lg border border-line px-3 py-2 text-sm font-semibold";
-const fallbackMessage = "В Windows поставьте курсор в поле ответа и нажмите Win + H. Если диктовка недоступна во встроенном браузере, попробуйте открыть анкету в Chrome.";
-const localPrivacy = "Речь распознаётся на вашем устройстве. При первом запуске скачается модель русского языка (около 46 МБ). В диагностике сохраняется только вставленный текст.";
-const browserPrivacy = "Браузер может передать звук своему сервису распознавания. В диагностике сохраняется только вставленный текст.";
+const fallbackMessage = "В Windows поставьте курсор в поле ответа и нажмите Win + H. Если диктовка недоступна во встроенном браузере, попробуйте открыть эту страницу в Chrome.";
+const localPrivacy = "Речь распознаётся на вашем устройстве. При первом запуске скачается модель русского языка (около 46 МБ). Сохраняется только вставленный текст.";
+const browserPrivacy = "Браузер может передать звук своему сервису распознавания. Сохраняется только вставленный текст.";
 
 export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props }: Props) {
   const mode = useSyncExternalStore(subscribe, browserMode, serverMode);
