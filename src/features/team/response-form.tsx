@@ -5,12 +5,16 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { AnswerScale, AnswerScaleGuide } from "@/features/diagnostic/answer-scale";
 import { QuestionnaireIntro } from "@/features/diagnostic/questionnaire-intro";
-import { AutoResizeTextarea } from "@/components/ui/auto-resize-textarea";
+import { DictatedAnswer } from "@/features/diagnostic/dictated-answer";
 import { questionHelpForDisplay } from "@/shared/question-help";
-import { saveTeamResponseAction } from "@/server/team/actions";
+import { withRequestTimeout } from "@/shared/request-timeout";
 import type { TeamActionState, TeamQuestion, TeamResponse } from "@/server/team/contracts";
 
 type Answers = TeamResponse["answers"];
+type PendingSave = { revision: number; hash: string; submit: boolean };
+type SaveState = Pick<TeamResponse, "revision" | "status">;
+const conflictMessage = "Ответы изменились в другой вкладке. Обновите страницу перед сохранением.";
+const confirmationMessage = "Не удалось подтвердить сохранение. Ответы остались на экране. Попробуйте ещё раз.";
 const subscribe = () => () => {};
 const answersHash = (answers: Answers) => JSON.stringify(Object.entries(answers).sort(([a], [b]) => a.localeCompare(b)));
 const hasAnswer = (question: TeamQuestion, value: Answers[string]) => question.answer_type === "text" ? typeof value === "string" && value.trim().length > 0 : typeof value === "number" && value >= 0 && value <= 4;
@@ -25,12 +29,14 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
   const firstIncompleteBlock = blocks.findIndex((block) => block.questions.some((question) => question.required && !hasAnswer(question, initialAnswers[question.id])));
   const [viewIndex, setViewIndex] = useState(Math.max(0, firstIncompleteBlock < 0 ? blocks.length - 1 : firstIncompleteBlock));
   const [saving, setSaving] = useState<"saved" | "unsaved" | "saving" | "error">("saved");
+  const [retrySubmit, setRetrySubmit] = useState(false);
   const [navigationPending, setNavigationPending] = useState(false);
   const [missingIds, setMissingIds] = useState<string[]>([]);
   const [validationError, setValidationError] = useState("");
   const answersRef = useRef(answers);
   const stateRef = useRef(state);
   const persistedHash = useRef(answersHash(initialAnswers));
+  const pendingSave = useRef<PendingSave | null>(null);
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationPendingRef = useRef(false);
@@ -41,42 +47,98 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
   const answered = required.filter((question) => hasAnswer(question, answers[question.id])).length;
   const resultPath = `/ru/team/responses/${response.participant_id}/result`;
 
+  const apiPath = "/api/team/responses/" + response.participant_id;
+
   const save = useCallback((intent: "save" | "submit" = "save") => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     const operation = saveQueue.current.then(async () => {
       if (stateRef.current.status === "completed") return true;
-      const snapshot = answersRef.current;
-      const hash = answersHash(snapshot);
-      if (intent === "save" && hash === persistedHash.current) return true;
+      if (!pendingSave.current && intent === "save" && answersHash(answersRef.current) === persistedHash.current) return true;
       setSaving("saving");
-      const form = new FormData();
-      form.set("participantId", response.participant_id);
-      form.set("revision", String(stateRef.current.revision ?? response.revision));
-      form.set("answers", JSON.stringify(snapshot));
-      form.set("intent", intent);
-      try {
-        const result = await saveTeamResponseAction(stateRef.current, form);
+      function finish(result: SaveState, hash: string) {
+        pendingSave.current = null;
         stateRef.current = result;
         setState(result);
-        if (result.error) { setSaving("error"); return false; }
         persistedHash.current = hash;
         setSaving(answersHash(answersRef.current) === hash ? "saved" : "unsaved");
-        if (result.status === "completed") { router.push(`/ru/team/responses/${response.participant_id}/result`); router.refresh(); }
-        return true;
-      } catch {
-        const next = { ...stateRef.current, error: "Не удалось сохранить ответы. Они остались на экране. Попробуйте ещё раз." };
+        if (result.status === "completed") { router.push(resultPath); router.refresh(); }
+      }
+      function fail(error: string) {
+        const next = { ...stateRef.current, error };
         stateRef.current = next;
         setState(next);
+        setRetrySubmit(Boolean(pendingSave.current?.submit && pendingSave.current.hash === answersHash(answersRef.current)));
         setSaving("error");
         return false;
+      }
+      async function reconcile(pending: PendingSave) {
+        const saved = await withRequestTimeout(async signal => {
+          const current = await fetch(apiPath, { cache: "no-store", signal });
+          if (!current.ok) throw Error("status_unavailable");
+          const body = await current.json() as Pick<TeamResponse, "revision" | "status" | "answers">;
+          signal.throwIfAborted();
+          return body;
+        });
+        const hash = answersHash(saved.answers);
+        if (saved.revision === pending.revision + 1 && hash === pending.hash && saved.status === (pending.submit ? "completed" : "started")) {
+          finish({ revision: saved.revision, status: saved.status }, hash);
+          return "saved";
+        }
+        return saved.revision === pending.revision && saved.status !== "completed" ? "unchanged" : "conflict";
+      }
+      try {
+        let earlier = pendingSave.current;
+        if (earlier) {
+          const outcome = await reconcile(earlier);
+          if (stateRef.current.status === "completed") return true;
+          if (outcome === "conflict") {
+            pendingSave.current = null;
+            return fail(conflictMessage);
+          }
+          if (outcome === "saved") earlier = null;
+        }
+        const snapshot = answersRef.current;
+        const hash = answersHash(snapshot);
+        if (!earlier && intent === "save" && hash === persistedHash.current) return true;
+        const revision = stateRef.current.revision ?? response.revision;
+        const submit = intent === "submit";
+        pendingSave.current = { revision, hash, submit };
+        const { result, status } = await withRequestTimeout(async signal => {
+          const saved = await fetch(apiPath, {
+            method: "PATCH", headers: { "content-type": "application/json" }, signal,
+            body: JSON.stringify({ revision, answers: snapshot, submit }),
+          });
+          const result = await saved.json() as TeamActionState;
+          signal.throwIfAborted();
+          if (saved.status >= 500) throw Error("save_unavailable");
+          return { result, status: saved.status };
+        });
+        if (status === 409 && earlier) {
+          // The first write can commit after the earlier read and before this retry.
+          pendingSave.current = earlier;
+          const outcome = await reconcile(earlier);
+          if (outcome === "saved") {
+            if (stateRef.current.status === "completed" || (!submit && hash === persistedHash.current)) return true;
+            return fail(confirmationMessage);
+          }
+        }
+        if (status >= 400) {
+          pendingSave.current = null;
+          return fail(result.error ?? confirmationMessage);
+        }
+        if (result.revision !== revision + 1 || result.status !== (submit ? "completed" : "started")) throw Error("save_unavailable");
+        finish({ revision: result.revision, status: result.status }, hash);
+        return true;
+      } catch {
+        return fail(confirmationMessage);
       }
     });
     saveQueue.current = operation.then(() => true, () => false);
     return operation;
-  }, [response.participant_id, response.revision, router]);
+  }, [apiPath, response.revision, resultPath, router]);
 
   useEffect(() => {
-    if (state.status === "completed" || answersHash(answers) === persistedHash.current) return;
+    if (state.status === "completed" || (!pendingSave.current && answersHash(answers) === persistedHash.current)) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { void save(); }, 1500);
     return () => { if (timer.current) clearTimeout(timer.current); };
@@ -142,7 +204,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
     <div className="rounded-2xl border border-line bg-white p-5">
       <div className="flex flex-wrap justify-between gap-2 text-sm text-muted"><span>Блок {viewIndex + 1} из {blocks.length}</span><span>Отвечено {answered} из {required.length} обязательных вопросов</span></div>
       <div role="progressbar" aria-label="Заполнение анкеты" aria-valuemin={0} aria-valuemax={required.length} aria-valuenow={answered} className="mt-3 h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${required.length ? answered / required.length * 100 : 0}%` }} /></div>
-      {saving !== "saved" && <p role="status" aria-live="polite" className="mt-3 text-sm text-muted">{saving === "saving" ? "Сохранение…" : saving === "error" ? "Ответы пока не сохранены. Повторите сохранение." : "Есть несохранённые ответы…"}</p>}
+      {saving !== "saved" && <p role="status" aria-live="polite" className="mt-3 text-sm text-muted">{saving === "saving" ? "Сохранение…" : saving === "error" ? "Не удалось подтвердить сохранение." : "Есть несохранённые ответы…"}</p>}
     </div>
     <h2 ref={blockHeading} tabIndex={-1} className="scroll-mt-6 text-2xl font-semibold outline-none">{currentBlock.title}</h2>
     {viewIndex === 0 && <QuestionnaireIntro />}
@@ -156,13 +218,13 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
         <legend className="sr-only">Вопрос {index + 1}</legend>
         <label htmlFor={question.answer_type === "text" ? `q-${question.id}` : undefined} className="block font-medium">{index + 1}. {question.prompt}{question.required ? " *" : ""}</label>
         {help && <p id={`help-${question.id}`} className="mt-2 text-sm text-muted">{help}</p>}
-        {question.answer_type === "scale_0_4" ? <AnswerScale name={question.id} label={question.prompt} value={answers[question.id]} invalid={invalid} describedBy={`team-answer-scale-guide${help ? ` help-${question.id}` : ""}`} onChange={(value) => update(question, value)} /> : <AutoResizeTextarea id={`q-${question.id}`} name={question.id} value={String(answers[question.id] ?? "")} onChange={(event) => update(question, event.target.value)} maxLength={10000} rows={4} aria-invalid={invalid || undefined} aria-describedby={help ? `help-${question.id}` : undefined} className="mt-4 min-h-32 w-full rounded-xl border border-line p-3" />}
+        {question.answer_type === "scale_0_4" ? <AnswerScale name={question.id} label={question.prompt} value={answers[question.id]} invalid={invalid} describedBy={`team-answer-scale-guide${help ? ` help-${question.id}` : ""}`} onChange={(value) => update(question, value)} /> : <DictatedAnswer id={`q-${question.id}`} name={question.id} disabled={navigationPending || !hydrated} value={String(answers[question.id] ?? "")} onChange={(value) => update(question, value)} maxLength={10000} rows={4} aria-invalid={invalid || undefined} aria-describedby={help ? `help-${question.id}` : undefined} className="mt-4 min-h-32 w-full rounded-xl border border-line p-3" />}
         {invalid && <p className="mt-2 text-sm text-red-800">Ответьте на этот вопрос.</p>}
       </fieldset>;
     })}
     {state.error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{state.error}</p>}
     <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-      {saving === "error" && <button type="button" disabled={navigationPending || !hydrated} onClick={() => void save()} className="min-h-12 rounded-xl border border-line px-5 py-3 disabled:opacity-50">Повторить сохранение</button>}
+      {saving === "error" && <button type="button" disabled={navigationPending || !hydrated} onClick={() => void save(retrySubmit ? "submit" : "save")} className="min-h-12 rounded-xl border border-line px-5 py-3 disabled:opacity-50">{retrySubmit ? "Повторить отправку" : "Повторить сохранение"}</button>}
       <div className="flex gap-3 sm:ml-auto"><button type="button" disabled={viewIndex === 0 || navigationPending || !hydrated} onClick={() => void navigate(viewIndex - 1)} className="min-h-12 flex-1 rounded-xl border border-line px-5 py-3 disabled:opacity-50">Назад</button>{viewIndex < blocks.length - 1 ? <button type="button" disabled={navigationPending || !hydrated} onClick={() => void navigate(viewIndex + 1)} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Далее</button> : <button disabled={navigationPending || !hydrated} type="submit" className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Завершить участие</button>}</div>
     </div>
     <p className="text-sm text-muted">Ответы сохраняются автоматически. После завершения их изменить нельзя. Ваш личный результат будет доступен сразу; AI-отчёт для него не создаётся.</p>

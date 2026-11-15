@@ -11,6 +11,8 @@ npm ci
 npm run dev
 ```
 
+For local browser dictation, run `python3 scripts/prepare-dictation-assets.py` after `npm ci` and before starting Next.js. This needs Python 3.11 or later and downloads the pinned Russian model once. Pass `--model-zip /path/to/vosk-model-small-ru-0.22.zip` to reuse the official archive. The Docker build assembles the same assets automatically.
+
 Copy `.env.example` to `.env.local`, start Supabase with `npx supabase start`, then open http://127.0.0.1:3000/ru. `/` redirects to `/ru`. Both landing CTAs lead to `/ru/register`. Use the local Mailpit UI at http://127.0.0.1:54324 to inspect confirmation and recovery emails. Without `.env.local`, the public landing still works and auth pages show a safe unavailable state.
 
 ## Checks

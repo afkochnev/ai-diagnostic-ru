@@ -8,6 +8,7 @@ import { requireIdentity } from "@/server/auth/session";
 import { clearRecovery } from "@/server/auth/recovery";
 import { createAuthClient } from "@/server/supabase/server";
 import { authConfig } from "@/server/supabase/config";
+import { isAppRequestOrigin } from "@/server-runtime/app-request-origin";
 import { requireCompanyWrite } from "@/server/account/authorization";
 import { getTeamInvitationProvider, teamInvitationMessage } from "./invitation-email";
 import { sealInvitationDetails,openInvitationDetails } from "./invitation-details";
@@ -26,8 +27,8 @@ import { requireEntitlement } from "@/server/entitlements";
 import {controlledTeamContext,controlledTeamRequired} from '@/server-runtime/team-smoke';
 const cookieName = "team-invitation";
 const value = (form: FormData, key: string) => String(form.get(key) ?? "");
-async function origin() {
-  if (!teamFoundationEnabled() || (await headers()).get("origin") !== authConfig().APP_URL) throw new Error("team_unavailable");
+async function origin(allowLegacyContinuation = false) {
+  if (!teamFoundationEnabled() || !isAppRequestOrigin(await headers(), authConfig().APP_URL, allowLegacyContinuation)) throw new Error("team_unavailable");
 }
 function failure(error: unknown): TeamActionState {
   const code = error instanceof Error ? error.message : "";
@@ -142,7 +143,7 @@ export async function revokeTeamAction(form: FormData) {
 }
 export async function prepareTeamInvitationAction(_: TeamActionState, form: FormData): Promise<TeamActionState> {
   try {
-    await origin();
+    await origin(true);
     const token = invitationToken.parse(value(form,"token"));
     const details=value(form,"context"),hash=createHash("sha256").update(token).digest("hex");
     const controlled=await controlledTeamContext({invitationHash:hash});
@@ -161,7 +162,7 @@ export async function prepareTeamInvitationAction(_: TeamActionState, form: Form
 export async function acceptTeamInvitationAction(_:TeamActionState,form:FormData): Promise<TeamActionState> { return sendTeamCodeAction({},form); }
 export async function switchTeamInvitationAccountAction(): Promise<TeamActionState> {
   try {
-    await origin();
+    await origin(true);
     const client = await createAuthClient();
     const { error } = await client.auth.signOut({ scope: "local" });
     if (error) throw new Error("team_switch_account_failed");
@@ -173,14 +174,18 @@ export async function switchTeamInvitationAccountAction(): Promise<TeamActionSta
 }
 export async function saveTeamResponseAction(previous: TeamActionState, form: FormData): Promise<TeamActionState> {
   try {
-    await origin(); const identity = await requireIdentity();
+    await origin(true); const identity = await requireIdentity();
     await enforceRateLimit(`team-save:${identity.user.id}`, 120, 3600);
     const raw = value(form,"answers");
     if (raw.length > 1000000) throw new Error("team_invalid_answers");
     const input = teamSave.parse({ participantId: value(form,"participantId"), revision: value(form,"revision"), answers: JSON.parse(raw), submit: value(form,"intent") === "submit" });
     await controlledTeamContext({participantId:input.participantId});
     return await teamRpc<{ revision: number; status: string }>("save_team_response", { p_participant_id: input.participantId, p_expected_revision: input.revision, p_answers: input.answers, p_submit: input.submit });
-  } catch (error) { return { revision: previous.revision, status: previous.status, ...failure(error) }; }
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    const saveFailure = code === "team_revision_conflict" ? "conflict" : code === "team_request_failed" ? "uncertain" : undefined;
+    return { revision: previous.revision, status: previous.status, ...failure(error), ...(saveFailure ? { saveFailure } : {}) };
+  }
 }
 
 export async function teamResultAction(_: TeamActionState, form: FormData): Promise<TeamActionState> {

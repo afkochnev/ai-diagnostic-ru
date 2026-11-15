@@ -1,3 +1,4 @@
+import { PUBLIC_APP_HOSTNAME, PUBLIC_APP_ORIGIN } from "@/shared/app-origin";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
@@ -17,7 +18,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!isLocale(locale)) notFound();
   const title = "Управленческий AI-аудит компании";
   const description = "Пройдите диагностику системы управления и получите AI-отчёт с ключевыми рисками, ограничениями и планом действий на 90 дней.";
-  const origin = "https://audit.iteamsystems.com";
+  const origin = PUBLIC_APP_ORIGIN;
   const image = `${origin}/og/iteam-audit.png`;
   return { title: { default: title, template: `%s | ${title}` }, description, alternates: { canonical: origin }, openGraph: { title, description, url: origin, type: "website", images: [{ url: image, width: 1200, height: 630, alt: title }] }, twitter: { card: "summary_large_image", title, description, images: [image] } };
 }
@@ -32,7 +33,7 @@ export default async function LocaleLayout({ children, params }: Props & { child
       <SessionRefresh />
       <SiteHeader locale={locale} messages={messages} signedIn={Boolean(await getIdentity())} />
       {children}
-      <footer className="border-t border-line py-7"><Container><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{messages.site.footer}</p><a className="text-sm underline" href="https://audit.iteamsystems.com" target="_blank" rel="noreferrer">audit.iteamsystems.com</a></div></Container></footer>
+      <footer className="border-t border-line py-7"><Container><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{messages.site.footer}</p><a className="text-sm underline" href={PUBLIC_APP_ORIGIN} target="_blank" rel="noreferrer">{PUBLIC_APP_HOSTNAME}</a></div></Container></footer>
     </>
   );
 }

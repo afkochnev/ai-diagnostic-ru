@@ -1,4 +1,5 @@
 import{describe,it,expect,vi,beforeEach}from'vitest';
+import{LEGACY_PUBLIC_APP_ORIGIN,PUBLIC_APP_ORIGIN}from'@/shared/app-origin';
 vi.mock('server-only',()=>({}));vi.mock('@/server/billing/service',()=>({billingRpc:vi.fn()}));
 // Use the real commercial contract; every provider request below uses the fake transport.
 import{YooKassaBillingProvider,yookassaConfigured,type YooKassaContext}from'@/server/billing/yookassa';
@@ -15,9 +16,33 @@ describe('production-mode fake transport and synthetic configuration only',()=>{
  it('cannot reach the provider when the database refuses checkout admission',async()=>{
   const d={provider,rpc:vi.fn(async()=>{throw Error('billing_unavailable');})} as unknown as YooKassaDependencies;
   await expect(createYooKassaPayment(aid,null,'owner@example.test',{version:'advanced-terms-ru-v1',sha256:'a'.repeat(64),accepted:true},d)).rejects.toThrow('billing_unavailable');
-  expect(d.rpc).toHaveBeenCalledExactlyOnceWith('billing_start_yookassa_checkout',expect.objectContaining({p_account_id:aid}));expect(http).not.toHaveBeenCalled();
+  expect(d.rpc).toHaveBeenCalledExactlyOnceWith('billing_start_yookassa_checkout_with_origin',expect.objectContaining({p_account_id:aid,p_return_origin:LEGACY_PUBLIC_APP_ORIGIN}));expect(http).not.toHaveBeenCalled();
  });
  it('creates the fixed one-year no-VAT payment only after a read-only merchant check',async()=>{http.mockImplementation(async(url:string)=>Response.json(url.endsWith('/me')?merchant():payment({status:'pending',paid:false,confirmation:{type:'redirect',confirmation_url:'https://yoomoney.ru/checkout/synthetic'}})));expect(yookassaConfigured(env)).toBe(true);await provider().createCheckout({...c,provider_payment_ref:'reserved-'+id},'owner@example.test');expect(http.mock.calls.map(x=>x[0])).toEqual(['https://api.yookassa.ru/v3/me','https://api.yookassa.ru/v3/payments']);const init=http.mock.calls[1][1] as RequestInit,b=JSON.parse(init.body as string);expect(init.headers).toMatchObject({'Idempotence-Key':id});expect(b).toMatchObject({amount:{value:'480.00',currency:'RUB'},capture:true,save_payment_method:false,confirmation:{return_url:'https://audit.iteamsystems.com/ru/billing/return?checkout='+id},receipt:{items:[{vat_code:1,payment_subject:'service',payment_mode:'full_payment',quantity:1,measure:'another'}]}});expect(b.receipt).not.toHaveProperty('tax_system_code');expect(b).not.toHaveProperty('test');});
+ it.each([
+  [null, LEGACY_PUBLIC_APP_ORIGIN, PUBLIC_APP_ORIGIN, LEGACY_PUBLIC_APP_ORIGIN],
+  [PUBLIC_APP_ORIGIN, PUBLIC_APP_ORIGIN, LEGACY_PUBLIC_APP_ORIGIN, PUBLIC_APP_ORIGIN],
+ ])('retries a reserved checkout with the original provider payload across the deployment origin change %#',async(return_origin,firstOrigin,secondOrigin,expectedOrigin)=>{
+  http.mockImplementation(async(url:string)=>Response.json(url.endsWith('/me')?merchant():payment({status:'pending',paid:false,confirmation:{type:'redirect',confirmation_url:'https://yoomoney.ru/checkout/synthetic'}})));
+  const saved={...c,provider_payment_ref:'reserved-'+id,return_origin};
+  const rpc=vi.fn(async(name:string)=>name==='billing_start_yookassa_checkout_with_origin'?saved:null);
+  const terms={version:'advanced-terms-ru-v1',sha256:'a'.repeat(64),accepted:true} as const;
+  for(const appUrl of [firstOrigin,secondOrigin]){
+   const d={provider:()=>provider({...env,APP_URL:appUrl}),rpc} as unknown as YooKassaDependencies;
+   await expect(createYooKassaPayment(aid,null,'owner@example.test',terms,d)).resolves.toBe('https://yoomoney.ru/checkout/synthetic');
+   expect(rpc).toHaveBeenCalledWith('billing_start_yookassa_checkout_with_origin',expect.objectContaining({p_return_origin:appUrl}));
+  }
+  const writes=(http.mock.calls as [string,RequestInit][]).filter(([,init])=>init.method==='POST');
+  expect(writes).toHaveLength(2);
+  expect(writes[0][1].body).toBe(writes[1][1].body);
+  expect(writes.every(([,init])=>(init.headers as Record<string,string>)['Idempotence-Key']===id)).toBe(true);
+  expect(JSON.parse(writes[0][1].body as string).confirmation.return_url).toBe(expectedOrigin+'/ru/billing/return?checkout='+id);
+ });
+ it('rejects a persisted production return origin outside the two approved domains',async()=>{
+  const wrong={...c,return_origin:'https://foreign.example'} as unknown as YooKassaContext;
+  await expect(provider().createCheckout(wrong,'owner@example.test')).rejects.toThrow();
+  expect(http).not.toHaveBeenCalled();
+ });
  it('omits tax_system_code and sends the owner-approved access-service receipt for Receipts from YooKassa',async()=>{const e={...env,YOOKASSA_RECEIPT_SOLUTION:'yookassa',YOOKASSA_RECEIPT_REQUIRES_MEASURE:'true',YOOKASSA_TAX_SYSTEM_CODE:'2'};http.mockImplementation(async(url:string)=>Response.json(url.endsWith('/me')?merchant():payment({status:'pending',paid:false,confirmation:{type:'redirect',confirmation_url:'https://yoomoney.ru/checkout/synthetic'}})));await provider(e).createCheckout({...c,provider_payment_ref:'reserved-'+id},'owner@example.test');const body=JSON.parse(http.mock.calls[1][1].body as string);expect(body.receipt.items).toEqual([{description:'Доступ Advanced к AI Company Audit на 1 год',quantity:1,amount:{value:'480.00',currency:'RUB'},payment_subject:'service',payment_mode:'full_payment',measure:'another',vat_code:1}]);expect(body.receipt).not.toHaveProperty('tax_system_code');});
  it('rejects other before merchant preflight or payment creation',async()=>{await expect(provider({...env,YOOKASSA_RECEIPT_MEASURE:'other'}).createCheckout(c,'owner@example.test')).rejects.toThrow('billing_receipt_invalid');expect(http).not.toHaveBeenCalled();});
  it.each([{YOOKASSA_PRODUCTION_FISCAL_CONFIRMED:undefined},{YOOKASSA_PAYMENT_MODE_CONFIRMED:undefined},{YOOKASSA_RECEIPT_CONFIG_CONFIRMED:undefined},{YOOKASSA_RECEIPT_REQUIRES_TAX_SYSTEM_CODE:undefined}])('unconfirmed fiscal inputs prevent even the first request %#',async patch=>{await expect(provider({...env,...patch}).createCheckout(c,'owner@example.test')).rejects.toThrow();expect(http).not.toHaveBeenCalled();});

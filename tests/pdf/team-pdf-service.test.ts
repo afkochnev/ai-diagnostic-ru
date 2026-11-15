@@ -7,6 +7,7 @@ vi.mock("@/server/account/authorization",()=>({authenticatedAccountClient:mocks.
 vi.mock("@/server/supabase/admin",()=>({createAdminClient:mocks.admin}));
 vi.mock("@/server/team/pdf-render",()=>({renderTeamPdf:mocks.render}));
 import { getTeamPdf,prepareTeamPdf } from "@/server/team/pdf-service";
+import { LEGACY_TEAM_PDF_TEMPLATE_VERSION, TEAM_PDF_TEMPLATE_VERSION } from "@/shared/analytics/team-report-presentation";
 const id="10000000-0000-4000-8000-000000000001";
 const source=()=>({report_id:id,version:3,pipeline:"TEAM-RU-3",model:"team-mock-v3",completed_at:"2026-10-19T07:00:00+00:00",company_name:"FoodTech",team_title:"Team",participant_count:4,overall:{mean:50,maturity:"Зона развития"},blocks:Array.from({length:8},(_,i)=>({title:`Блок ${i+1}`,mean:50})),content:reportFixture()});
 let artifact:Record<string,string>|null=null;
@@ -40,11 +41,14 @@ describe("Team PDF artifact boundary",()=>{
   });
 });
 
-it.each(["team-report-v1","team-report-v2","team-report-v3","team-report-v3-dispersion-percent-v1","team-report-v3-dispersion-percent-v2"])("creates the current presentation artifact without returning or overwriting cached %s",async(template)=>{
- const old={team_report_id:id,format:"pdf",team_report_version:3,template_version:template,status:"ready",content_base64:Buffer.from("historical").toString("base64"),checksum:"historical-checksum"},before=JSON.stringify(old),rows:Record<string,unknown>[]=[old];
+it.each(["team-report-v1","team-report-v2","team-report-v3","team-report-v3-dispersion-percent-v1","team-report-v3-dispersion-percent-v2",LEGACY_TEAM_PDF_TEMPLATE_VERSION])("creates the current presentation artifact without overwriting cached %s",async(template)=>{
+ const oldBytes=Buffer.from("%PDF-1.7\nlegacy-domain"),old={team_report_id:id,format:"pdf",team_report_version:3,template_version:template,status:"ready",content_base64:oldBytes.toString("base64"),checksum:crypto.createHash("sha256").update(oldBytes).digest("hex")},before=JSON.stringify(old),rows:Record<string,unknown>[]=[old];
  mocks.admin.mockReturnValue({from:()=>{const filters:Record<string,unknown>={};const chain={select:()=>chain,eq:(key:string,value:unknown)=>{filters[key]=value;return chain;},maybeSingle:async()=>({data:rows.find(r=>Object.entries(filters).every(([k,v])=>r[k]===v))??null,error:null}),upsert:async(row:Record<string,unknown>,options:{ignoreDuplicates:boolean})=>{expect(options.ignoreDuplicates).toBe(true);rows.push(row);return {error:null};}};return chain;}});
- await expect(getTeamPdf(id,"owner")).rejects.toThrow("team_pdf_not_ready");await prepareTeamPdf(id,"owner");
- expect(rows).toHaveLength(2);expect(rows[1].template_version).toBe("team-report-v3-dispersion-percent-v3");expect(JSON.stringify(old)).toBe(before);expect((await getTeamPdf(id,"owner")).bytes.toString()).toContain("%PDF");
+ if(template===LEGACY_TEAM_PDF_TEMPLATE_VERSION) expect((await getTeamPdf(id,"owner")).bytes).toEqual(oldBytes);
+ else await expect(getTeamPdf(id,"owner")).rejects.toThrow("team_pdf_not_ready");
+ expect(mocks.render).not.toHaveBeenCalled();
+ await prepareTeamPdf(id,"owner");
+ expect(rows).toHaveLength(2);expect(rows[1].template_version).toBe(TEAM_PDF_TEMPLATE_VERSION);expect(JSON.stringify(old)).toBe(before);expect((await getTeamPdf(id,"owner")).bytes.toString()).toContain("%PDF");
 });
 
 function profileClient(fingerprint="same",questionCount=80){

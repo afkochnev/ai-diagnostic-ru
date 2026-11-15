@@ -11,7 +11,10 @@ afterEach(()=>vi.unstubAllEnvs());
 describe('explicit ordinary Team product mode',()=>{
  it('requires the production identity, foundation flag and explicit release flag',()=>{
   expect(teamProductEnabled(production)).toBe(true);
-  for(const delta of [{TEAM_PRODUCT_ENABLED:undefined},{TEAM_PRODUCT_ENABLED:'false'},{TEAM_ENABLED:'false'},{NODE_ENV:'development'},{APP_URL:'https://other.example.test'},{APP_URL:'https://audit.iteam.ru'},{APP_URL:'https://iteamsystems.com'},{SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co'}])expect(teamProductEnabled({...production,...delta})).toBe(false);
+  const canonical = { ...production, APP_URL: 'https://audit.iteam.ru' };
+  expect(teamProductEnabled(canonical)).toBe(true);
+  expect(controlledTeamRequired(canonical)).toBe(false);
+  for(const delta of [{TEAM_PRODUCT_ENABLED:undefined},{TEAM_PRODUCT_ENABLED:'false'},{TEAM_ENABLED:'false'},{NODE_ENV:'development'},{APP_URL:'https://other.example.test'},{APP_URL:'https://iteam.ru'},{APP_URL:'https://iteamsystems.com'},{SUPABASE_URL:'https://vflgxgdwlftlyjslyrmo.supabase.co'}])expect(teamProductEnabled({...production,...delta})).toBe(false);
   expect(controlledTeamRequired(production)).toBe(false);
   expect(()=>controlledTeamRequired({...production,TEAM_PRODUCT_ENABLED:'false'})).toThrow('controlled_team_unavailable');
   expect(controlledTeamRequired({...production,APP_URL:'https://audit.iteam.ru',TEAM_PRODUCT_ENABLED:'false'})).toBe(true);
@@ -22,6 +25,7 @@ describe('explicit ordinary Team product mode',()=>{
   expect(teamProductEnabled(paused)).toBe(true);expect(teamCreationEnabled(paused)).toBe(false);expect(teamInvitationsEnabled(paused)).toBe(false);
  });
  it('uses the new origin ordinary effect paths without requesting an operator envelope',async()=>{
+  vi.stubEnv('APP_URL', 'https://audit.iteam.ru');
   expect(await controlledTeamContext({teamId:'10000000-0000-4000-8000-000000000001'})).toBeNull();
   expect(await reserveControlledTeamEffect(null,'pdf',{reportId:'20000000-0000-4000-8000-000000000001'})).toBeNull();
   expect(()=>assertControlledTeamEffectWindow(null)).not.toThrow();expect(fixture.rpc).not.toHaveBeenCalled();

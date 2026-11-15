@@ -17,7 +17,7 @@ describe("AI report generation progress UX", () => {
   });
   it("covers initial and regeneration flows and keeps polling separate", () => {
     expect(section).toContain("ReportGenerationProgress");
-    expect(section).toContain("setTimeout(poll,1500)");
+    expect(section).toContain("startStatusPolling");
     expect(regeneration).toContain("ReportGenerationProgress");
     expect(regeneration).toContain('disabled={state === "preparing" || state === "queued"}');
   });

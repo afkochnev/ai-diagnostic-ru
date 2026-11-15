@@ -196,6 +196,43 @@ try:
  assert sql("select count(*) from private.product_events where metadata::text ~ 'Synthetic|@example|secret'")=='0'
  assert sql(f"select count(*) from private.product_events where visit_id='{visit}' and event_name='diagnostic_claimed'")=='1'
  passed('changed legal versions require explicit renewal; both original/current timestamps preserved; cohort rates use intersections, events never contain answers/PII')
+ # Publish the real v5 only inside this disposable database after the legacy checks.
+ sql("update public.consent_documents set version='temporary-ru-v1' where kind in('data_processing','marketing')")
+ old_id,old_hash,_,_=fresh()
+ sql((ROOT/'supabase/migrations/20261114155511_methodology_ru_3_draft.sql').read_text(encoding='utf-8'))
+ new_version=sql("select v.id from public.diagnostic_versions v join public.diagnostic_definitions d on d.id=v.definition_id where d.key='manageability' and v.version_number=5 and v.status='draft'")
+ assert new_version and json.loads(rpc('read',old_id,old_hash))['methodology_version_id']==version
+ assert sql(f"select count(*) from public.questions where version_id='{version}'")=='84'
+ draft_session,draft_hash,_,_=fresh()
+ assert json.loads(rpc('read',draft_session,draft_hash))['methodology_version_id']==version
+ sql(f"update public.diagnostic_versions set status='published',published_at=now() where id='{new_version}' and status='draft'")
+ new_id,new_hash,_,_=fresh()
+ new_state=json.loads(rpc('read',new_id,new_hash))
+ old_state=json.loads(rpc('read',old_id,old_hash))
+ assert new_state['methodology_version_id']==new_version and old_state['methodology_version_id']==version
+ new_answers=json.loads(sql(f"select jsonb_agg(jsonb_build_object('question_id',id,'key',key,'value',case when answer_type='text' then to_jsonb('Синтетический ответ '||key) else '2'::jsonb end,'required',is_required) order by id) from public.questions where version_id='{new_version}' and is_active"))
+ assert len(new_answers)==93 and sum(answer['required'] for answer in new_answers)==82
+ optional=next({'question_id':a['question_id'],'value':('Развёрнутый текст. '*100).strip()} for a in new_answers if a['key']=='strategy_summary')
+ for subset in [[],[optional]]:
+  run_id,run_hash,_,_=fresh()
+  run_state=json.loads(rpc('read',run_id,run_hash))
+  required_answers=[{'question_id':a['question_id'],'value':a['value']} for a in new_answers if a['required']]
+  revision=json.loads(rpc('save',run_id,run_hash,{'expected_revision':1,'mutation_id':sql('select gen_random_uuid()'),'current_block_id':run_state['current_block_id'],'answers':required_answers+subset}))['revision']
+  restored=json.loads(rpc('read',run_id,run_hash))
+  assert len(restored['answers'])==82+len(subset)
+  if subset:assert restored['answers'][optional['question_id']]==optional['value']
+  assert json.loads(rpc('complete',run_id,run_hash,{'expected_revision':revision}))['ok']
+  if subset:
+   rpc('profile',run_id,run_hash,{'context':profile})
+   rpc('email',run_id,run_hash,{'email':'account-fixture-1@example.test','display_name':'RU-3 guest','nonce_hash':secrets.token_hex(32),'marketing_granted':False,'marketing_version':'temporary-ru-v1'})
+   claim(1,run_id,run_hash,'recover')
+   claimed_v5=json.loads(claim(1,run_id,run_hash,company=own['id']))['diagnostic_id']
+   assert sql(f"select version_id from public.diagnostics where id='{claimed_v5}'")==new_version
+   assert sql(f"select count(*) from public.answers where diagnostic_id='{claimed_v5}'")=='83'
+   assert sql(f"select text_value from public.answers where diagnostic_id='{claimed_v5}' and question_id='{optional['question_id']}'")==optional['value']
+ assert json.loads(rpc('read',old_id,old_hash))['methodology_version_id']==version
+ assert sql(f"select version_id from public.diagnostics where id='{did}'")==version
+ passed('RU-3 guest draft/current selection, frozen legacy sessions and claimed diagnostic, optional text persistence, completion and claim')
  print(json.dumps({'status':'PASS','groups':len(checks),'integrity':integrity,'realAIRequests':0,'realEmails':0,'remoteDatabasesTouched':False}),flush=True)
 finally:
  sql('drop database if exists '+db,database='postgres')

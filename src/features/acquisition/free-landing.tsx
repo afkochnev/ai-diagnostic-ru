@@ -1,3 +1,4 @@
+import { PUBLIC_APP_ORIGIN } from "@/shared/app-origin";
 import Image from 'next/image';
 import Link from 'next/link';
 import {Container} from '@/components/ui/container';
@@ -51,7 +52,7 @@ export function LandingPromises() {
 }
 
 export function LandingOutcome() {
-  return <p className="mt-4 max-w-xl text-lg leading-relaxed text-muted sm:text-xl">За 20 минут вы получите объемную картину своей компании и увидите направление необходимых изменений.</p>;
+  return <p className="mt-4 max-w-xl text-lg leading-relaxed text-muted sm:text-xl">За 30–40 минут вы получите объёмную картину своей компании и увидите направление необходимых изменений.</p>;
 }
 
 export function FreeLanding({authenticated, attribution}: {authenticated: boolean; attribution: Record<string, string>}) {
@@ -60,7 +61,7 @@ export function FreeLanding({authenticated, attribution}: {authenticated: boolea
   return <main id="main-content">
     <VisitTracker attribution={attribution}/>
     <section className="border-b border-line py-8 sm:py-12" aria-labelledby="hero-title"><Container>
-      <a href="https://audit.iteamsystems.com" target="_blank" rel="noreferrer" className="mb-6 inline-flex rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"><Image src="/brand/iteam-logo-landing.png" alt="iTeam" width={144} height={45} priority className="h-auto w-32 sm:w-36"/></a>
+      <a href={PUBLIC_APP_ORIGIN} target="_blank" rel="noreferrer" className="mb-6 inline-flex rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand"><Image src="/brand/iteam-logo-landing.png" alt="iTeam" width={144} height={45} priority className="h-auto w-32 sm:w-36"/></a>
       <div className="grid items-start gap-8 lg:grid-cols-[1.05fr_1fr] lg:gap-10"><div>
         <p className="text-sm font-medium text-muted">Для собственников и руководителей компаний</p>
         <h1 id="hero-title" className="mt-3 text-3xl leading-tight font-semibold tracking-tight sm:text-4xl lg:text-[2.65rem]">Узнайте, что ограничивает рост вашей компании</h1>

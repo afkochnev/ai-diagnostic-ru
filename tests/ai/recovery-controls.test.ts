@@ -4,6 +4,7 @@ import type {ReactNode,ReactElement} from "react";
 import {readFileSync} from "node:fs";
 const h=vi.hoisted(()=>({values:[] as unknown[],cursor:0,effects:[] as (()=>void|(()=>void))[]}));
 vi.mock("react",async original=>({...await original<typeof import('react')>(),useState(initial:unknown){const i=h.cursor++;if(!(i in h.values))h.values[i]=initial;return[h.values[i],(v:unknown)=>{h.values[i]=v;}];},useRef(initial:unknown){const i=h.cursor++;if(!(i in h.values))h.values[i]={current:initial};return h.values[i];},useEffect(fn:()=>void|(()=>void)){h.effects.push(fn);}}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 import {AdminReportRegeneration} from "@/features/ai/admin-report-regeneration";
 import {ReportRegenerationButton} from "@/features/ai/report-regeneration-button";
 const fetcher=vi.fn(),reload=vi.fn();let cleanups:(()=>void)[]=[];
@@ -19,7 +20,7 @@ describe('Individual recovery controls',()=>{
  });
  it('shows owner failed recovery label and the result page includes it for failed only',()=>{
   const tree=render(()=>ReportRegenerationButton({diagnosticId:'d',failed:true}));expect(nodes(tree).some(x=>x.type==='button'&&x.props.children==='Повторить формирование AI-отчёта')).toBe(true);
-  const source=readFileSync('src/app/[locale]/(workspace)/diagnostics/[diagnosticId]/result/page.tsx','utf8');expect(source).toContain('data.aiReport?.status === "failed" && <ReportRegenerationButton diagnosticId={diagnosticId} failed />');expect(fetcher).not.toHaveBeenCalled();
+  const source=readFileSync('src/app/[locale]/(workspace)/diagnostics/[diagnosticId]/result/page.tsx','utf8');expect(source).toContain('data.aiReport?.status === "failed" && <ReportRegenerationButton diagnosticId={diagnosticId} currentVersion={data.aiReport.version} failed />');expect(fetcher).not.toHaveBeenCalled();
  });
  it.each([['missing','Сформировать AI-отчёт'],['failed','Повторить формирование AI-отчёта'],['completed','Сформировать новую версию']] as const)('admin %s has deliberate action', (status,label)=>{
   const tree=render(()=>AdminReportRegeneration({diagnosticId:'d',initialStatus:status}));mount();expect(nodes(tree).some(x=>x.props.children===label)).toBe(true);expect(fetcher).not.toHaveBeenCalled();

@@ -18,8 +18,12 @@ async function verify(c:YooKassaContext,deps:YooKassaDependencies){
 export async function createYooKassaPayment(account:string,company:string|null,email:string,terms:CommercialAcceptance,deps=runtime){
  const legal= commercialTermsRpc(terms);
  const provider=deps.provider();provider.assertCheckoutReady();
- const id=z.uuid().parse(await deps.rpc('billing_start_yookassa_checkout',{p_account_id:z.uuid().parse(account),p_company_id:company===null?null:z.uuid().parse(company),...legal}));
- const c=yookassaContextSchema.parse(await deps.rpc('billing_yookassa_owner_context',{p_checkout_id:id}));
+ const args={p_account_id:z.uuid().parse(account),p_company_id:company===null?null:z.uuid().parse(company),...legal};
+ const returnOrigin=provider.productionCheckoutOrigin();
+ const raw=returnOrigin
+  ? await deps.rpc('billing_start_yookassa_checkout_with_origin',{...args,p_return_origin:returnOrigin})
+  : await deps.rpc('billing_yookassa_owner_context',{p_checkout_id:z.uuid().parse(await deps.rpc('billing_start_yookassa_checkout',args))});
+ const c=yookassaContextSchema.parse(raw),id=c.id;
  if(!c.provider_payment_ref.startsWith('reserved-')){
   const checked=await verify(c,deps);
   if(checked.status==='rejected'||checked.status==='retryable')throw new YooKassaError('billing_payment_reconciliation_required',true);

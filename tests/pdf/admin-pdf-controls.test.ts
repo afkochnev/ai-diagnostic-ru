@@ -6,8 +6,9 @@ vi.mock("react", async original => ({ ...await original<typeof import("react")>(
   useState(initial: unknown) { const i = h.cursor++; if (!(i in h.values)) h.values[i] = initial; return [h.values[i], (v: unknown) => { h.values[i] = v; }]; },
   useRef(initial: unknown) { const i = h.cursor++; if (!(i in h.values)) h.values[i] = { current: initial }; return h.values[i]; } }));
 import { AdminIndividualPdf } from "@/features/pdf/admin-individual-pdf";
+import { INDIVIDUAL_PDF_TEMPLATE_VERSION } from "@/shared/individual-pdf-template";
 const id = "10000000-0000-4000-8000-000000000001", artifact = "30000000-0000-4000-8000-000000000001";
-const ready = { report_id: id, ai_report_version: 2, artifact_id: artifact, status: "ready", template_version: "stage12-1j", checksum: "a".repeat(64), download_url: `/api/admin/report-artifacts/${artifact}` };
+const ready = { report_id: id, ai_report_version: 2, artifact_id: artifact, status: "ready", template_version: INDIVIDUAL_PDF_TEMPLATE_VERSION, checksum: "a".repeat(64), download_url: `/api/admin/report-artifacts/${artifact}` };
 const f = vi.fn();
 function render() { h.cursor = 0; return AdminIndividualPdf({ reportId: id, version: 2 }); }
 function nodes(n: ReactNode): ReactElement<{ children?: ReactNode; onClick?: () => void; href?: string; disabled?: boolean }>[] { if (Array.isArray(n)) return n.flatMap(nodes); if (!React.isValidElement<{ children?: ReactNode; onClick?: () => void; href?: string; disabled?: boolean }>(n)) return []; return [n, ...nodes(n.props.children)]; }

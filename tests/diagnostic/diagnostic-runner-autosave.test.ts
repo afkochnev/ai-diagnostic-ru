@@ -51,7 +51,7 @@ const hooks = vi.hoisted(() => {
 });
 
 vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof import("react")>(), ...hooks }));
-const navigation = vi.hoisted(() => ({ push: vi.fn() }));
+const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
 vi.mock("next/link", () => ({ default: "a" }));
 
@@ -81,6 +81,7 @@ describe("diagnostic runner autosave", () => {
   beforeEach(() => {
     hooks.reset();
     navigation.push.mockClear();
+    navigation.refresh.mockClear();
     vi.useFakeTimers();
     // Supports the classic JSX transform used by the Node test environment.
     vi.stubGlobal("React", React);
@@ -212,7 +213,33 @@ describe("diagnostic runner autosave", () => {
     (leave?.props.onClick as (event: { preventDefault: () => void }) => void)({ preventDefault: vi.fn() });
     await vi.advanceTimersByTimeAsync(0);
     expect(navigation.push).not.toHaveBeenCalled();
-    expect(elements(renderAnonymous()).some((element) => element.props.role === "alert" && String(element.props.children).includes("Не удалось сохранить"))).toBe(true);
+    expect(elements(renderAnonymous()).some((element) => element.props.role === "alert" && String(element.props.children).includes("Ответы остались на экране"))).toBe(true);
+  });
+
+  it.each([false, true])("replays a timed out save before sending a later answer (anonymous=%s)", async anonymous => {
+    const renderRunner = () => hooks.render(() => DiagnosticRunner({ data, anonymous }));
+    let timedOutSignal!: AbortSignal;
+    fetchMock.mockImplementationOnce((_url, { signal }: { signal: AbortSignal }) => {
+      timedOutSignal = signal;
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+    });
+    edit(renderRunner(), 3);
+    renderRunner();
+    await vi.advanceTimersByTimeAsync(15_900);
+    expect(timedOutSignal.aborted).toBe(true);
+    const retry = elements(renderRunner()).find(element => element.props.children === "Повторить сохранение");
+    expect(retry).toBeDefined();
+    edit(renderRunner(), 4);
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ revision: 8 }) });
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ revision: 9 }) });
+    (retry?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [first, replay, newSave] = fetchMock.mock.calls.map(([, options]) => JSON.parse(options.body));
+    expect(replay).toEqual(first);
+    expect(newSave.mutation_id).not.toEqual(first.mutation_id);
+    expect(newSave).toMatchObject({ expected_revision: 8, answers: [{ question_id: "question-1", value: 4 }] });
+    expect(elements(renderRunner()).some(element => element.props.role === "alert")).toBe(false);
   });
 
   it("keeps the explicit save and submit sequence", async () => {
@@ -230,4 +257,80 @@ describe("diagnostic runner autosave", () => {
     ]);
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ expected_revision: 8 });
   });
+
+  it.each(["request", "body"] as const)("releases final submit when the %s stops responding", async (phase) => {
+    const finalBlockData = { ...data, diagnostic: { ...data.diagnostic, current_block_id: "block-2" } };
+    const renderRunner = () => hooks.render(() => DiagnosticRunner({ data: finalBlockData }));
+    const button = (label: string) => elements(renderRunner()).find(element => element.type === "button" && element.props.children === label);
+    let submittedSignal!: AbortSignal;
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ revision: 8 }) })
+      .mockImplementationOnce((_url, { signal }: { signal: AbortSignal }) => {
+        submittedSignal = signal;
+        const wait = () => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+        return phase === "request" ? wait() : Promise.resolve({ ok: true, json: wait });
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    (button("Завершить диагностику")?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(button("Завершить диагностику")?.props.disabled).toBe(true);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(submittedSignal.aborted).toBe(true);
+    expect(button("Повторить отправку")?.props.disabled).toBe(false);
+    expect(elements(renderRunner()).some(element => element.props.children === "Обновить анкету")).toBe(true);
+    expect(navigation.push).not.toHaveBeenCalled();
+
+    (button("Повторить отправку")?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method])).toEqual([
+      ["/api/diagnostics/existing-diagnostic/answers", "PATCH"],
+      ["/api/diagnostics/existing-diagnostic/submit", "POST"],
+      ["/api/diagnostics/existing-diagnostic/submit", "POST"],
+    ]);
+    expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[2][1].body);
+    expect(navigation.push).toHaveBeenCalledExactlyOnceWith("/ru/diagnostics/existing-diagnostic/result");
+  });
+
+  it("replays ambiguous guest completion without saving into an already completed session", async () => {
+    const finalBlockData = { ...data, diagnostic: { ...data.diagnostic, current_block_id: "block-2" } };
+    const renderGuest = () => hooks.render(() => DiagnosticRunner({ data: finalBlockData, anonymous: true }));
+    const button = (label: string) => elements(renderGuest()).find(element => element.type === "button" && element.props.children === label);
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ revision: 8 }) });
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({ error: "unavailable" }) });
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    (button("Завершить диагностику")?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    (button("Повторить отправку")?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock.mock.calls.map(([url, options]) => [url, options.method])).toEqual([
+      ["/api/acquisition/answers", "PATCH"],
+      ["/api/acquisition/submit", "POST"],
+      ["/api/acquisition/submit", "POST"],
+    ]);
+    expect(fetchMock.mock.calls[1][1].body).toBe('{"expected_revision":8}');
+    expect(fetchMock.mock.calls[2][1].body).toBe(fetchMock.mock.calls[1][1].body);
+    expect(navigation.refresh).toHaveBeenCalledOnce();
+    expect(navigation.push).not.toHaveBeenCalled();
+  });
+
+  it("returns to editable answers when the repeated submit finds a required omission", async () => {
+    const finalBlockData = { ...data, diagnostic: { ...data.diagnostic, current_block_id: "block-2" } };
+    const renderRunner = () => hooks.render(() => DiagnosticRunner({ data: finalBlockData }));
+    const button = (label: string) => elements(renderRunner()).find(element => element.type === "button" && element.props.children === label);
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ revision: 8 }) });
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ unexpected: true }) });
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ ok: false, missing: [{ question_id: "question-1", block_id: "block-1", position: 1 }] }) });
+    (button("Завершить диагностику")?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    (button("Повторить отправку")?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(elements(renderRunner()).some(element => element.props.children === "Вопрос 1 · First block")).toBe(true);
+    expect(elements(renderRunner()).find(element => element.props.question)?.props.disabled).toBe(false);
+    expect(button("Повторить отправку")).toBeUndefined();
+    edit(renderRunner(), 4);
+    renderRunner();
+    await vi.advanceTimersByTimeAsync(900);
+    expect(fetchMock.mock.calls[3][0]).toBe("/api/diagnostics/existing-diagnostic/answers");
+  });
+
 });

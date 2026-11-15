@@ -6,8 +6,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createAdminClient } from "@/server-runtime/supabase/admin";
 import { formatDecimalRu } from "./format";
-import { deriveBlockFacts } from "./facts";
-import { assertIndividualPromptVersion, type IndividualPromptVersion } from "./prompt-version";
+import { deriveBlockFacts, deriveTieAwareBlockFacts } from "./facts";
+import {
+  assertIndividualPromptVersion, CURRENT_INDIVIDUAL_PROMPT_VERSION, RU_V3_INDIVIDUAL_INPUT_VERSION, RU_V3_INDIVIDUAL_PROMPT_VERSION,
+  type IndividualPromptVersion,
+} from "./prompt-version";
 export type { IndividualPromptVersion } from "./prompt-version";
 
 const reportSchema = z.object({
@@ -36,22 +39,40 @@ export function validateAIReportOutput(content: AIReport): AIReport {
 type Row = Record<string, string | number | null | undefined>;
 const numberValue = (value: unknown) => Number(value);
 
-export async function buildAIInput(diagnosticId: string) {
+export async function buildAIInput(diagnosticId: string, promptVersion: IndividualPromptVersion = CURRENT_INDIVIDUAL_PROMPT_VERSION) {
+  const versionedInput = promptVersion === RU_V3_INDIVIDUAL_PROMPT_VERSION;
   const db = createAdminClient();
   const { data: diagnostic } = await db.from("diagnostics").select("id,version_id").eq("id", diagnosticId).single();
   if (!diagnostic) throw new Error("diagnostic_missing");
   const { data: snapshot } = await db.from("diagnostic_company_snapshots").select("profile_data").eq("diagnostic_id", diagnosticId).single();
   const { data: result } = await db.from("diagnostic_results").select("id,raw_manageability_index,display_manageability_index,maturity_level_id").eq("diagnostic_id", diagnosticId).single();
   if (!snapshot || !result) throw new Error("scoring_result_missing");
-  const [{ data: blocks }, { data: blockResults }, { data: maturity }, { data: answers }, { data: questions }, { data: questionTexts }, { data: blockTexts }] = await Promise.all([
+  const questionTranslations = versionedInput
+    ? db.from("question_translations").select("question_id,prompt,questions!inner(version_id)").eq("questions.version_id", diagnostic.version_id)
+    : db.from("question_translations").select("question_id,prompt");
+  const blockTranslations = versionedInput
+    ? db.from("diagnostic_block_translations").select("block_id,title,diagnostic_blocks!inner(version_id)").eq("diagnostic_blocks.version_id", diagnostic.version_id)
+    : db.from("diagnostic_block_translations").select("block_id,title");
+  const [blockRows, resultRows, maturityRow, answerRows, questionRows, translatedQuestions, translatedBlocks] = await Promise.all([
     db.from("diagnostic_blocks").select("id,key,position,weight").eq("version_id", diagnostic.version_id).eq("is_active", true).order("position"),
     db.from("diagnostic_block_results").select("block_id,raw_score,display_score").eq("result_id", result.id),
-    db.from("maturity_level_translations").select("label").eq("maturity_level_id", result.maturity_level_id).eq("locale", "ru").maybeSingle(),
+    result.maturity_level_id ? db.from("maturity_level_translations").select("label").eq("maturity_level_id", result.maturity_level_id).eq("locale", "ru").maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     db.from("answers").select("question_id,text_value").eq("diagnostic_id", diagnosticId),
-    db.from("questions").select("id,key,block_id,answer_type").eq("version_id", diagnostic.version_id).eq("is_active", true),
-    db.from("question_translations").select("question_id,prompt").eq("locale", "ru"),
-    db.from("diagnostic_block_translations").select("block_id,title").eq("locale", "ru"),
+    db.from("questions").select("id,key,block_id,position,answer_type").eq("version_id", diagnostic.version_id).eq("is_active", true),
+    questionTranslations.eq("locale", "ru"),
+    blockTranslations.eq("locale", "ru"),
   ]);
+  if (versionedInput && [blockRows, resultRows, maturityRow, answerRows, questionRows, translatedQuestions, translatedBlocks].some(response => response.error)) {
+    throw Error("ai_evidence_unavailable");
+  }
+  const { data: blocks } = blockRows;
+  const { data: blockResults } = resultRows;
+  const { data: maturity } = maturityRow;
+  const { data: answers } = answerRows;
+  const { data: questions } = questionRows;
+  const { data: questionTexts } = translatedQuestions;
+  const { data: blockTexts } = translatedBlocks;
   const profileData = (snapshot.profile_data ?? {}) as Row;
   const companySnapshot = {
     company_name: profileData.name ?? null,
@@ -76,13 +97,34 @@ export async function buildAIInput(diagnosticId: string) {
     return { block_code: block.key, block_title: titleMap.get(block.id) ?? block.key, block_score_raw: numberValue(row.raw_score), block_score_display: formatDecimalRu(row.display_score) };
   });
   if (blockResultsInput.length !== 8) throw new Error("scoring_block_count_invalid");
-  const derivedFacts = deriveBlockFacts(blockResultsInput);
+  const derivedFacts = versionedInput ? deriveTieAwareBlockFacts(blockResultsInput) : deriveBlockFacts(blockResultsInput);
   const qmap = new Map((questions ?? []).map((question) => [question.id, question]));
   const tmap = new Map((questionTexts ?? []).map((question) => [question.question_id, question.prompt]));
-  const openAnswers = (answers ?? []).filter((answer) => qmap.get(answer.question_id)?.answer_type === "text").map((answer) => ({ question: tmap.get(answer.question_id) ?? "", answer: answer.text_value ?? null }));
+  const textAnswers = (answers ?? []).filter(answer => qmap.get(answer.question_id)?.answer_type === "text");
+  const openAnswers = versionedInput ? textAnswers.flatMap(({ question_id, text_value }) => {
+    const answer = text_value?.trim();
+    if (!answer) return [];
+    const question = qmap.get(question_id)!;
+    const block = (blocks ?? []).find(candidate => candidate.id === question.block_id);
+    const prompt = tmap.get(question_id);
+    const blockTitle = block && titleMap.get(block.id);
+    if (!block || !prompt || !blockTitle) throw Error("ai_text_metadata_missing");
+    return [{
+      block_code: block.key,
+      block_title: blockTitle,
+      block_position: block.position,
+      category: block.key === "company_info" ? "intro" : block.key === "open_questions" ? "final" : "block",
+      question_code: question.key,
+      question_position: question.position,
+      question: prompt,
+      answer,
+    }];
+  }).sort((a, b) => a.block_position - b.block_position || a.question_position - b.question_position)
+    : textAnswers.map(answer => ({ question: tmap.get(answer.question_id) ?? "", answer: answer.text_value ?? null }));
   const overallRaw = numberValue(result.raw_manageability_index);
   const maturityLevel = result.maturity_level_id ? await db.from("maturity_levels").select("position").eq("id", result.maturity_level_id).maybeSingle() : { data: null };
   return {
+    ...(versionedInput ? { input_version: RU_V3_INDIVIDUAL_INPUT_VERSION } : {}),
     company_snapshot: companySnapshot,
     deterministic_results: { manageability_index_raw: overallRaw, manageability_index_display: formatDecimalRu(result.display_manageability_index), maturity_level_number: maturityLevel.data?.position ?? null, maturity_level_label: maturity?.label ?? null },
     block_results: blockResultsInput,
@@ -99,7 +141,7 @@ export async function generateReport(input: unknown, promptVersion: IndividualPr
   if (process.env.AI_REPORT_PROVIDER === "mock") return { content: mockReport };
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("openai_not_configured");
-  const promptFile = promptVersion === "RU-1.5" ? "AI_REPORT_PROMPT_RU_1_5.md" : promptVersion === "RU-1.3" ? "AI_REPORT_PROMPT_RU_1_3.md" : promptVersion === "RU-1.2" ? "AI_REPORT_PROMPT_RU_1_2.md" : promptVersion === "RU-1.1" ? "AI_REPORT_PROMPT_RU_1_1.md" : "AI_REPORT_PROMPT_RU_1_0.md";
+  const promptFile = `AI_REPORT_PROMPT_${promptVersion.replaceAll("-", "_").replaceAll(".", "_")}.md`;
   const prompt = readFileSync(join(process.cwd(), promptFile), "utf8");
   const client = new OpenAI({ apiKey: key,...(smoke?{maxRetries:0}:{}) });
   const controller = new AbortController();

@@ -1,4 +1,49 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-export function ResultPoller({diagnosticId,status}:{diagnosticId:string;status:string}){const r=useRouter();const [error,setError]=useState(false);useEffect(()=>{let active=true;let cycles=0;const run=async()=>{cycles+=1;const x=await fetch(`/api/diagnostics/${diagnosticId}/score`,{method:"GET",cache:"no-store"});const b=await x.json().catch(()=>({}));if(!active)return;if(!x.ok||b.status==='failed'||b.status==='missing'||cycles>=60){setError(true);return}if(b.status==='completed'){r.refresh();return}setTimeout(run,1000)};void run();return()=>{active=false}},[diagnosticId,r]);return <main className="mx-auto min-h-[60vh] max-w-2xl px-5 py-16"><h1 className="text-3xl font-semibold">{error||status==='scoring_failed'?'Не удалось рассчитать результаты':'Рассчитываем результаты'}</h1><p className="mt-4 text-muted">{error||status==='scoring_failed'?'Попробуйте ещё раз.':'Расчёт выполняется на сервере. Обновите страницу через несколько секунд.'}</p>{(error||status==='scoring_failed')&&<button onClick={()=>{setError(false);void fetch(`/api/diagnostics/${diagnosticId}/score`,{method:'GET',cache:'no-store'}).then(()=>r.refresh())}} className="mt-6 rounded-xl bg-brand px-5 py-3 font-semibold text-white">Обновить статус</button>}</main>}
+import { startStatusPolling } from "@/shared/status-polling";
+
+const scoringStatuses = ["queued", "scoring", "scoring_failed", "completed"];
+
+export function ResultPoller({ diagnosticId, status }: { diagnosticId: string; status: string }) {
+  const router = useRouter();
+  const [view, setView] = useState<"waiting" | "unavailable" | "paused" | "failed">(
+    status === "scoring_failed" ? "failed" : "waiting",
+  );
+  const [checks, setChecks] = useState(0);
+
+  useEffect(() => {
+    return startStatusPolling(`/api/diagnostics/${diagnosticId}/score`, {
+      delayMs: 1000,
+      acceptedStatuses: scoringStatuses,
+      onStatus({ status: current }) {
+        if (current === "completed") {
+          router.refresh();
+          return true;
+        }
+        if (current === "scoring_failed") {
+          setView("failed");
+          return false;
+        }
+        setView("waiting");
+        return false;
+      },
+      onUnavailable: () => setView("unavailable"),
+      onPause: () => setView("paused"),
+    });
+  }, [diagnosticId, checks, router]);
+
+  return <main className="mx-auto min-h-[60vh] max-w-2xl px-5 py-16">
+    <h1 className="text-3xl font-semibold">{view === "failed" ? "Не удалось рассчитать результаты" : "Рассчитываем результаты"}</h1>
+    <p role="status" className="mt-4 text-muted">
+      {view === "failed" && "Проверяем, возобновился ли расчёт. Можно обновить статус вручную."}
+      {view === "waiting" && "Расчёт выполняется на сервере. Результаты появятся автоматически."}
+      {view === "unavailable" && "Не удалось связаться с сервером. Проверим статус ещё раз."}
+      {view === "paused" && "Автоматическая проверка приостановлена. Обновите статус, чтобы снова проверить результаты."}
+    </p>
+    {view !== "waiting" && <button type="button" onClick={() => {
+      setView("waiting");
+      setChecks(value => value + 1);
+    }} className="mt-6 rounded-xl bg-brand px-5 py-3 font-semibold text-white">Обновить статус</button>}
+  </main>;
+}

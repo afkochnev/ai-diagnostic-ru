@@ -27,6 +27,7 @@ describe("team invitation side effects",()=>{
     expect(state.credential).not.toHaveBeenCalled();
     expect(state.send.mock.calls[0][0]).toMatchObject({to:"participant@example.test",subject:"Приглашение в командную диагностику — Synthetic company"});
     expect(state.send.mock.calls[0][0].text).toContain(result.invitationUrl);
+    expect(state.send.mock.calls[0][0].text).toContain("24 часа с момента выдачи");
     expect(state.rpc.mock.calls[0][0]).toBe("invite_team_participant");
     const link=new URL(result.invitationUrl!);
     expect(link.search).toBe("");
@@ -75,6 +76,7 @@ it("hides the raw link on successful real invitation delivery",async()=>{
  expect(result).toMatchObject({emailStatus:"sent",recipient:"participant@example.test",providerMessageId:"synthetic-receipt"});
  expect(result).not.toHaveProperty("invitationUrl");expect(state.send).toHaveBeenCalledOnce();
  expect(state.send.mock.calls[0][0].html).toContain("Принять приглашение");
+ expect(state.send.mock.calls[0][0].text).toContain("Ссылка для входа действует до");
  expect(state.send.mock.calls[0][0].text).toContain("&auth=synthetic-private-proof");
  expect(JSON.stringify(result)).not.toContain("synthetic-private-proof");
 });
@@ -88,6 +90,7 @@ it('controlled uncertain delivery exposes neither a fallback invitation URL nor 
  state.controlled=true;state.provider='resend';state.send.mockRejectedValue(Error('private provider data'));
  const result=await inviteTeamAction({},invitation());
  expect(result.emailStatus).toBe('failed');expect(result).not.toHaveProperty('invitationUrl');expect(JSON.stringify(result)).not.toContain('synthetic-private-proof');
+ expect(state.send.mock.calls[0][0].text).toContain("Ссылка для входа действует 30 минут");
  const f=new FormData();f.set('teamId',id);f.set('participantId',id);state.rpc.mockClear();state.send.mockClear();
  expect((await renewTeamInvitationAction({},f)).error).toBeTruthy();expect(state.rpc).not.toHaveBeenCalled();expect(state.send).not.toHaveBeenCalled();
 });

@@ -19,6 +19,11 @@ scripts/**
 !scripts/consultation-worker.ts
 !scripts/controlled-team-worker.ts
 !scripts/controlled-team-w2-access.ts
+!scripts/prepare-dictation-assets.py
+public/dictation/vosk-model-small-ru-0.22.tar.gz
+public/dictation/vosk.worker.js
+public/dictation/vosk.wasm
+public/dictation/.prepare-*/
 tests
 supabase
 # Keep operator documentation out; this non-secret JSON is a runtime contract.

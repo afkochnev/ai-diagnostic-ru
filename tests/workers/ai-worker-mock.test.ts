@@ -29,6 +29,20 @@ describe("Stage 9C AI worker mock provider", () => {
     generate.mockRejectedValue(new Error(message));
     const { runAIJob } = await import("@/server/ai/worker");
     expect(await runAIJob(job)).toEqual({ status: "failed" });
-    expect(state.updates.some((x) => x.table === "ai_reports" && x.values.status === "failed")).toBe(true);
+    const expectedReportStatus = message === "invalid structured output" ? "failed" : "queued";
+    expect(state.updates).toContainEqual({ table: "ai_reports", values: {
+      status: expectedReportStatus,
+      error_code: expectedReportStatus === "failed" ? "ai_failed" : null,
+      error_message: expectedReportStatus === "failed" ? "AI report generation failed" : null,
+    } });
+  });
+
+  it.each([1, 3, 5])("reports a terminal timeout after %i configured attempts", async maxAttempts => {
+    generate.mockRejectedValue(new Error("provider timeout: synthetic detail"));
+    const { runAIJob } = await import("@/server/ai/worker");
+    expect(await runAIJob({ ...job, attempt_count: maxAttempts }, maxAttempts)).toEqual({ status: "failed" });
+    expect(state.updates).toContainEqual({ table: "ai_reports", values: {
+      status: "failed", error_code: "provider_retryable", error_message: "AI report generation failed",
+    } });
   });
 });

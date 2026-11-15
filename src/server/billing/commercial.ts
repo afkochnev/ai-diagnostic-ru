@@ -1,3 +1,4 @@
+import { isProductionAppOrigin, PRODUCTION_SUPABASE_URL } from '@/shared/app-origin';
 import config from '../../../docs/v26b-commercial-config.json';
 // This file consumes the user-approved commercial contract; env never supplies price or term.
 export const annualOffer = Object.freeze({ ...config, key: 'yookassa-advanced-annual-480-rub' });
@@ -8,7 +9,7 @@ export function billingEnvironmentAllowed(env: Record<string,string|undefined>) 
 }
 // Exact deployment identity is independent of merchant secrets and browser input.
 export function productionBillingEnvironment(env: Record<string,string|undefined>) {
- return env.NODE_ENV==='production'&&env.APP_URL==='https://audit.iteamsystems.com'&&env.SUPABASE_URL==='https://fhvxqeaujjeiflanqsbg.supabase.co';
+ return env.NODE_ENV==='production'&&isProductionAppOrigin(env.APP_URL)&&env.SUPABASE_URL===PRODUCTION_SUPABASE_URL;
 }
 export function yookassaRuntimeMode(env: Record<string,string|undefined>): 'test'|'production'|null {
  if(env.BILLING_PROVIDER!=='yookassa'||!/^\d{1,20}$/.test(env.YOOKASSA_SHOP_ID??''))return null;

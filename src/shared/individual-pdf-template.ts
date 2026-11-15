@@ -1,0 +1,2 @@
+export const INDIVIDUAL_PDF_TEMPLATE_VERSION = "stage12-1k";
+export const LEGACY_INDIVIDUAL_PDF_TEMPLATE_VERSION = "stage12-1j";
