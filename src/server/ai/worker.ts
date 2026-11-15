@@ -8,29 +8,35 @@ import {
 export async function enqueueAIReport(diagnosticId: string, version = 1) {
   const db = createAdminClient();
   const deduplicationKey = `ai_report_v${version}`;
-  const { data: existing } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
-  if (existing) return existing;
-  const { data: diagnostic, error: diagnosticError } = await db.from("diagnostics")
-    .select("methodology:diagnostic_versions!diagnostics_version_id_fkey!inner(version_number,definition:diagnostic_definitions!inner(key))").eq("id", diagnosticId).single();
-  const methodology = diagnostic?.methodology as unknown as { version_number: number; definition: { key: string } } | undefined;
-  if (diagnosticError || !methodology?.definition) throw Error("ai_methodology_missing");
-  const promptVersion = individualPromptForMethodology(methodology.definition.key, methodology.version_number);
-  const input = await buildAIInput(diagnosticId, promptVersion);
-  const hash = crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex");
-  const { data: report, error } = await db.from("ai_reports").insert({ diagnostic_id: diagnosticId, version, prompt_version: promptVersion, schema_version: "RU-1.0", model: process.env.OPENAI_MODEL || "gpt-5.6-sol", status: "queued", input_snapshot: input, input_hash: hash }).select("id,version,status").single();
-  if (error || !report) {
-    if (error?.code === "23505") {
-      const { data: existingReport } = await db.from("ai_reports").select("id,version,status").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
-      if (existingReport) return existingReport;
-    }
-    throw error ?? new Error("ai_report_insert_failed");
+  async function readReport() {
+    const { data, error } = await db.from("ai_reports").select("id,version,status")
+      .eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
+    if (error) throw new Error("ai_report_read_failed");
+    return data;
   }
-  const { error: jobError } = await db.from("jobs").insert({ kind: "ai_report", diagnostic_id: diagnosticId, deduplication_key: deduplicationKey });
-  if (jobError?.code === "23505") {
-    const { data: existingJob } = await db.from("jobs").select("id").eq("kind", "ai_report").eq("diagnostic_id", diagnosticId).eq("deduplication_key", deduplicationKey).maybeSingle();
-    if (existingJob) return report;
+
+  let report = await readReport();
+  if (!report) {
+    const { data: diagnostic, error: diagnosticError } = await db.from("diagnostics")
+      .select("methodology:diagnostic_versions!diagnostics_version_id_fkey!inner(version_number,definition:diagnostic_definitions!inner(key))").eq("id", diagnosticId).single();
+    const methodology = diagnostic?.methodology as unknown as { version_number: number; definition: { key: string } } | undefined;
+    if (diagnosticError || !methodology?.definition) throw Error("ai_methodology_missing");
+    const promptVersion = individualPromptForMethodology(methodology.definition.key, methodology.version_number);
+    const input = await buildAIInput(diagnosticId, promptVersion);
+    const hash = crypto.createHash("sha256").update(JSON.stringify(input)).digest("hex");
+    const { data, error } = await db.from("ai_reports").insert({ diagnostic_id: diagnosticId, version, prompt_version: promptVersion, schema_version: "RU-1.0", model: process.env.OPENAI_MODEL || "gpt-5.6-sol", status: "queued", input_snapshot: input, input_hash: hash }).select("id,version,status").single();
+    report = error?.code === "23505" ? await readReport() : data;
+    if (!report || (error && error.code !== "23505")) throw new Error("ai_report_insert_failed");
   }
-  if (jobError) throw jobError;
+  if (report.status !== "queued") return report;
+
+  // A previous attempt may have persisted the report and lost the job write.
+  // A duplicate must leave an existing job's lease, attempts and status alone.
+  const { error: jobError } = await db.from("jobs").upsert(
+    { kind: "ai_report", diagnostic_id: diagnosticId, deduplication_key: deduplicationKey },
+    { onConflict: "kind,diagnostic_id,deduplication_key", ignoreDuplicates: true },
+  );
+  if (jobError) throw new Error("ai_job_enqueue_failed");
   return report;
 }
 

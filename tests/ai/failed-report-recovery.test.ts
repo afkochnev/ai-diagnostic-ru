@@ -4,6 +4,7 @@ const state = vi.hoisted(() => ({
   rows: {} as Record<string, Record<string, unknown>[]>,
   authorize: vi.fn(), generate: vi.fn(), from: vi.fn(), buildInput: vi.fn(),
   selects: [] as Array<{ table: string; columns: string }>,
+  aiJobWriteFailures: 0,
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/account/authorization", () => ({
@@ -28,8 +29,21 @@ function from(table: string) {
   let operation = "read";
   let value: Record<string, unknown> = {};
   let sort = "";
+  let upsertRows: Record<string, unknown>[] = [];
+  let conflictColumns: string[] = [];
   const execute = () => {
     const rows = state.rows[table] ??= [];
+    if (operation === "upsert") {
+      if (table === "jobs" && state.aiJobWriteFailures > 0) {
+        state.aiJobWriteFailures--;
+        return { data: null, error: { code: "synthetic_transient_write_failure" } };
+      }
+      for (const row of upsertRows) {
+        const duplicate = rows.some(current => conflictColumns.every(column => current[column] === row[column]));
+        if (!duplicate) rows.push({ id: table + "-" + (rows.length + 1), ...(table === "jobs" ? { status: "queued" } : {}), ...structuredClone(row) });
+      }
+      return { data: null, error: null };
+    }
     if (operation === "insert") {
       const duplicate = rows.some(r => r.diagnostic_id === value.diagnostic_id &&
         (table === "ai_reports" ? r.version === value.version : r.kind === value.kind && r.deduplication_key === value.deduplication_key));
@@ -38,7 +52,7 @@ function from(table: string) {
       return { data: structuredClone(row), error: null };
     }
     const found = rows.filter(r => filters.every(f => f(r)));
-    if (operation === "update") { found.forEach(r => Object.assign(r, value)); return { data: null, error: null }; }
+    if (operation === "update") { found.forEach(r => Object.assign(r, value)); return { data: structuredClone(found), error: null }; }
     return { data: structuredClone(sort ? [...found].sort((a,b) => Number(b[sort])-Number(a[sort])) : found), error: null };
   };
   const q = {
@@ -47,7 +61,13 @@ function from(table: string) {
     in: (k: string,v: unknown[]) => { filters.push(r => v.includes(r[k])); return q; },
     order: (k: string) => { sort = k; return q; },
     insert: (v: Record<string, unknown>) => { operation = "insert"; value = v; return q; },
-    upsert: (values: Record<string, unknown>[]) => { (state.rows[table] ??= []).push(...structuredClone(values)); return q; },
+    upsert: (values: Record<string, unknown> | Record<string, unknown>[], options: { onConflict: string; ignoreDuplicates: boolean }) => {
+      expect(options.ignoreDuplicates).toBe(true);
+      operation = "upsert";
+      upsertRows = Array.isArray(values) ? values : [values];
+      conflictColumns = options.onConflict.split(",");
+      return q;
+    },
     update: (v: Record<string, unknown>) => { operation = "update"; value = v; return q; },
     maybeSingle: async () => { const r=execute(); return { ...r, data: Array.isArray(r.data) ? r.data[0] ?? null : r.data }; },
     single: async () => q.maybeSingle(),
@@ -57,6 +77,7 @@ function from(table: string) {
 beforeEach(() => {
   vi.clearAllMocks(); state.from.mockImplementation(from);
   state.selects = [];
+  state.aiJobWriteFailures = 0;
   state.buildInput.mockResolvedValue({ synthetic: true });
   state.authorize.mockResolvedValue({ id: "diagnostic", status: "completed" });
   state.generate.mockResolvedValue({ content: { summary: "Synthetic completed report" }, requestId: "synthetic" });
@@ -67,6 +88,16 @@ beforeEach(() => {
     jobs: [{ id: "job1", kind: "ai_report", diagnostic_id: "diagnostic", deduplication_key: "ai_report_v1", status: "failed", attempts: 3, last_error_code: "historical" }],
   };
 });
+function prepareScoring(status: string) {
+  state.rows.diagnostics[0] = { ...state.rows.diagnostics[0], status, version_id: "methodology" };
+  state.rows.ai_reports=[];state.rows.diagnostic_results=[];
+  state.rows.jobs=[{id:"score",diagnostic_id:"diagnostic",kind:"score_diagnostic",status:"running",lease_token:"lease",attempts:1}];
+  state.rows.diagnostic_blocks=Array.from({length:8},(_,i)=>({id:`block-${i}`,version_id:"methodology",weight:1,is_active:true}));
+  state.rows.questions=state.rows.diagnostic_blocks.map((b,i)=>({id:`q-${i}`,block_id:b.id,version_id:"methodology",weight:1,is_active:true,is_required:true,reverse_score:false,answer_type:"scale_0_4"}));
+  state.rows.answers=state.rows.questions.map(q=>({diagnostic_id:"diagnostic",question_id:q.id,numeric_value:2}));
+  state.rows.maturity_levels=[{id:"developing",key:"developing",version_id:"methodology"}];
+}
+
 describe("versioned Individual failed-report recovery", () => {
   it.each(["failed", "completed"])("owner creates a separate next version from %s", async status => {
     state.rows.ai_reports[0].status=status;
@@ -114,19 +145,57 @@ describe("versioned Individual failed-report recovery", () => {
     expect(JSON.stringify([state.rows.ai_reports[0],state.rows.jobs[0]])).toBe(before);
   });
   it.each(["submitted", "scoring_failed"])("scoring completion from %s enqueues the first report with the current prompt and v1 job key",async(status)=>{
-    state.rows.diagnostics[0] = { ...state.rows.diagnostics[0], status, version_id: "methodology" };
-    state.rows.ai_reports=[];state.rows.diagnostic_results=[];
-    state.rows.jobs=[{id:"score",diagnostic_id:"diagnostic",kind:"score_diagnostic",status:"processing",lease_token:"lease"}];
-    state.rows.diagnostic_blocks=Array.from({length:8},(_,i)=>({id:`block-${i}`,version_id:"methodology",weight:1,is_active:true}));
-    state.rows.questions=state.rows.diagnostic_blocks.map((b,i)=>({id:`q-${i}`,block_id:b.id,version_id:"methodology",weight:1,is_active:true,is_required:true,reverse_score:false,answer_type:"scale_0_4"}));
-    state.rows.answers=state.rows.questions.map(q=>({diagnostic_id:"diagnostic",question_id:q.id,numeric_value:2}));
-    state.rows.maturity_levels=[{id:"developing",key:"developing",version_id:"methodology"}];
+    prepareScoring(status);
     expect(await runScoringJob({job_id:"score",diagnostic_id:"diagnostic",lease_token:"lease",attempt_count:1})).toEqual({status:"completed"});
     expect(state.rows.diagnostics[0].status).toBe("completed");
     expect(state.rows.ai_reports).toEqual([expect.objectContaining({version:1,prompt_version:"RU-1.5",status:"queued"})]);
     expect(state.rows.jobs.filter(j=>j.kind==="ai_report")).toEqual([expect.objectContaining({deduplication_key:"ai_report_v1"})]);
     expect(state.generate).not.toHaveBeenCalled();
   });
+  it("reclaims scoring after the AI job write fails and repairs the same queued report", async () => {
+    prepareScoring("submitted");
+    state.aiJobWriteFailures = 1;
+    const scoreJob = state.rows.jobs[0];
+    expect(await runScoringJob({job_id:"score",diagnostic_id:"diagnostic",lease_token:"lease",attempt_count:1})).toEqual({status:"failed"});
+    expect(state.rows.diagnostics[0].status).toBe("completed");
+    expect(scoreJob).toMatchObject({status:"failed",lease_token:null,attempts:1,last_error_message:"ai_job_enqueue_failed"});
+    expect(state.rows.jobs.filter(job => job.kind === "ai_report")).toHaveLength(0);
+    const report = structuredClone(state.rows.ai_reports[0]);
+    const result = structuredClone(state.rows.diagnostic_results[0]);
+    expect(report).toMatchObject({version:1,status:"queued"});
+
+    Object.assign(scoreJob, {status:"running",lease_token:"retry-lease",attempts:2});
+    expect(await runScoringJob({job_id:"score",diagnostic_id:"diagnostic",lease_token:"retry-lease",attempt_count:2})).toEqual({status:"completed"});
+    expect(scoreJob).toMatchObject({status:"completed",lease_token:null,attempts:2});
+    expect(state.rows.ai_reports).toEqual([report]);
+    expect(state.rows.diagnostic_results).toEqual([result]);
+    expect(state.rows.diagnostic_block_results).toHaveLength(8);
+    expect(state.rows.jobs.filter(job => job.kind === "ai_report")).toEqual([expect.objectContaining({deduplication_key:"ai_report_v1",status:"queued"})]);
+    expect(state.buildInput).toHaveBeenCalledOnce();
+    expect(state.generate).not.toHaveBeenCalled();
+  });
+
+  it("repairs an existing queued report once and preserves a present AI job's retry state", async () => {
+    state.rows.ai_reports[0].status = "queued";
+    state.rows.jobs = [];
+    const recovered = await Promise.all([enqueueAIReport("diagnostic"), enqueueAIReport("diagnostic")]);
+    expect(recovered.map(report => report.id)).toEqual(["v1", "v1"]);
+    expect(state.rows.jobs).toHaveLength(1);
+    Object.assign(state.rows.jobs[0], {status:"failed",attempts:2,available_at:"synthetic backoff",last_error_code:"provider_retryable"});
+    const scheduled = structuredClone(state.rows.jobs[0]);
+    await enqueueAIReport("diagnostic");
+    expect(state.rows.jobs).toEqual([scheduled]);
+    expect(state.buildInput).not.toHaveBeenCalled();
+    expect(state.generate).not.toHaveBeenCalled();
+  });
+
+  it.each(["completed", "failed", "generating"])("does not create a missing job for a %s report", async status => {
+    state.rows.ai_reports[0].status = status;
+    state.rows.jobs = [];
+    expect(await enqueueAIReport("diagnostic")).toMatchObject({id:"v1",status});
+    expect(state.rows.jobs).toEqual([]);
+  });
+
   it.each([1,2,3])("new generation v%i always persists current RU-1.5",async version=>{
     state.rows.ai_reports=[];state.rows.jobs=[];
     await enqueueAIReport("diagnostic",version);

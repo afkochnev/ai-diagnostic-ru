@@ -29,17 +29,22 @@ export async function runScoringJob(job: ClaimedScoringJob) {
     const { data: existingResult } = await db.from("diagnostic_results").select("id").eq("diagnostic_id", diagnosticId).maybeSingle();
     const { data: result, error: resultError } = existingResult ? { data: existingResult, error: null } : await db.from("diagnostic_results").insert({ diagnostic_id: diagnosticId, version_id:d.version_id, raw_manageability_index:overall.raw.toString(), display_manageability_index:overall.display.toString(), maturity_level_id:maturityRow?.id ?? null, calculation_version:"ru-1.0-stage5", input_hash:inputHash }).select("id").single();
     if (resultError || !result) throw resultError ?? new Error("result_write_failed");
-    await db.from("diagnostic_block_results").upsert(scored.map((b)=>({ result_id:result.id, block_id:b.block_id, version_id:d.version_id, raw_score:b.raw.toString(), display_score:b.display.toString(), question_count:b.question_count })), { onConflict:"result_id,block_id", ignoreDuplicates:true });
-    await db.from("diagnostics").update({ status:"completed", completed_at:new Date().toISOString() }).eq("id",diagnosticId).eq("status","scoring");
-    await db.from("jobs").update({ status:"completed", completed_at:new Date().toISOString(), lease_token:null, lease_expires_at:null }).eq("id",jobId).eq("lease_token",lease);
+    const { error: blockWriteError } = await db.from("diagnostic_block_results").upsert(scored.map((b)=>({ result_id:result.id, block_id:b.block_id, version_id:d.version_id, raw_score:b.raw.toString(), display_score:b.display.toString(), question_count:b.question_count })), { onConflict:"result_id,block_id", ignoreDuplicates:true });
+    if (blockWriteError) throw new Error("scoring_block_write_failed");
+    const { error: completionError } = await db.from("diagnostics").update({ status:"completed", completed_at:new Date().toISOString() }).eq("id",diagnosticId).eq("status","scoring");
+    if (completionError) throw new Error("scoring_completion_write_failed");
+
+    // Keep the job claim until the persisted report and its deduplicated AI job exist.
     await enqueueAIReport(diagnosticId);
+    const { data: completedJob, error: jobError } = await db.from("jobs").update({ status:"completed", completed_at:new Date().toISOString(), lease_token:null, lease_expires_at:null }).eq("id",jobId).eq("lease_token",lease).select("id").maybeSingle();
+    if (jobError || !completedJob) throw new Error("scoring_job_completion_failed");
     console.info("[score-complete]", { diagnostic_id:diagnosticId, job_id:jobId, kind: "score_diagnostic", status:"completed" }); return { status:"completed" };
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown";
     const terminal = /(?:input_missing|diagnostic_missing|result_write_failed|block_result_missing)/.test(message) || job.attempt_count >= 3;
     const next = new Date(Date.now() + Math.min(3600000, 30000 * 2 ** Math.max(0, job.attempt_count - 1))).toISOString();
-    await db.from("jobs").update({ status:"failed", available_at: terminal ? new Date("2099-01-01").toISOString() : next, attempts: terminal ? 3 : job.attempt_count, last_error_code:"scoring_failed", last_error_message:message, lease_token:null, lease_expires_at:null }).eq("id",jobId).eq("lease_token",lease);
-    await db.from("diagnostics").update({ status:"scoring_failed" }).eq("id",diagnosticId).eq("status","scoring");
+    const { data: failedJob } = await db.from("jobs").update({ status:"failed", available_at: terminal ? new Date("2099-01-01").toISOString() : next, attempts: terminal ? 3 : job.attempt_count, last_error_code:"scoring_failed", last_error_message:message, lease_token:null, lease_expires_at:null }).eq("id",jobId).eq("lease_token",lease).select("id").maybeSingle();
+    if (failedJob) await db.from("diagnostics").update({ status:"scoring_failed" }).eq("id",diagnosticId).eq("status","scoring");
     console.error("[score-error]", { diagnostic_id:diagnosticId, job_id:jobId, error:message }); return { status:"failed" };
   }
 }
