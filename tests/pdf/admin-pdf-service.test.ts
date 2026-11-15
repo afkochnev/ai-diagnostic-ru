@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import crypto from "node:crypto";
 import schema from "../../AI_REPORT_SCHEMA_RU_1_0.json";
+import { LEGACY_INDIVIDUAL_PDF_TEMPLATE_VERSION } from "@/shared/individual-pdf-template";
 const m = vi.hoisted(() => ({ admin: vi.fn(), rpc: vi.fn(), db: vi.fn(), owner: vi.fn(), render: vi.fn(), insert: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/auth/admin", () => ({ requireAdmin: m.admin }));
@@ -95,11 +96,14 @@ describe("live-admin PDF entry and immutable shared renderer", () => {
     expect(m.render).toHaveBeenCalledOnce();
   });
   it("creates the current PDF without reusing or changing the previous domain's artifact", async () => {
-    const historical = stored({ id: "30000000-0000-4000-8000-000000000002", template_version: "stage12-1i" });
+    const legacy = Buffer.from("%PDF-1.7\nlegacy-domain\n%%EOF\n");
+    const historical = stored({ id: "30000000-0000-4000-8000-000000000002", template_version: LEGACY_INDIVIDUAL_PDF_TEMPLATE_VERSION, content_base64: legacy.toString("base64"), checksum: digest(legacy) });
     tables.report_artifacts.push(historical); const before = JSON.stringify(historical);
+    expect((await getPdfForReport(id, "actual-owner")).bytes).toEqual(legacy);
+    expect(m.render).not.toHaveBeenCalled(); expect(m.insert).not.toHaveBeenCalled();
     await expect(getAdminPdfStatus(id)).rejects.toThrow("pdf_artifact_not_ready");
     const ready = await preparePdfForAdminReport(id);
-    expect(ready.template_version).toBe("stage12-1j"); expect(tables.report_artifacts).toHaveLength(2);
+    expect(ready.template_version).toBe("stage12-1k"); expect(tables.report_artifacts).toHaveLength(2);
     expect(JSON.stringify(historical)).toBe(before); expect(m.render).toHaveBeenCalledOnce(); expect(m.insert).toHaveBeenCalledOnce();
     expect((await getPdfForReport(id, "actual-owner")).bytes).toEqual(pdf);
   });

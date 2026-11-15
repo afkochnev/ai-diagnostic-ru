@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { buildPdfHtml, normalizePdfText, type PdfInput } from "@/server/pdf/render";
+import { describe, expect, it, vi } from "vitest";
+import { buildPdfHtml, normalizePdfText, renderPdf, type PdfInput } from "@/server/pdf/render";
+
+const { pagePdf } = vi.hoisted(() => ({ pagePdf: vi.fn(async () => Buffer.from("test pdf")) }));
+vi.mock("playwright", () => ({ chromium: { launch: async () => ({ newPage: async () => ({ setContent: vi.fn(), pdf: pagePdf }), close: vi.fn() }) } }));
 
 const input: PdfInput = {
   companyName: "МедТех",
@@ -51,7 +54,9 @@ describe("PDF report template", () => {
     expect(buildPdfHtml({ ...input, blocks: [{ title: "Бизнес￾процессы", score: "57,5" }, ...input.blocks.slice(1)] })).toContain("Бизнес-процессы");
   });
 
-  it("includes Chromium page number footer configuration", () => {
+  it("includes the new public origin in the Chromium page footer", async () => {
+    await renderPdf(input);
+    expect(pagePdf).toHaveBeenCalledWith(expect.objectContaining({ footerTemplate: expect.stringContaining("https://audit.iteam.ru · <span class=\"pageNumber\">") }));
     expect(buildPdfHtml(input)).toContain("Конфиденциальный отчёт");
     expect(buildPdfHtml(input)).toContain('class="logo"');
     expect(buildPdfHtml(input)).toContain("data:image/png;base64,");

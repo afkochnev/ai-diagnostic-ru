@@ -3,6 +3,7 @@ import { z } from "zod";
 import { acquisitionJson } from "@/server/acquisition/request";
 import { getIdentity } from "@/server/auth/session";
 import { authConfig } from "@/server/supabase/config";
+import { isAppRequestOrigin } from "@/server-runtime/app-request-origin";
 import { saveTeamResponseAction } from "@/server/team/actions";
 import { teamFoundationEnabled } from "@/server/team/capabilities";
 import { teamSave } from "@/server/team/contracts";
@@ -32,7 +33,7 @@ export async function GET(_: Request, { params }: Context) {
 
 export async function PATCH(request: Request, { params }: Context) {
   if (!teamFoundationEnabled()) return json({ error: "not_found" }, 404);
-  if (request.headers.get("origin") !== authConfig().APP_URL) return json({ error: "invalid_origin" }, 403);
+  if (!isAppRequestOrigin(request.headers, authConfig().APP_URL, true)) return json({ error: "invalid_origin" }, 403);
   const { participantId } = await params;
   if (!z.uuid().safeParse(participantId).success) return json({ error: "not_found" }, 404);
 

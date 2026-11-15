@@ -42,7 +42,7 @@ export async function startAnonymous(_:AcquisitionState,form:FormData):Promise<A
  redirect('/ru/free');
 }
 export async function saveShortProfile(_:AcquisitionState,form:FormData):Promise<AcquisitionState>{
- try{await guardOrigin();const c=await cookieContext();await limit('profile',c.id,20,3600);
+ try{await guardOrigin(true);const c=await cookieContext();await limit('profile',c.id,20,3600);
   const fields=['name','industry_key','employee_count','products','key_problems','main_goals','country','customer_segments','sales_channels','annual_revenue_key','company_age_years','management_levels'];
   const parsed=shortProfileSchema.safeParse(Object.fromEntries(fields.map(k=>[k,form.get(k)??''])));
   if(!parsed.success)return {error:'Проверьте обязательные поля и числовые значения.'};
@@ -51,7 +51,7 @@ export async function saveShortProfile(_:AcquisitionState,form:FormData):Promise
 }
 export async function sendAccess(_:AcquisitionState,form:FormData):Promise<AcquisitionState>{
  let stage='origin';
- try{await guardOrigin();stage='context';const c=await cookieContext();stage='policy';const policy=await registrationPolicy();stage='session';const session=await ownSession();
+ try{await guardOrigin(true);stage='context';const c=await cookieContext();stage='policy';const policy=await registrationPolicy();stage='session';const session=await ownSession();
   if(session.consent_version!==policy.versions.data_processing){
    if(form.get('consent')!=='on'||form.get('consent_version')!==policy.versions.data_processing)return {error:'Подтвердите действующее согласие на обработку данных.'};
    await sessionRpc('consent',c.id,c.hash,{consent:true,consent_version:policy.versions.data_processing});
@@ -74,7 +74,7 @@ export async function sendAccess(_:AcquisitionState,form:FormData):Promise<Acqui
 export async function confirmAccess(_:AcquisitionState,form:FormData):Promise<AcquisitionState>{
  void _;void form;
  let result:ClaimResult;
- try{await guardOrigin();const jar=await cookies(),ctx=jar.get('aca-access')?.value;const id=jar.get('aca-access-id')?.value;
+ try{await guardOrigin(true);const jar=await cookies(),ctx=jar.get('aca-access')?.value;const id=jar.get('aca-access-id')?.value;
   if(!ctx||!id)throw Error('acquisition_expired');const proof=accessProof(ctx,id);if(!proof)throw Error('acquisition_expired');
   await limit('verify',id,10,600);
   const client=await createAuthClient();const {data:{user}}=await client.auth.getUser();
@@ -96,7 +96,7 @@ export async function confirmAccess(_:AcquisitionState,form:FormData):Promise<Ac
 }
 export async function finishClaim(_:AcquisitionState,form:FormData):Promise<AcquisitionState>{
  let result:ClaimResult;
- try{await guardOrigin();const c=await cookieContext();await limit('claim',c.id,20,600);
+ try{await guardOrigin(true);const c=await cookieContext();await limit('claim',c.id,20,600);
   const policy=await registrationPolicy();const s=await ownSession();if(s.consent_version!==policy.versions.data_processing || s.marketing_version!==policy.versions.marketing){
    if(form.get('consent')!=='on'||form.get('consent_version')!==policy.versions.data_processing)return {error:'Подтвердите действующую версию согласия.'};
    await sessionRpc('consent',c.id,c.hash,{consent:true,consent_version:policy.versions.data_processing,marketing_version:policy.versions.marketing,marketing_granted:form.get('marketing_granted')==='on'});
@@ -106,4 +106,4 @@ export async function finishClaim(_:AcquisitionState,form:FormData):Promise<Acqu
  }catch(e){return {error:message(e)};}redirect(`/ru/diagnostics/${result.diagnostic_id}/result`);
 }
 
-export async function restartAnonymous(){await guardOrigin();await clearAnonymous();(await cookies()).set(visitCookie,'',{httpOnly:true,secure:authConfig().secure,sameSite:'lax',path:'/',maxAge:0});redirect('/ru/free');}
+export async function restartAnonymous(){await guardOrigin(true);await clearAnonymous();(await cookies()).set(visitCookie,'',{httpOnly:true,secure:authConfig().secure,sameSite:'lax',path:'/',maxAge:0});redirect('/ru/free');}

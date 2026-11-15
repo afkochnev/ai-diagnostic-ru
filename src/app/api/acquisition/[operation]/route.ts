@@ -11,7 +11,7 @@ import {accessProof} from '@/server/acquisition/email';
 import {authConfig} from '@/server/supabase/config';
 export const runtime='nodejs';
 export async function POST(request:Request,{params}:{params:Promise<{operation:string}>}){
- try{await guardOrigin();const {operation}=await params;
+ try{const {operation}=await params;await guardOrigin(operation==='access'||operation==='answers'||operation==='submit');
   if(Number(request.headers.get('content-length')??0)>300000)return NextResponse.json({error:'invalid'},{status:413});
   const body=await acquisitionJson(request);
   if(operation==='visit'){

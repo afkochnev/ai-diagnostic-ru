@@ -19,6 +19,7 @@ def rows():return json.loads(sql("""create temporary table h(k text,v jsonb);do 
 try:
  sql('create database '+base,database='postgres');sql((ROOT/'supabase/tests/fixtures/methodology-retirement-local-auth.sql').read_text());sql('alter table auth.users add column created_at timestamptz not null default now();create table auth.sessions(id uuid primary key,user_id uuid not null references auth.users(id));')
  migration=next((ROOT/'supabase/migrations').glob('*_yookassa_production_mode_readiness.sql'))
+ origin_migration=ROOT/'supabase/migrations/20261115181246_yookassa_checkout_return_origin.sql'
  for m in sorted((ROOT/'supabase/migrations').glob('*.sql')):
   if m==migration:break
   if 'account_foundation.sql' in m.name:sql((ROOT/'supabase/tests/fixtures/account-foundation-local-history.sql').read_text())
@@ -56,6 +57,70 @@ try:
   sql(f"update private.billing_offers set test_mode={flag} where provider_key='yookassa'")
   c=start();assert start()==c
   ctx=json.loads(actor(f"select public.billing_yookassa_owner_context('{c}')",u,'authenticated'));assert ctx['provider_test_mode']==test and ctx['merchant_ref']==merchant
+  legacy_origin='https://audit.iteamsystems.com'
+  current_origin='https://audit.iteam.ru'
+  sql(origin_migration.read_text())
+  assert sql(f"select yookassa_return_origin is null from private.billing_checkout_sessions where id='{c}'")=='t'
+
+  def start_with_origin(origin, *, user=u, target_account=account, target_company=company, role='authenticated', error=None):
+   origin_literal="null" if origin is None else "'" + origin.replace("'","''") + "'"
+   company_literal="null" if target_company is None else f"'{target_company}'"
+   result=actor(
+    f"select public.billing_start_yookassa_checkout_with_origin('{target_account}',{company_literal},"
+    f"'advanced-terms-ru-v1','{terms}',true,{origin_literal})",
+    user,role,error,
+   )
+   return None if error else json.loads(result)
+
+  other=sql('select gen_random_uuid()')
+  sql(f"insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values('{other}','domain-{mode}@example.test',now(),"+jlit(meta)+f");insert into auth.sessions values('{other}','{other}')")
+  other_account=sql(f"select id from public.accounts where legacy_origin_user_id='{other}'")
+  start_with_origin(current_origin,user=other,error='billing_not_found')
+  for role in ['anon','service_role']:
+   start_with_origin(current_origin,user=None,role=role,error='permission denied')
+  for invalid in [None,'http://audit.iteam.ru',current_origin+'/',current_origin+'/ru',current_origin+'.example.test']:
+   start_with_origin(invalid,error='billing_invalid_return_origin')
+  ok(mode+': origin-aware reservation requires an authenticated owner and an exact production origin')
+
+  if test:
+   start_with_origin(current_origin,error='billing_unavailable')
+   assert start()==c
+   assert json.loads(actor(f"select public.billing_yookassa_owner_context('{c}')",u,'authenticated'))==ctx
+   sql(f"update private.billing_checkout_sessions set yookassa_return_origin='{current_origin}' where id='{c}'",'violates check constraint')
+   sql('update private.billing_configuration set mock_enabled=true')
+   mock_query=f"select public.billing_start_checkout('{other_account}',null,'advanced-terms-ru-v1','{terms}',true)"
+   mock_checkout=actor(mock_query,other,'authenticated')
+   assert actor(mock_query,other,'authenticated')==mock_checkout
+   assert sql(f"select provider_key='mock' and yookassa_return_origin is null from private.billing_checkout_sessions where id='{mock_checkout}'")=='t'
+   sql(f"update private.billing_checkout_sessions set yookassa_return_origin='{current_origin}' where id='{mock_checkout}'",'violates check constraint')
+   sql('update private.billing_configuration set mock_enabled=false')
+   ok('test: ordinary YooKassa test and mock checkout contexts keep their original behavior')
+  else:
+   legacy_context={**ctx,'return_origin':None}
+   assert start_with_origin(current_origin)==legacy_context
+   assert start_with_origin(legacy_origin)==legacy_context
+   assert start()==c
+   assert sql(f"select yookassa_return_origin is null from private.billing_checkout_sessions where id='{c}'")=='t'
+   ok('production: the pre-migration active checkout retains its ID, context and null origin')
+
+   def other_start(origin):
+    return start_with_origin(origin,user=other,target_account=other_account,target_company=None)
+
+   with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+    first,replayed=pool.map(other_start,[current_origin,current_origin])
+   assert first==replayed and first['return_origin']==current_origin
+   assert first['account_id']==other_account and first['provider_test_mode'] is False
+   with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+    rollback,replayed=pool.map(other_start,[legacy_origin,current_origin])
+   assert rollback==replayed==first
+   assert actor(f"select public.billing_start_yookassa_checkout('{other_account}',null,'advanced-terms-ru-v1','{terms}',true)",other,'authenticated')==first['id']
+   assert sql(f"select count(*) from private.billing_checkout_sessions where account_id='{other_account}' and status in('created','pending')")=='1'
+   assert sql(f"select yookassa_return_origin from private.billing_checkout_sessions where id='{first['id']}'")==current_origin
+   sql(f"update private.billing_checkout_sessions set status='cancelled' where id='{first['id']}'")
+   after_rollback=other_start(legacy_origin)
+   assert after_rollback['id']!=first['id'] and after_rollback['return_origin']==legacy_origin
+   assert other_start(current_origin)==after_rollback
+   ok('production: new .ru and rollback .com checkouts keep the first origin across concurrent retries')
   sql(f"update private.billing_offers set test_mode={str(not test).lower()} where provider_key='yookassa'",'billing_offer_in_use')
   def bind(checkout):
    ref=sql('select gen_random_uuid()');actor(f"select public.billing_bind_yookassa_payment('{checkout}','{ref}')");return ref

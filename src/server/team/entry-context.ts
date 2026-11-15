@@ -4,6 +4,7 @@ import {cookies,headers} from "next/headers";
 import {z} from "zod";
 import {createAdminClient} from "@/server-runtime/supabase/admin";
 import {authConfig} from "@/server/supabase/config";
+import {isAppRequestOrigin,isLegacyContinuationOrigin} from "@/server-runtime/app-request-origin";
 import {teamFoundationEnabled} from "./capabilities";
 import {openInvitationContext} from "./invitation-envelope";
 import {openInvitationDetails,maskTeamEmail} from "./invitation-details";
@@ -14,10 +15,12 @@ import {readControlledTeamW2Entry} from './w2-entry';
 const targetSchema=z.object({email:z.email().max(254),display_name:z.string().min(1).max(100),create_user:z.boolean()}).strict();
 export async function teamEntryContext(checkOrigin=false){
   if(!teamFoundationEnabled())throw new Error("team_auth_unavailable");
-  if(checkOrigin && (await headers()).get("origin")!==authConfig().APP_URL)throw new Error("team_auth_unavailable");
+  const requestHeaders=checkOrigin?await headers():null;
+  if(requestHeaders && !isAppRequestOrigin(requestHeaders,authConfig().APP_URL,true))throw new Error("team_auth_unavailable");
   const jar=await cookies(),secret=authConfig().AUTH_FLOW_SECRET;
   const w2Envelope=jar.get('team-w2-access')?.value;
   if(w2Envelope){
+   if(requestHeaders && isLegacyContinuationOrigin(requestHeaders))throw new Error('team_context_expired');
    const entry=await readControlledTeamW2Entry(w2Envelope,secret);
    return {jar,secret,token:'',hash:entry.proof.invitationHash,target:entry.target,details:null,challenge:null,proof:entry.proof,w2:entry,expires:entry.proof.expires,flowId:createHash('sha256').update(w2Envelope).digest('hex').slice(0,16)};
   }

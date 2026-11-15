@@ -1,4 +1,5 @@
 import "server-only";
+import { INDIVIDUAL_PDF_TEMPLATE_VERSION, LEGACY_INDIVIDUAL_PDF_TEMPLATE_VERSION } from "@/shared/individual-pdf-template";
 import crypto from "node:crypto";
 import { createAdminClient } from "@/server/supabase/admin";
 import { renderPdf } from "./render";
@@ -7,7 +8,7 @@ import { createAuthClient } from "@/server/supabase/server";
 import reportSchema from "../../../AI_REPORT_SCHEMA_RU_1_0.json";
 import { AccountAccessError, requireDiagnosticRead } from "@/server/account/authorization";
 
-const templateVersion = "stage12-1j";
+const templateVersion = INDIVIDUAL_PDF_TEMPLATE_VERSION;
 type Row = Record<string, unknown>;
 const transliterate = (value: string) => value.toLowerCase().replace(/[а-яё]/g, (char) => ({ а:"a",б:"b",в:"v",г:"g",д:"d",е:"e",ё:"e",ж:"zh",з:"z",и:"i",й:"y",к:"k",л:"l",м:"m",н:"n",о:"o",п:"p",р:"r",с:"s",т:"t",у:"u",ф:"f",х:"h",ц:"ts",ч:"ch",ш:"sh",щ:"sch",ъ:"",ы:"y",ь:"",э:"e",ю:"yu",я:"ya" }[char] ?? char)).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "company";
 
@@ -87,9 +88,9 @@ async function loadAdminAuthorizedReport(reportId: string): Promise<Context> {
   return { db, report, diagnostic };
 }
 
-async function artifactFor({ db, report }: Context) {
+async function artifactFor({ db, report }: Context, expectedTemplate: string = templateVersion) {
   // Do not filter out failed/wrong-version rows: their presence must deny overwrite.
-  const { data, error } = await db.from("report_artifacts").select(artifactColumns).eq("report_id", report.id).eq("format", "pdf").eq("template_version", templateVersion).maybeSingle();
+  const { data, error } = await db.from("report_artifacts").select(artifactColumns).eq("report_id", report.id).eq("format", "pdf").eq("template_version", expectedTemplate).maybeSingle();
   if (error) throw Error("pdf_prepare_failed");
   return data;
 }
@@ -101,11 +102,11 @@ function pdfBytes(encoded: string, checksum: string) {
   return bytes;
 }
 
-function validatedArtifact(context: Context, artifact: Awaited<ReturnType<typeof artifactFor>>) {
+function validatedArtifact(context: Context, artifact: Awaited<ReturnType<typeof artifactFor>>, expectedTemplate: string = templateVersion) {
   if (!artifact) throw Error("pdf_artifact_not_ready");
-  if (artifact.report_id !== context.report.id || artifact.ai_report_version !== context.report.version || artifact.format !== "pdf" || artifact.template_version !== templateVersion || artifact.status !== "ready") throw Error("pdf_artifact_conflict");
+  if (artifact.report_id !== context.report.id || artifact.ai_report_version !== context.report.version || artifact.format !== "pdf" || artifact.template_version !== expectedTemplate || artifact.status !== "ready") throw Error("pdf_artifact_conflict");
   const bytes = pdfBytes(artifact.content_base64, artifact.checksum);
-  const ready: AdminPdfReady = { report_id: context.report.id, ai_report_version: context.report.version, template_version: templateVersion, artifact_id: artifact.id, checksum: artifact.checksum, status: "ready", download_url: `/api/admin/report-artifacts/${artifact.id}` };
+  const ready: AdminPdfReady = { report_id: context.report.id, ai_report_version: context.report.version, template_version: expectedTemplate, artifact_id: artifact.id, checksum: artifact.checksum, status: "ready", download_url: `/api/admin/report-artifacts/${artifact.id}` };
   return { bytes, ready };
 }
 
@@ -135,7 +136,10 @@ async function sources({ db, report, diagnostic }: Context) {
 /** Strictly read-only download. It never renders or writes an artifact. */
 export async function getPdfForReport(reportId: string, userId: string): Promise<{ bytes: Buffer; fileName: string }> {
   const context = await loadAuthorizedReport(reportId, userId);
-  const { bytes } = validatedArtifact(context, await artifactFor(context));
+  const current = await artifactFor(context);
+  const { bytes } = current
+    ? validatedArtifact(context, current)
+    : validatedArtifact(context, await artifactFor(context, LEGACY_INDIVIDUAL_PDF_TEMPLATE_VERSION), LEGACY_INDIVIDUAL_PDF_TEMPLATE_VERSION);
   const { data: snapshot, error } = await context.db.from("diagnostic_company_snapshots").select("profile_data").eq("diagnostic_id", context.diagnostic.id).maybeSingle();
   if (error || !snapshot) throw Error("pdf_result_missing");
   return { bytes, fileName: fileName(String((snapshot.profile_data as Row)?.name ?? "Компания"), context.diagnostic.completed_at) };

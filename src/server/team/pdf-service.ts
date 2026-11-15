@@ -6,7 +6,7 @@ import { authenticatedAccountClient } from "@/server/account/authorization";
 import { createAdminClient } from "@/server/supabase/admin";
 import { renderTeamPdf, type TeamPdfInput } from "./pdf-render";
 import { teamReportV2Schema } from "./report-v2-contracts";
-import {TEAM_PDF_TEMPLATE_VERSION} from "@/shared/analytics/team-report-presentation";
+import {LEGACY_TEAM_PDF_TEMPLATE_VERSION,TEAM_PDF_TEMPLATE_VERSION} from "@/shared/analytics/team-report-presentation";
 import type { DispersionProfile } from "@/shared/analytics/dispersion";
 import {controlledTeamRequired,controlledTeamContext,reserveControlledTeamEffect,assertControlledTeamEffectWindow,completeControlledTeamEffect} from '@/server-runtime/team-smoke';
 export const teamPdfTemplateVersion=TEAM_PDF_TEMPLATE_VERSION;
@@ -39,13 +39,14 @@ async function renderingProfile(reportId:string,userId:string,source:z.infer<typ
   profile.questions=shape.questions.map(q=>({position:q.position,blockPosition:q.block_position,blockTitle:profile.blocks.find(b=>b.position===q.block_position)?.title??"",question:q.prompt,mean:q.mean_score,stddev:q.stddev_score,participantCount:q.participant_count}));
   return profile;
 }
-async function existing(reportId:string,version:number) {
-  const {data,error}=await db().from("team_report_artifacts").select("id,status,content_base64,checksum").eq("team_report_id",reportId).eq("team_report_version",version).eq("format","pdf").eq("template_version",teamPdfTemplateVersion).eq("status","ready").maybeSingle();
+async function existing(reportId:string,version:number,template:string=teamPdfTemplateVersion) {
+  const {data,error}=await db().from("team_report_artifacts").select("id,status,content_base64,checksum").eq("team_report_id",reportId).eq("team_report_version",version).eq("format","pdf").eq("template_version",template).eq("status","ready").maybeSingle();
   if(error) throw new Error("team_pdf_failed");
   return data;
 }
 export async function getTeamPdf(reportId:string,userId:string) {
-  const source=await authorizedSource(reportId,userId),artifact=await existing(reportId,source.version);
+  const source=await authorizedSource(reportId,userId);
+  const artifact=await existing(reportId,source.version)??await existing(reportId,source.version,LEGACY_TEAM_PDF_TEMPLATE_VERSION);
   if(!artifact?.content_base64) throw new Error("team_pdf_not_ready");
   const bytes=Buffer.from(artifact.content_base64,"base64");
   if(crypto.createHash("sha256").update(bytes).digest("hex")!==artifact.checksum) throw new Error("team_pdf_failed");

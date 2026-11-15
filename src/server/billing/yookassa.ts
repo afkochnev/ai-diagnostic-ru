@@ -1,10 +1,12 @@
 import 'server-only';
 import {z} from 'zod';
+import {LEGACY_PUBLIC_APP_ORIGIN,PUBLIC_APP_ORIGIN} from '@/shared/app-origin';
 import type {BillingProvider} from './provider';
 import {annualOffer,yookassaRuntimeMode,receiptSettings} from './commercial';
 import {verifiedEventSchema,type VerifiedBillingEvent} from './contracts';
+const productionOrigin=z.enum([LEGACY_PUBLIC_APP_ORIGIN,PUBLIC_APP_ORIGIN]);
 const paymentId=z.string().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
-export const yookassaContextSchema=z.object({id:z.uuid(),account_id:z.uuid(),company_id:z.uuid().nullable(),offer_id:z.uuid(),offer_key:z.literal(annualOffer.key),amount_minor:z.literal(annualOffer.amount_minor),currency:z.literal(annualOffer.currency),merchant_ref:z.string().regex(/^\d{1,20}$/),provider_test_mode:z.boolean(),provider_payment_ref:z.string(),created_at:z.string(),status:z.string()});
+export const yookassaContextSchema=z.object({id:z.uuid(),account_id:z.uuid(),company_id:z.uuid().nullable(),offer_id:z.uuid(),offer_key:z.literal(annualOffer.key),amount_minor:z.literal(annualOffer.amount_minor),currency:z.literal(annualOffer.currency),merchant_ref:z.string().regex(/^\d{1,20}$/),provider_test_mode:z.boolean(),provider_payment_ref:z.string(),created_at:z.string(),status:z.string(),return_origin:productionOrigin.nullish()});
 export type YooKassaContext=z.infer<typeof yookassaContextSchema>;
 const paymentSchema=z.object({id:paymentId,status:z.enum(['pending','waiting_for_capture','succeeded','canceled']),paid:z.boolean(),test:z.boolean(),receipt_registration:z.enum(['pending','succeeded','canceled']).optional(),amount:z.object({value:z.string().regex(/^\d+\.\d{2}$/),currency:z.string()}),refunded_amount:z.object({value:z.string().regex(/^\d+\.\d{2}$/),currency:z.string()}).optional(),recipient:z.object({account_id:z.string()}),metadata:z.object({checkout_id:z.uuid(),account_id:z.uuid(),offer_id:z.uuid()}),created_at:z.iso.datetime({offset:true}),captured_at:z.iso.datetime({offset:true}).optional(),cancellation_details:z.object({reason:z.string(),party:z.string()}).optional(),confirmation:z.object({type:z.string(),confirmation_url:z.string().optional()}).optional()});
 type Payment=z.infer<typeof paymentSchema>;
@@ -31,6 +33,9 @@ export class YooKassaBillingProvider implements BillingProvider<YooKassaContext>
   if(!(mode==='verification'?yookassaVerificationConfigured(env):yookassaConfigured(env)))throw new YooKassaError('billing_unavailable');
  }
  assertCheckoutReady(){if(!yookassaConfigured(this.env))throw new YooKassaError('billing_unavailable');receiptSettings(this.env);}
+ productionCheckoutOrigin(){
+  return yookassaRuntimeMode(this.env)==='production' ? productionOrigin.parse(this.env.APP_URL) : null;
+ }
  private context(value:YooKassaContext){
   const c=yookassaContextSchema.parse(value),mode=yookassaRuntimeMode(this.env);
   if(mode===null||c.provider_test_mode!==(mode==='test')||c.merchant_ref!==this.env.YOOKASSA_SHOP_ID)throw new YooKassaError('billing_verification_mismatch');
@@ -70,7 +75,9 @@ export class YooKassaBillingProvider implements BillingProvider<YooKassaContext>
   const settings=receiptSettings(this.env);
   if(yookassaRuntimeMode(this.env)==='production')await this.inspectMerchantConfiguration();
   const receipt={customer:{email:receiptEmail},items:[{...annualOffer.receiptItem,payment_mode:settings.payment_mode,...(settings.measure?{measure:settings.measure}:{})}],...(settings.tax_system_code===undefined?{}:{tax_system_code:settings.tax_system_code})};
-  const p=await this.request('payments','POST',{amount:annualOffer.receiptItem.amount,capture:true,confirmation:{type:'redirect',return_url:`${this.env.APP_URL}/ru/billing/return?checkout=${c.id}`},description:annualOffer.receiptItem.description,save_payment_method:false,metadata:{checkout_id:c.id,account_id:c.account_id,offer_id:c.offer_id},receipt},c.id);
+  // A reused reservation keeps the exact confirmation URL used by its first provider POST.
+  const returnOrigin=this.productionCheckoutOrigin() ? c.return_origin??LEGACY_PUBLIC_APP_ORIGIN : this.env.APP_URL;
+  const p=await this.request('payments','POST',{amount:annualOffer.receiptItem.amount,capture:true,confirmation:{type:'redirect',return_url:`${returnOrigin}/ru/billing/return?checkout=${c.id}`},description:annualOffer.receiptItem.description,save_payment_method:false,metadata:{checkout_id:c.id,account_id:c.account_id,offer_id:c.offer_id},receipt},c.id);
   this.validate(p,c);
   if(!c.provider_payment_ref.startsWith('reserved-')&&p.id!==c.provider_payment_ref)throw new YooKassaError('billing_verification_mismatch');
   if(p.status!=='pending')return {reference:p.id,customerRef:`account-${c.account_id}`,subscriptionRef:`annual-${c.id}`,paymentRef:p.id,url:`/ru/billing/return?checkout=${c.id}`};

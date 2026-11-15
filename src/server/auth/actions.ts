@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createAuthClient } from "@/server/supabase/server";
 import { authConfig } from "@/server/supabase/config";
+import { isAppRequestOrigin, isLegacyContinuationOrigin } from "@/server-runtime/app-request-origin";
+import { openInvitationContext } from "@/server/team/invitation-envelope";
 import { clearRecovery, hasRecovery, setRecovery } from "./recovery";
 import { emailSchema, loginSchema, passwordSchema, registrationSchema, type AuthState } from "@/validation/auth";
 import { getMessages } from "@/i18n/messages";
@@ -15,9 +17,8 @@ import type { EmailOtpType } from "@supabase/supabase-js";
 const text = getMessages("ru").auth;
 const value = (form: FormData, name: string) => String(form.get(name) ?? "");
 
-async function actionClient() {
-  const origin = (await headers()).get("origin");
-  if (origin !== authConfig().APP_URL) throw new Error("Invalid action origin");
+async function actionClient(allowLegacyContinuation = false) {
+  if (!isAppRequestOrigin(await headers(), authConfig().APP_URL, allowLegacyContinuation)) throw new Error("Invalid action origin");
   return createAuthClient();
 }
 function failure(error: { status?: number; code?: string } | null): AuthState {
@@ -60,7 +61,9 @@ export async function registerAction(_: AuthState, form: FormData): Promise<Auth
 export async function loginAction(_: AuthState, form: FormData): Promise<AuthState> {
   const parsed = loginSchema.safeParse({ email: value(form, "email").trim(), password: value(form, "password") });
   if (!parsed.success) return { error: text.emptyLogin };
-  const client = await actionClient();
+  const legacyInvitation = value(form, "next") === "team-invitation" && isLegacyContinuationOrigin(await headers())
+    && Boolean(openInvitationContext((await cookies()).get("team-invitation")?.value, authConfig().AUTH_FLOW_SECRET));
+  const client = await actionClient(legacyInvitation);
   const { error } = await client.auth.signInWithPassword(parsed.data);
   if (error) return { error: error.status === 429 ? text.rateLimit : error.code === "email_not_confirmed" ? text.verifyRequired : text.badLogin };
   await clearRecovery();
@@ -83,7 +86,7 @@ export async function emailLoginAction(_: AuthState, form: FormData): Promise<Au
 }
 
 export async function logoutAction() {
-  const client = await actionClient();
+  const client = await actionClient(true);
   const { error } = await client.auth.signOut({ scope: "global" });
   if (error) throw new Error("Sign out failed");
   await clearRecovery();
@@ -126,7 +129,7 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
     pkce_verifier_present: cookieNames.some((name) => /code-verifier/i.test(name)),
     exchange_attempted: false,
   };
-  const client = await actionClient();
+  const client = await actionClient(true);
   let data: Awaited<ReturnType<typeof client.auth.exchangeCodeForSession>>["data"] | Awaited<ReturnType<typeof client.auth.verifyOtp>>["data"] | null = null;
   let exchangeError: { name?: string; code?: string; status?: number } | null = null;
   if (code && /^[A-Za-z0-9._~-]{20,512}$/.test(code)) {
@@ -172,7 +175,7 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
 export async function resetAction(_: AuthState, form: FormData): Promise<AuthState> {
   const parsed = passwordSchema.safeParse(value(form, "password"));
   if (!parsed.success) return { error: text.badPassword };
-  const client = await actionClient();
+  const client = await actionClient(true);
   const { data: { user } } = await client.auth.getUser();
   const { data: claims } = await client.auth.getClaims();
   const sessionId = claims?.claims.session_id;
