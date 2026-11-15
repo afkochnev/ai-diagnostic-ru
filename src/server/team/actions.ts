@@ -180,7 +180,11 @@ export async function saveTeamResponseAction(previous: TeamActionState, form: Fo
     const input = teamSave.parse({ participantId: value(form,"participantId"), revision: value(form,"revision"), answers: JSON.parse(raw), submit: value(form,"intent") === "submit" });
     await controlledTeamContext({participantId:input.participantId});
     return await teamRpc<{ revision: number; status: string }>("save_team_response", { p_participant_id: input.participantId, p_expected_revision: input.revision, p_answers: input.answers, p_submit: input.submit });
-  } catch (error) { return { revision: previous.revision, status: previous.status, ...failure(error) }; }
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    const saveFailure = code === "team_revision_conflict" ? "conflict" : code === "team_request_failed" ? "uncertain" : undefined;
+    return { revision: previous.revision, status: previous.status, ...failure(error), ...(saveFailure ? { saveFailure } : {}) };
+  }
 }
 
 export async function teamResultAction(_: TeamActionState, form: FormData): Promise<TeamActionState> {
