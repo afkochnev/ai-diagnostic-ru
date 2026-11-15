@@ -20,6 +20,7 @@ const answersHash = (value: Record<string, number | string>) => JSON.stringify(O
 export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
   const router = useRouter();
   const apiBase=anonymous?"/api/acquisition":`/api/diagnostics/${data.diagnostic.id}`;
+  const diagnosticPath = anonymous ? "/ru/free" : `/ru/diagnostics/${data.diagnostic.id}`;
   const returnPath=anonymous?"/ru/free?paused=1":`/ru/companies/${data.diagnostic.company_id}`;
   const initialAnswers = useMemo(() => Object.fromEntries(data.blocks.flatMap((block) => block.questions.flatMap((question) => question.answer ? [[question.id, question.answer.numeric_value ?? question.answer.text_value ?? ""]] : []))) as Record<string, number | string>, [data.blocks]);
   const [answers, setAnswers] = useState<Record<string, number | string>>(initialAnswers);
@@ -29,11 +30,14 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
   const [submitError, setSubmitError] = useState<string[]>([]);
   const [missingRequiredIds, setMissingRequiredIds] = useState<string[]>([]);
   const [navigationPending, setNavigationPending] = useState(false);
+  const [submissionUnconfirmed, setSubmissionUnconfirmed] = useState(false);
   const navigationPendingRef = useRef(false);
   const questionRefs = useRef<Record<string, HTMLElement | null>>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
   const pendingSave = useRef<PendingSave | null>(null);
+  // The completion RPC accepts the original revision after a successful write.
+  const submittedRevision = useRef<number | null>(null);
   const revisionRef = useRef(data.diagnostic.revision);
   const answersRef = useRef(answers);
   const persistedAnswersHashRef = useRef(answersHash(initialAnswers));
@@ -47,6 +51,7 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
   const save = useCallback(async (nextBlockId = currentBlock.id) => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     const operation = saveQueue.current.then(async () => {
+      if (submittedRevision.current !== null) return false;
       setSaving("saving"); setError("");
       async function send(mutation: PendingSave) {
         try {
@@ -125,6 +130,7 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     if (navigationPendingRef.current) return;
+    if (submittedRevision.current !== null) { router.push(returnPath); return; }
     navigationPendingRef.current = true; setNavigationPending(true);
     try { if (await save()) router.push(returnPath); }
     finally { navigationPendingRef.current = false; setNavigationPending(false); }
@@ -141,7 +147,7 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
     });
   };
   const navigate = async (index: number, validateRequired = true) => {
-    if (navigationPendingRef.current) return;
+    if (navigationPendingRef.current || submittedRevision.current !== null) return;
     const missing = getMissingRequiredQuestions(currentBlock.questions, answersRef.current);
     if (validateRequired && missing.length) {
       if (timer.current) { clearTimeout(timer.current); timer.current = null; }
@@ -169,14 +175,39 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
   };
   const submit = async () => {
     if (navigationPendingRef.current) return;
-    navigationPendingRef.current = true; setNavigationPending(true); setSubmitError([]);
+    navigationPendingRef.current = true;
+    setNavigationPending(true);
+    setError("");
+    setSubmitError([]);
     try {
-      if (!(await save(currentBlock.id))) return;
-      const response = await fetch(`${apiBase}/submit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expected_revision: revisionRef.current }) });
-      const body = await response.json();
-      if (!response.ok) { setError("Не удалось завершить диагностику. Попробуйте ещё раз."); return; }
+      if (submittedRevision.current === null) {
+        if (!(await save(currentBlock.id))) return;
+        submittedRevision.current = revisionRef.current;
+      }
+      const revision = submittedRevision.current;
+      const { response, body } = await withRequestTimeout(async signal => {
+        const response = await fetch(`${apiBase}/submit`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ expected_revision: revision }),
+          signal,
+        });
+        const body = await response.json();
+        signal.throwIfAborted();
+        return { response, body };
+      });
+      if (!response.ok) {
+        if (response.status !== 409 || body?.error !== "conflict") throw Error("submit_unconfirmed");
+        submittedRevision.current = null;
+        setSubmissionUnconfirmed(false);
+        setError("Диагностика изменена в другой вкладке. Обновите страницу и повторите действие.");
+        return;
+      }
+      if (body?.ok !== true && (body?.ok !== false || !Array.isArray(body.missing))) throw Error("submit_unconfirmed");
+      submittedRevision.current = null;
+      setSubmissionUnconfirmed(false);
       if (!body.ok) {
-        const missing = (body.missing ?? []) as Array<{ question_id: string; block_id: string; position: number }>;
+        const missing = body.missing as Array<{ question_id: string; block_id: string; position: number }>;
         setMissingRequiredIds(missing.map((question) => question.question_id));
         setSubmitError(missing.map((question) => `Вопрос ${question.position} · ${data.blocks.find((block) => block.id === question.block_id)?.title ?? "Блок диагностики"}`));
         if (missing.length) {
@@ -188,16 +219,26 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
         }
         return;
       }
-      router.push(anonymous ? "/ru/free" : `/ru/diagnostics/${data.diagnostic.id}/result`);
-    } catch { setError("Не удалось завершить диагностику. Ваши ответы сохранены. Попробуйте ещё раз."); }
-    finally { navigationPendingRef.current = false; setNavigationPending(false); }
+      if (anonymous) router.refresh();
+      else router.push(`/ru/diagnostics/${data.diagnostic.id}/result`);
+    } catch {
+      if (submittedRevision.current === null) {
+        setError("Не удалось сохранить ответы. Они остались на экране.");
+        return;
+      }
+      setSubmissionUnconfirmed(true);
+      setError("Не удалось подтвердить завершение. Ответы сохранены. Повторите отправку или обновите анкету.");
+    } finally {
+      navigationPendingRef.current = false;
+      setNavigationPending(false);
+    }
   };
   if (!currentBlock) return null;
   const requiredQuestions = data.blocks.flatMap((block) => block.questions).filter((question) => question.is_required);
   const answeredQuestions = requiredQuestions.filter((question) => isDiagnosticAnswerPresent(question, answers[question.id])).length;
-  return <>{navigation}<main id="main-content" className="min-h-[70vh] py-8 sm:py-12"><div className="mx-auto w-full max-w-4xl px-5 sm:px-8"><div className="mb-7 flex flex-wrap items-center justify-between gap-4"><div><Link href={returnPath} onClick={(event) => void saveAndReturn(event)} className="text-sm underline">{anonymous?"Моя диагностика":"В кабинет"}</Link>{!anonymous && <p className="mt-4 text-sm text-muted">{data.company.name}</p>}<h1 id="diagnostic-block-heading" tabIndex={-1} className="mt-1 scroll-mt-6 text-3xl font-semibold tracking-tight outline-none">{currentBlock.title}</h1></div><div className="text-sm text-muted"><p>Блок {currentIndex + 1} из {data.blocks.length}</p><p className="mt-1">Отвечено {answeredQuestions} из {requiredQuestions.length} обязательных вопросов</p></div></div><div role="progressbar" aria-label="Заполнение анкеты" aria-valuemin={0} aria-valuemax={requiredQuestions.length} aria-valuenow={answeredQuestions} className="h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${(requiredQuestions.length ? answeredQuestions / requiredQuestions.length : 0) * 100}%` }} /></div>{saving !== "saved" && saving !== "idle" && <div className="mt-5 flex items-center gap-2 text-sm text-muted" role="status" aria-live="polite">{saving === "saving" && "Сохранение…"}{saving === "unsaved" && "Есть несохранённые ответы…"}{saving === "error" && "Ошибка сохранения"}</div>}{error && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}{saving === "error" && <button type="button" disabled={navigationPending} onClick={() => void save()} className="mt-3 rounded-xl border border-line px-4 py-2 text-sm font-semibold disabled:opacity-50">Повторить сохранение</button>}{validationError && <p role="alert" data-testid="required-answer-error" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{validationError}</p>}{submitError.length>0 && <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800"><p>Заполните обязательные вопросы:</p><ul className="mt-2 list-disc pl-5">{submitError.map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
+  return <>{navigation}<main id="main-content" className="min-h-[70vh] py-8 sm:py-12"><div className="mx-auto w-full max-w-4xl px-5 sm:px-8"><div className="mb-7 flex flex-wrap items-center justify-between gap-4"><div><Link href={returnPath} onClick={(event) => void saveAndReturn(event)} className="text-sm underline">{anonymous?"Моя диагностика":"В кабинет"}</Link>{!anonymous && <p className="mt-4 text-sm text-muted">{data.company.name}</p>}<h1 id="diagnostic-block-heading" tabIndex={-1} className="mt-1 scroll-mt-6 text-3xl font-semibold tracking-tight outline-none">{currentBlock.title}</h1></div><div className="text-sm text-muted"><p>Блок {currentIndex + 1} из {data.blocks.length}</p><p className="mt-1">Отвечено {answeredQuestions} из {requiredQuestions.length} обязательных вопросов</p></div></div><div role="progressbar" aria-label="Заполнение анкеты" aria-valuemin={0} aria-valuemax={requiredQuestions.length} aria-valuenow={answeredQuestions} className="h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${(requiredQuestions.length ? answeredQuestions / requiredQuestions.length : 0) * 100}%` }} /></div>{saving !== "saved" && saving !== "idle" && <div className="mt-5 flex items-center gap-2 text-sm text-muted" role="status" aria-live="polite">{saving === "saving" && "Сохранение…"}{saving === "unsaved" && "Есть несохранённые ответы…"}{saving === "error" && "Ошибка сохранения"}</div>}{error && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}{submissionUnconfirmed && <a href={diagnosticPath} className="mt-3 inline-block text-sm underline">Обновить анкету</a>}{saving === "error" && <button type="button" disabled={navigationPending} onClick={() => void save()} className="mt-3 rounded-xl border border-line px-4 py-2 text-sm font-semibold disabled:opacity-50">Повторить сохранение</button>}{validationError && <p role="alert" data-testid="required-answer-error" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{validationError}</p>}{submitError.length>0 && <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800"><p>Заполните обязательные вопросы:</p><ul className="mt-2 list-disc pl-5">{submitError.map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
     {currentIndex === 0 && <QuestionnaireIntro />}
-    <section className="mt-5 space-y-5">{currentBlock.questions.some((question) => question.answer_type === "scale_0_4") && <AnswerScaleGuide id="diagnostic-answer-scale-guide" />}{currentBlock.questions.map((question) => <QuestionCard key={question.id} question={question} maxTextLength={anonymous ? 10000 : undefined} value={answers[question.id]} invalid={missingRequiredIds.includes(question.id)} disabled={navigationPending} containerRef={(element) => { questionRefs.current[question.id] = element; }} onChange={(value) => update(question, value)} />)}</section><div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"><Link href={returnPath} onClick={(event) => void saveAndReturn(event)} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-line px-5 py-3 font-semibold hover:bg-tint">{anonymous?"Сохранить и выйти":"Сохранить и выйти в кабинет"}</Link><div className="flex gap-3"><button type="button" disabled={currentIndex === 0 || navigationPending} onClick={() => void navigate(currentIndex - 1, false)} className="min-h-12 flex-1 rounded-xl border border-line px-5 py-3 font-semibold hover:bg-tint disabled:cursor-not-allowed disabled:opacity-50">Назад</button>{currentIndex < data.blocks.length - 1 ? <button type="button" disabled={navigationPending} onClick={() => void navigate(currentIndex + 1)} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-50">Далее</button> : <button type="button" disabled={navigationPending} onClick={() => void submit()} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-50">Завершить диагностику</button>}</div></div></div></main></>;
+    <section className="mt-5 space-y-5">{currentBlock.questions.some((question) => question.answer_type === "scale_0_4") && <AnswerScaleGuide id="diagnostic-answer-scale-guide" />}{currentBlock.questions.map((question) => <QuestionCard key={question.id} question={question} maxTextLength={anonymous ? 10000 : undefined} value={answers[question.id]} invalid={missingRequiredIds.includes(question.id)} disabled={navigationPending || submissionUnconfirmed} containerRef={(element) => { questionRefs.current[question.id] = element; }} onChange={(value) => update(question, value)} />)}</section><div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"><Link href={returnPath} onClick={(event) => void saveAndReturn(event)} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-line px-5 py-3 font-semibold hover:bg-tint">{anonymous?"Сохранить и выйти":"Сохранить и выйти в кабинет"}</Link><div className="flex gap-3"><button type="button" disabled={currentIndex === 0 || navigationPending || submissionUnconfirmed} onClick={() => void navigate(currentIndex - 1, false)} className="min-h-12 flex-1 rounded-xl border border-line px-5 py-3 font-semibold hover:bg-tint disabled:cursor-not-allowed disabled:opacity-50">Назад</button>{currentIndex < data.blocks.length - 1 ? <button type="button" disabled={navigationPending} onClick={() => void navigate(currentIndex + 1)} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-50">Далее</button> : <button type="button" disabled={navigationPending} onClick={() => void submit()} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-50">{submissionUnconfirmed ? "Повторить отправку" : "Завершить диагностику"}</button>}</div></div></div></main></>;
 }
 
 function QuestionCard({ question, value, invalid, disabled, maxTextLength, containerRef, onChange }: { question: Question; value?: number | string; invalid: boolean; disabled: boolean; maxTextLength?: number; containerRef: (element: HTMLElement | null) => void; onChange: (value: number | string) => void }) {
