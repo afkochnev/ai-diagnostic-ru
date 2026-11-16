@@ -17,6 +17,7 @@ vi.mock("@/server/consultation/provider", () => ({ getConsultationProvider: vi.f
 import { prepareTeamInvitationAction, switchTeamInvitationAccountAction } from "@/server/team/actions";
 vi.mock("@/server/team/passwordless-actions",()=>({sendTeamCodeAction:vi.fn(),verifyTeamCodeAction:vi.fn()}));
 import { TeamJoin } from "@/features/team/join";
+import { TeamPasswordless } from "@/features/team/passwordless";
 const policy={versions:{data_processing:"v1",marketing:"v1"},temporary:false,dataUrl:"/ru/legal/data-processing",marketingUrl:"/ru/legal/marketing"};
 beforeEach(() => {
   vi.clearAllMocks(); state.jar.clear(); state.origin = "https://ai-diagnostic-staging-web.onrender.com";
@@ -58,12 +59,16 @@ describe("invitation sign-in states",()=>{
   const html=renderToStaticMarkup(createElement(TeamJoin,{view:{...ready,phase:"waiting",sentAt:Date.now(),codeExpires:Date.now()+600000},policy}));
   expect(html).toContain("Проверьте почту");expect(html).toContain("Нажмите кнопку в письме");expect(html).not.toContain("one-time-code");expect(html).not.toContain('name="code"');expect(html).not.toContain("одноразовый код");expect(html).not.toContain('checked=""');
  });
- it("expired context has no stale sent claim, resend action or code form",()=>{
+ it("waits for the browser to read the emailed fragment before rendering an expired context",()=>{
   const html=renderToStaticMarkup(createElement(TeamJoin,{view:{phase:"expired"},policy}));
-  expect(html).toContain("сессии приглашения истёк");expect(html).not.toContain("Письмо отправлено");expect(html).not.toContain('name="code"');expect(html).not.toContain("Отправить ещё раз");
+  expect(html).toContain("Открываем приглашение");expect(html).not.toContain('role="alert"');
+ });
+ it("shows recovery instructions when the link is missing and the context is expired",()=>{
+  const html=renderToStaticMarkup(createElement(TeamPasswordless,{view:{phase:"expired"},policy}));
+  expect(html).toContain("Откройте исходную ссылку из письма-приглашения");expect(html).not.toContain("Письмо отправлено");expect(html).not.toContain('name="code"');expect(html).not.toContain("Отправить ещё раз");
  });
  it("an expired combined sign-in link requests organizer renewal rather than reopening the same expired proof",()=>{
-  const html=renderToStaticMarkup(createElement(TeamJoin,{view:{phase:"expired",singleEmail:true},policy}));
+  const html=renderToStaticMarkup(createElement(TeamPasswordless,{view:{phase:"expired",singleEmail:true},policy}));
   expect(html).toContain("Попросите организатора отправить новое приглашение");
   expect(html).not.toContain("Откройте письмо-приглашение снова");expect(html).not.toContain('name="code"');
  });

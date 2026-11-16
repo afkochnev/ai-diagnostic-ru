@@ -13,7 +13,7 @@ import {sealTeamChallenge} from "./passwordless-challenge";
 import {teamRpc} from "./service";
 import {clearTeamEntry,teamEntryContext} from "./entry-context";
 import {controlledTeamRequired} from '@/server-runtime/team-smoke';
-export type TeamPasswordlessState={phase?:"ready"|"waiting"|"expired"|"error"|"wrong";error?:string;authRequestAccepted?:boolean;sentAt?:number;expires?:number;contextExpires?:number};
+export type TeamPasswordlessState={phase?:"ready"|"waiting"|"expired"|"error"|"wrong"|"spent";error?:string;authRequestAccepted?:boolean;sentAt?:number;expires?:number;contextExpires?:number};
 function failure(error:unknown):TeamPasswordlessState{
   const code=error instanceof Error?error.message:"";
   const messages:Record<string,string>={

@@ -68,6 +68,7 @@ export async function continueSingleEmailAction(_:TeamPasswordlessState,form:For
   console.info("[team-auth]",{event:"single_email_acceptance",verificationSucceeded:true});
  }catch(error){
   const rawCode=error instanceof Error?error.message:"";
+  if(day&&rawCode==="team_invitation_spent")return {phase:"spent",authRequestAccepted:false};
   const code=day&&!['team_invitation_unavailable','team_context_expired','team_email_invalid','team_consent_required','team_policy_changed','team_wrong_account','rate_limited','team_auth_busy'].includes(rawCode)?'team_auth_retry':rawCode;
   const messages:Record<string,string>={
    team_context_expired:"Ссылка недоступна или срок доступа истёк. Обратитесь к организатору.",

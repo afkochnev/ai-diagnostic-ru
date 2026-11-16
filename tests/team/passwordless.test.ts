@@ -14,6 +14,9 @@ vi.mock("@/server/auth/legal",()=>({registrationPolicy:async()=>({versions:{data
 vi.mock("@/server/team/service",()=>({teamRpc:state.accept}));
 vi.mock("@/server/rate-limit",()=>({enforceRateLimit:state.limit}));
 import { sendTeamCodeAction,verifyTeamCodeAction,confirmTeamEmailAction } from "@/server/team/passwordless-actions";
+import { prepareTeamInvitationAction } from "@/server/team/actions";
+import { teamEntryView } from "@/server/team/entry-context";
+import { sealInvitationDayGrant } from "@/server/team/invitation-auth-proof";
 import { sealInvitation } from "@/server/team/invitation-envelope";
 import { sealTeamChallenge,openTeamChallenge } from "@/server/team/passwordless-challenge";
 const token="a".repeat(64),hash=createHash("sha256").update(token).digest("hex"),email="participant@example.test",secret="synthetic-secret";
@@ -66,6 +69,49 @@ describe("invitation-only passwordless requests",()=>{
   state.send.mockResolvedValue({error:{status:500,message:"sensitive provider response"}});
   const result=await sendTeamCodeAction({},consent());expect(result.authRequestAccepted).not.toBe(true);expect(result.error).not.toContain("sensitive");expect(state.jar.has("team-email-challenge")).toBe(false);
  });
+});
+describe("ordinary invitation browser context", () => {
+  const dayTtl = 24 * 60 * 60 * 1000;
+  async function prepareDayInvitation(expires: number) {
+    const form = new FormData();
+    form.set("token", token);
+    form.set("auth", sealInvitationDayGrant({
+      version: 2,
+      purpose: "team-invitation-day",
+      email,
+      invitationHash: hash,
+      expires,
+    }, secret));
+    return prepareTeamInvitationAction({}, form);
+  }
+
+  it("keeps the prepared invitation valid after 30 minutes and until the deadline in the email", async () => {
+    const openedAt = Date.now();
+    const expires = openedAt + dayTtl - 60000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(openedAt);
+    try {
+      expect(await prepareDayInvitation(expires)).toEqual({ status: "prepared" });
+      for (const name of ["team-invitation", "team-invitation-details", "team-invitation-auth"]) {
+        expect(state.set).toHaveBeenCalledWith(name, expect.any(String), expect.objectContaining({
+          httpOnly: true, secure: true, sameSite: "lax", maxAge: (expires - openedAt) / 1000,
+        }));
+      }
+      clock.mockReturnValue(openedAt + 45 * 60 * 1000);
+      expect(await teamEntryView(null, false)).toMatchObject({ phase: "ready", singleEmail: true, expires });
+      clock.mockReturnValue(expires);
+      expect(await teamEntryView(null, false)).toMatchObject({ phase: "expired" });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("does not fall back to the email-only path if the 24-hour grant cookie is missing", async () => {
+    expect(await prepareDayInvitation(Date.now() + dayTtl)).toEqual({ status: "prepared" });
+    state.jar.delete("team-invitation-auth");
+    expect(await teamEntryView(null, false)).toMatchObject({ phase: "expired" });
+    expect((await sendTeamCodeAction({}, consent())).phase).toBe("expired");
+    expect(state.send).not.toHaveBeenCalled();
+  });
 });
 describe("email proof and invitation acceptance",()=>{
  it("verifies the server-bound email then uses the unchanged authenticated acceptance RPC",async()=>{

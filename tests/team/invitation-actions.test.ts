@@ -40,7 +40,33 @@ describe("team invitation side effects",()=>{
   it("does not send another invitation when the database rejects a duplicate",async()=>{
     state.rpc.mockRejectedValue(new Error("team_already_invited"));
     const result=await inviteTeamAction({},invitation());
-    expect(result.error).toContain("уже приглашён");expect(state.send).not.toHaveBeenCalled();
+    expect(result.error).toContain("уже приглашён");
+    expect(result.error).toContain("Управление приглашением");
+    expect(state.send).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["email", "participant@example", "Укажите один действительный email участника."],
+    ["displayName", "  ", "Укажите имя участника (от 1 до 100 символов)."],
+  ])("shows which invitation field needs correction before creating a participant (%s)", async (field, invalidValue, message) => {
+    const form = invitation();
+    form.set(field, invalidValue);
+    expect(await inviteTeamAction({}, form)).toEqual({ error: message });
+    expect(state.rpc).not.toHaveBeenCalled();
+    expect(state.send).not.toHaveBeenCalled();
+  });
+  it("asks the owner to check the participant list when the invite request cannot be confirmed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      state.rpc.mockRejectedValue(new Error("team_request_failed"));
+      expect((await inviteTeamAction({}, invitation())).error).toContain("проверьте список участников");
+      expect(state.send).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith("[team-email]", {
+        event: "invitation_request_failed",
+        reason: "team_request_failed",
+      });
+    } finally {
+      warn.mockRestore();
+    }
   });
   it("shows real provider failure while preserving the once-issued link",async()=>{
     state.send.mockRejectedValue(new Error("sensitive provider response"));

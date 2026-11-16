@@ -10,14 +10,28 @@ export function CreateTeamForm({ companyId,defaultTitle }: { companyId: string;d
 }
 export function InviteTeamForm({ teamId, participantId }: { teamId: string; participantId?: string }) {
   const [copied, setCopied] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
   const [state, action, pending] = useActionState(async (previous: TeamActionState, form: FormData): Promise<TeamActionState> => {
     setCopied(false);
-    if (form.get("intent") === "reset") return {};
-    if (participantId || (form.get("intent") === "retry" && previous.participantId)) {
-      form.set("participantId", participantId ?? previous.participantId!);
-      return renewTeamInvitationAction({}, form);
+    const intent = form.get("intent");
+    if (intent === "reset") {
+      setDisplayName("");
+      setEmail("");
+      return {};
     }
-    return inviteTeamAction({}, form);
+    const renewalId = participantId ?? (intent === "retry" ? previous.participantId : undefined);
+    try {
+      if (!renewalId) return await inviteTeamAction({}, form);
+      form.set("participantId", renewalId);
+      const result = await renewTeamInvitationAction({}, form);
+      return result.error ? { ...result, participantId: renewalId } : result;
+    } catch {
+      return {
+        error: "Не удалось получить ответ от сервера. Проверьте подключение и список участников перед повторной отправкой.",
+        participantId: renewalId,
+      };
+    }
   }, {});
   const failed = state.emailStatus === "failed";
   const sent = state.emailStatus === "sent";
@@ -25,7 +39,10 @@ export function InviteTeamForm({ teamId, participantId }: { teamId: string; part
   const issued = Boolean(state.participantId);
   return <form action={action} className="space-y-3">
     <input type="hidden" name="teamId" value={teamId} />
-    {!participantId && !issued && <><label className="block">Имя участника<input name="displayName" required maxLength={100} className={input} /></label><label className="block">Email участника<input name="email" type="email" required maxLength={254} className={input} /></label></>}
+    {!participantId && !issued && <>
+      <label className="block">Имя участника<input name="displayName" value={displayName} onChange={(event) => setDisplayName(event.target.value)} required maxLength={100} className={input} /></label>
+      <label className="block">Email участника<input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required maxLength={254} className={input} /></label>
+    </>}
     {state.error && <p role="alert">{state.error}</p>}
     {sent && <p role="status">Приглашение отправлено на {state.recipient}.</p>}
     {failed && <div role="alert"><p>Участник добавлен, но письмо отправить не удалось.</p><p>{state.invitationUrl ? "Можно повторить отправку или скопировать защищённую ссылку вручную." : "Можно повторить отправку."}</p></div>}

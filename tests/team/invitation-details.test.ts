@@ -14,8 +14,10 @@ describe("authenticated display context",()=>{
  });
  it("masks the local address and escapes owner-entered HTML",()=>{
   expect(maskTeamEmail(value.email)).toBe("p***@example.test");
-  const mail=teamInvitationMessage({company:"<img src=x>",team:"<script>bad</script>",inviter:'Owner & "Name"',url:"https://staging.example.test/ru/team/join#invitation=synthetic&context=synthetic"});
+  const mail=teamInvitationMessage({company:"<img src=x>",team:"<script>bad</script>",inviter:'Owner & "Name"',displayName:"Елена <Петрова>",url:"https://staging.example.test/ru/team/join#invitation=synthetic&context=synthetic"});
   expect(mail.html).not.toContain("<script>");expect(mail.html).not.toContain("<img");expect(mail.html).toContain("&lt;script&gt;");expect(mail.html).toContain("Принять приглашение");expect(mail.text).toContain("индивидуальные ответы");
+  expect(mail.text).toContain("Здравствуйте, Елена <Петрова>!");
+  expect(mail.html).toContain("<p>Здравствуйте, Елена &lt;Петрова&gt;!</p>");
  });
  it("isolates Team provider mode, leaves unrelated mail mock and makes mock network-free",async()=>{
   const fetch=vi.fn();vi.stubGlobal("fetch",fetch);vi.stubEnv("EMAIL_PROVIDER","mock");vi.stubEnv("TEAM_INVITATION_EMAIL_PROVIDER","mock");

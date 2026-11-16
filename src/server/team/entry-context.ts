@@ -9,7 +9,7 @@ import {teamFoundationEnabled} from "./capabilities";
 import {openInvitationContext} from "./invitation-envelope";
 import {openInvitationDetails,maskTeamEmail} from "./invitation-details";
 import {openTeamChallenge} from "./passwordless-challenge";
-import {openInvitationAuthProof} from "./invitation-auth-proof";
+import {isInvitationDayGrant,openInvitationAuthProof} from "./invitation-auth-proof";
 import {controlledTeamContext,controlledTeamRequired} from '@/server-runtime/team-smoke';
 import {readControlledTeamW2Entry} from './w2-entry';
 const targetSchema=z.object({email:z.email().max(254),display_name:z.string().min(1).max(100),create_user:z.boolean()}).strict();
@@ -40,6 +40,7 @@ export async function teamEntryContext(checkOrigin=false){
   const encodedProof=jar.get("team-invitation-auth")?.value;
   const proof=openInvitationAuthProof(encodedProof,hash,secret);
   if(encodedProof && (!proof || proof.email!==target.email))throw new Error("team_context_expired");
+  if(invitation.dayAccess && (!proof || !isInvitationDayGrant(proof) || proof.expires!==invitation.expires))throw new Error("team_context_expired");
   if(controlledTeamRequired()&&!proof)throw Error('team_context_expired');
   return {jar,secret,token:invitation.token,hash,target,details,challenge,proof,expires:proof?Math.min(invitation.expires,proof.expires):invitation.expires,flowId:createHash("sha256").update(envelope!).digest("hex").slice(0,16)};
 }

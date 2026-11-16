@@ -59,9 +59,13 @@ describe("24-hour invitation continuation",()=>{
   await expect(continueSingleEmailAction({},consent())).rejects.toThrow("redirect:");
   expect(state.dayClaim).toHaveBeenCalledOnce();expect(state.verify).toHaveBeenCalledOnce();
  });
- it("blocks an already spent grant without touching Supabase verification",async()=>{
-  state.dayClaim.mockRejectedValue(Error("team_email_invalid"));expect((await continueSingleEmailAction({},consent())).phase).toBe("expired");
-  expect(state.verify).not.toHaveBeenCalled();
+ it("identifies an accepted invitation and allows reuse only with the existing matching verified identity",async()=>{
+  state.dayClaim.mockRejectedValue(Error("team_invitation_spent"));
+  expect((await continueSingleEmailAction({},consent())).phase).toBe("spent");
+  expect(state.verify).not.toHaveBeenCalled();expect(state.rpc).not.toHaveBeenCalled();expect(state.clear).not.toHaveBeenCalled();
+  state.current.mockResolvedValue({data:{user:{email,email_confirmed_at:"yes"}}});
+  await expect(continueSingleEmailAction({},consent())).rejects.toThrow("redirect:/ru/team/responses/"+pid);
+  expect(state.dayClaim).toHaveBeenCalledOnce();expect(state.verify).not.toHaveBeenCalled();
  });
 });
 describe("single email consent continuation",()=>{
