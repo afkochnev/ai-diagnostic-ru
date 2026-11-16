@@ -52,9 +52,21 @@ describe("confidential Team report boundary",()=>{
  });
  it("retains only safe codes on provider failure, never raw error text",async()=>{
   const rpc=vi.fn(async(name:string)=>name==="prepare_team_report_job"?{data:null,error:{message:"503 secret raw text from provider"}}:{data:null,error:null});
-  await processTeamJob(job,rpc);
-  expect(JSON.stringify(rpc.mock.calls.at(-1))).not.toContain("secret raw");
-  expect(rpc.mock.calls.at(-1)?.[0]).toBe("fail_team_job");
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+   expect(await processTeamJob(job,rpc)).toBe("failed");
+   expect(rpc.mock.calls.at(-1)?.[0]).toBe("fail_team_job");
+   expect(JSON.stringify(rpc.mock.calls.at(-1))).not.toContain("secret raw");
+   const calls = warn.mock.calls;
+   expect(calls.map(([tag, payload]) => [tag, JSON.parse(payload)])).toEqual([
+    ["[report-worker]", {
+     event: "report_attempt_failed", kind: "team", job_id: "job", attempt: 1,
+     code: "team_provider_retryable", phase: "prepare_report", retry_requested: true,
+    }],
+   ]);
+  } finally {
+   warn.mockRestore();
+  }
  });
  it("superseded or already-completed source causes no provider/publication work",async()=>{
   for(const status of ["superseded","completed"]){

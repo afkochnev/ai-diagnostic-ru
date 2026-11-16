@@ -53,6 +53,7 @@ describe('anonymous pause and resume',()=>{
  });
 
  it('resumes the same session, block and saved answers, including the lowest score',async()=>{
+  mocks.policy.mockRejectedValue(Error('Registration policy unavailable'));
   const tree=await page() as ReactElement<{anonymous:boolean;data:{diagnostic:{id:string;current_block_id:string}}}>;
   expect(tree.type).toBe(DiagnosticRunner);
   expect(tree.props.anonymous).toBe(true);
@@ -61,6 +62,7 @@ describe('anonymous pause and resume',()=>{
    {question_id:'question-1',numeric_value:0,text_value:null,revision:9},
    {question_id:'question-2',numeric_value:null,text_value:'Сохранённая цель',revision:9},
   ]);
+  expect(mocks.policy).not.toHaveBeenCalled();
  });
 
  it('cannot turn a missing session into a false saved state',async()=>{
@@ -75,6 +77,17 @@ describe('anonymous pause and resume',()=>{
   const tree=await page({paused:'1'});
   expect(elements(tree).some(element=>element.type===EmailForm)).toBe(true);
   expect(elements(tree).some(element=>element.type===DiagnosticRunner)).toBe(false);
+ });
+
+ it('lets a visitor retry loading consent documents while preserving attribution',async()=>{
+  mocks.session.mockRejectedValue(Error('acquisition_cookie_missing'));
+  mocks.policy.mockRejectedValue(Error('Registration policy unavailable'));
+  const tree=await page({utm_source:'blog'});
+  const html=renderToStaticMarkup(tree);
+  expect(html).toContain('Не удалось загрузить документы о согласии');
+  expect(html).toContain('Повторить загрузку');
+  expect(html).toContain('name="utm_source" value="blog"');
+  expect(elements(tree).some(element=>element.type===StartForm)).toBe(false);
  });
 
  it('preserves the production gate before loading any saved session',async()=>{

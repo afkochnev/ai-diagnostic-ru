@@ -17,6 +17,7 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
   if((controlledTeamRequired()||job.controlled_run_id||job.controlled_window_id)&&(!controlled||controlled.job_id!==job.id||controlled.lease_token!==job.lease_token||controlled.kind!==job.kind||controlled.run_id!==job.controlled_run_id||(controlled.window_id??null)!==(job.controlled_window_id??null)))throw new Error('controlled_team_claim_required');
   const counts=emptyTeamCallCounts();
   let v3=false, rich=false, localPass=false, storingSynthesis=false, publishing=false, reportLocalPass=false;
+  let phase = "prepare_report";
   let corpus: PrivacyCorpus | null=null;
   const identity = { p_job_id: job.id, p_lease_token: job.lease_token };
   const call = async (name: string, args: Record<string, unknown> = {}) => {
@@ -34,6 +35,7 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
     const config = teamAIProvider(v3?"TEAM-RU-3":rich ? "TEAM-RU-2" : "TEAM-RU-1");
     if(v3 && prepared.provider_mode!==config.provider) throw new Error("team_provider_mismatch");
     const ruV3 = v3 && isRuV3TeamQuestionnaire(prepared.report_input);
+    phase = "synthesize_answers";
     let ruV3Qualitative: QualitativeInputV2 | undefined;
     let summary: unknown;
     if(rich) {
@@ -54,17 +56,21 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
       localPass=true;
     } else summary=prepared.synthesis ?? await synthesizeTeamTexts(prepared.qualitative_groups);
     if (!prepared.synthesis) {
+      phase = "save_synthesis";
       storingSynthesis=true;
       const stored = await call("store_team_synthesis", { p_summary: summary, p_provider: config.provider, p_model: config.model });
       storingSynthesis=false;
       if (stored === "superseded") return stored;
     }
+    phase = "generate_report";
     const generated = await (v3?generateTeamReportV3(prepared.report_input,summary,counts,ruV3Qualitative):rich ? generateTeamReportV2(prepared.report_input, summary,counts) : generateTeamReport(prepared.report_input, summary));
+    phase = "validate_report";
     const content=rich && corpus ? await validateAndRepairReport(generated,prepared.report_input,corpus,config.provider,
       fields=>v3?repairV3Fields(fields,counts,true,ruV3):repairReportFields(fields,counts),event=>console.info("[team-ai]",event)) : generated;
     if(v3) validateCoreQuality(content as import("./report-v2-contracts").TeamReportV2,config.provider,summary as import("./report-v2-contracts").TeamSynthesisV2);
     reportLocalPass=rich;
     publishing=true;
+    phase = "publish_report";
     return await call("publish_team_report", { p_content: content, p_model: config.model });
   } catch (error) {
     // Never persist/log provider output, exception details, raw input or answer values.
@@ -77,7 +83,12 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
     const deterministic=["team_privacy_rejected","team_schema_rejected","team_numeric_integrity","team_qualitative_insufficient","team_quality_rejected","team_provider_mismatch"].find(code=>message.includes(code));
     const retryable = !deterministic && (!rich || attempted===0) && /timeout|aborted|429|5\d\d|network|fetch failed|econnreset|team_aggregate_pending/i.test(message);
     const code = deterministic ?? (message==="team_aggregate_pending" ? message : retryable ? "team_provider_retryable" : "team_processing_failed");
-    const failed=await rpc("fail_team_job", { ...identity, p_error_code: code, p_retryable: controlled?false:retryable });
+    const retryRequested = !controlled && retryable;
+    if (job.kind === "team_ai_report") console.warn("[report-worker]", JSON.stringify({
+      event: "report_attempt_failed", kind: "team", job_id: job.id,
+      attempt: job.attempts, code, phase, retry_requested: retryRequested,
+    }));
+    const failed=await rpc("fail_team_job", { ...identity, p_error_code: code, p_retryable: retryRequested });
     if(failed.error)throw new Error("team_failure_persist_unconfirmed");
     return "failed";
   } finally {

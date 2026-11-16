@@ -1,5 +1,7 @@
 import "server-only";
+import { setTimeout as delay } from "node:timers/promises";
 import { createAuthClient } from "@/server/supabase/server";
+import { isTransientSupabaseError } from "@/server-runtime/supabase/transient";
 import { consentLinks, type PublishedPrivacyDocument } from "./legal-contract";
 
 function legalUrl(value: string | undefined, fallback: string) {
@@ -9,13 +11,30 @@ function legalUrl(value: string | undefined, fallback: string) {
   return value;
 }
 
+type ConsentRead<T> = {
+  data: T | null;
+  error: { code?: string; message?: string } | null;
+  status: number;
+};
+
+async function readConsentRows<T>(read: (signal: AbortSignal) => PromiseLike<ConsentRead<T>>) {
+  const first = await read(AbortSignal.timeout(3_000));
+  if (first.error && first.status !== 429 && isTransientSupabaseError(first.status, first.error)) {
+    await delay(200);
+    return read(AbortSignal.timeout(3_000));
+  }
+  return first;
+}
+
 export async function registrationPolicy() {
   const client = await createAuthClient();
-  const { data, error } = await client.from("consent_documents").select("kind, version, is_temporary");
+  const { data, error } = await readConsentRows(signal =>
+    client.from("consent_documents").select("kind, version, is_temporary").retry(false).abortSignal(signal));
   if (error || !data) throw new Error("Registration policy unavailable");
   let documents: PublishedPrivacyDocument[] = [];
   if (data.some(p => !p.is_temporary)) {
-    const published = await client.from("privacy_legal_documents").select("version,kind,policy_version");
+    const published = await readConsentRows(signal =>
+      client.from("privacy_legal_documents").select("version,kind,policy_version").retry(false).abortSignal(signal));
     if (published.error || !published.data) throw new Error("Registration policy unavailable");
     documents = published.data;
   }

@@ -43,6 +43,14 @@ export async function enqueueAIReport(diagnosticId: string, version = 1) {
 export type ClaimedAIJob = { job_id: string; diagnostic_id: string; lease_token: string; attempt_count: number; deduplication_key: string };
 export function isRetryableAIError(message: string) { return /timeout|aborted|429|rate.?limit|5\d\d|network|fetch failed|econnreset/i.test(message); }
 
+function logFailure(job: ClaimedAIJob, code: string, phase: string, retryRequested: boolean) {
+  // Keep a record even when a later retry clears the latest error in the database.
+  console.warn("[report-worker]", JSON.stringify({
+    event: "report_attempt_failed", kind: "individual", job_id: job.job_id,
+    attempt: job.attempt_count, code, phase, retry_requested: retryRequested,
+  }));
+}
+
 export async function runAIJob(job: ClaimedAIJob, maxAttempts = 3) {
   assertFreeSmokeDiagnostic(job.diagnostic_id);
   const db = createAdminClient();
@@ -50,12 +58,14 @@ export async function runAIJob(job: ClaimedAIJob, maxAttempts = 3) {
   const lease = job.lease_token;
   const versionMatch = job.deduplication_key.match(/^ai_report_v(\d+)$/);
   if (!versionMatch) {
+    logFailure(job, "invalid_ai_job_key", "prepare_job", false);
     await db.from("jobs").update({ status: "failed", available_at: new Date("2099-01-01").toISOString(), attempts: maxAttempts, last_error_code: "invalid_ai_job_key", last_error_message: "AI job payload is invalid", lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", job.lease_token);
     return { status: "failed" };
   }
   const version = Number(versionMatch[1]);
   const { data: report } = await db.from("ai_reports").select("id,version,status,prompt_version,input_snapshot").eq("diagnostic_id", diagnosticId).eq("version", version).maybeSingle();
   if (!report) {
+    logFailure(job, "ai_report_missing", "read_report", false);
     await db.from("jobs").update({ status: "failed", available_at: new Date("2099-01-01").toISOString(), attempts: maxAttempts, last_error_code: "ai_report_missing", last_error_message: "AI report row is missing", lease_token: null, lease_expires_at: null }).eq("id", job.job_id).eq("lease_token", lease);
     return { status: "failed" };
   }
@@ -64,6 +74,7 @@ export async function runAIJob(job: ClaimedAIJob, maxAttempts = 3) {
     return { status: "completed" };
   }
   await db.from("ai_reports").update({ status: "generating" }).eq("id", report.id).in("status", ["queued", "failed", "generating"]);
+  let phase = "prepare_input";
   try {
     assertIndividualPromptVersion(report.prompt_version);
     const input = report.prompt_version === RU_V3_INDIVIDUAL_PROMPT_VERSION
@@ -72,9 +83,12 @@ export async function runAIJob(job: ClaimedAIJob, maxAttempts = 3) {
     if (report.prompt_version === RU_V3_INDIVIDUAL_PROMPT_VERSION && input?.input_version !== RU_V3_INDIVIDUAL_INPUT_VERSION) {
       throw Error("invalid_individual_input_version");
     }
+    phase = "generate_report";
     const generated = await generateReport(input, report.prompt_version, Number(process.env.AI_PROVIDER_TIMEOUT_MS || 180000),diagnosticId);
+    phase = "save_report";
     const { error: reportError } = await db.from("ai_reports").update({ status: "completed", structured_content: generated.content, provider_request_id: generated.requestId ?? null, completed_at: new Date().toISOString(), error_code: null, error_message: null }).eq("id", report.id).eq("status", "generating");
     if (reportError) throw new Error(`ai_report_persist_failed:${reportError.message}`);
+    phase = "finish_job";
     const { error: jobError } = await db.from("jobs").update({ status: "completed", completed_at: new Date().toISOString(), lease_token: null, lease_expires_at: null, last_error_code: null, last_error_message: null }).eq("id", job.job_id).eq("lease_token", lease);
     if (jobError) throw new Error(`ai_job_complete_failed:${jobError.message}`);
     return { status: "completed" };
@@ -85,6 +99,7 @@ export async function runAIJob(job: ClaimedAIJob, maxAttempts = 3) {
     const next = new Date(Date.now() + Math.min(3600000, 30000 * 2 ** Math.max(0, job.attempt_count - 1))).toISOString();
     const errorCode = ["invalid_individual_prompt_version", "invalid_individual_input_version"].includes(message)
       ? message : retryable ? "provider_retryable" : "ai_failed";
+    logFailure(job, errorCode, phase, !terminal);
     await db.from("ai_reports").update({
       status: terminal ? "failed" : "queued", error_code: terminal ? errorCode : null,
       error_message: terminal ? "AI report generation failed" : null,

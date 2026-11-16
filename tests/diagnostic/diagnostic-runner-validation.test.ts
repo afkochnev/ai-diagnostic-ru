@@ -39,11 +39,12 @@ describe("diagnostic runner required-answer validation", () => {
     expect(source).toContain('navigate(currentIndex + 1)}');
   });
 
-  it("switches the already-loaded block after save without a refresh round trip", () => {
+  it("switches and scrolls the block only after a successful save", () => {
     const source = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "utf8");
     expect(source).toContain("const [viewIndex, setViewIndex] = useState(initialIndex);");
-    expect(source).toContain("if (await save(data.blocks[index].id)) setViewIndex(index);");
-    expect(source).not.toContain("if (await save(data.blocks[index].id)) router.refresh();");
+    const navigation = source.slice(source.indexOf("const navigate ="), source.indexOf("const submit ="));
+    expect(navigation).toMatch(/if \(!\(await save\(data\.blocks\[index\]\.id\)\)\) return;\s+setViewIndex\(index\);\s+if \(typeof window/);
+    expect(navigation).not.toContain("router.refresh()");
   });
 
   it("marks unchanged answer payloads clean and sends answers only when dirty", () => {

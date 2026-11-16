@@ -1,20 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/server-runtime/supabase/admin";
+import { WorkerQueueClaimError } from "@/server/worker/claim-error";
 import { buildConsultationNotification } from "./content";
 import { getConsultationProvider } from "./provider";
 import { ConsultationDeliveryError, consultationDestination } from "./config";
 
 type ClaimedJob = { job_id: string; lead_request_id: string; lease_token: string; attempt_count: number };
-type SafeRpcError = { message?: string; code?: string; details?: string; hint?: string };
-
-function claimError(error: SafeRpcError) {
-  const result = new Error(`consultation_claim_failed:${error.message ?? "unknown"}`) as Error & SafeRpcError;
-  result.name = "ConsultationClaimError";
-  result.code = error.code;
-  result.details = error.details;
-  result.hint = error.hint;
-  return result;
-}
 
 function maximumAttempts() {
   const value = Number(process.env.CONSULTATION_MAX_ATTEMPTS || 5);
@@ -70,15 +61,17 @@ async function processClaimedJob(claim: ClaimedJob) {
 export async function runPendingConsultationNotifications(limit = 10) {
   const db = createAdminClient();
   console.info("[consultation-worker]", { checkpoint: "before_claim", limit });
-  const { data, error } = await (db as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: ClaimedJob[] | null; error: SafeRpcError | null }> }).rpc("claim_consultation_notification_jobs", { p_limit: limit, p_max_attempts: maximumAttempts(), p_lease_seconds: Number(process.env.WORKER_LEASE_SECONDS || 300) });
+  const { data, error, status } = await db.rpc("claim_consultation_notification_jobs", { p_limit: limit, p_max_attempts: maximumAttempts(), p_lease_seconds: Number(process.env.WORKER_LEASE_SECONDS || 300) });
   if (error) {
-    console.error("[consultation-worker]", { checkpoint: "claim_error", code: error.code, message: error.message, details: error.details, hint: error.hint });
-    throw claimError(error);
+    const failure = new WorkerQueueClaimError("consultation", status, error);
+    console.error("[consultation-worker]", { checkpoint: "claim_error", code: failure.code, status });
+    throw failure;
   }
-  console.info("[consultation-worker]", { checkpoint: "claim_success", claimed: data?.length ?? 0 });
+  const claims = (data ?? []) as ClaimedJob[];
+  console.info("[consultation-worker]", { checkpoint: "claim_success", claimed: claims.length });
   const results = [];
-  for (const claim of data ?? []) results.push(await processClaimedJob(claim));
-  return { claimed: data?.length ?? 0, results };
+  for (const claim of claims) results.push(await processClaimedJob(claim));
+  return { claimed: claims.length, results };
 }
 
 // Unlike the queue runner, this entry point may only claim this lead's idle job.

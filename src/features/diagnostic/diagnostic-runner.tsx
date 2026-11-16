@@ -163,7 +163,8 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
     navigationPendingRef.current = true;
     setNavigationPending(true);
     try {
-      if (await save(data.blocks[index].id)) setViewIndex(index);
+      if (!(await save(data.blocks[index].id))) return;
+      setViewIndex(index);
       if (typeof window !== "undefined") window.requestAnimationFrame(() => {
         const heading = document.getElementById("diagnostic-block-heading");
         heading?.scrollIntoView({ behavior: "smooth", block: "start" }); heading?.focus({ preventScroll: true });
