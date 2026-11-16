@@ -6,6 +6,7 @@ import {createTransactionalProvider} from '@/server/consultation/provider';
 import {hash,newSecret} from './context';
 import {requireFreeSmokeAdmission,reserveFreeSmoke} from './smoke';
 import {sessionRpc} from './service';
+import {stagingAccessEmailEnabled} from './staging-email';
 import type {emailSchema} from './contracts';
 import type {z} from 'zod';
 export const proofSecret=()=>`anonymous-access/v1/${authConfig().AUTH_FLOW_SECRET}`;
@@ -13,6 +14,8 @@ export function accessProof(envelope:string,id:string){const proof=openInvitatio
 export function accessMessage(url:string){return {subject:'Ваш персональный AI-отчёт — доступ к результатам',text:`Чтобы подтвердить email и получить отчёт, откройте ссылку:\n${url}\n\nСсылка действует 30 минут. Пароль не нужен. Не пересылайте письмо.`,html:`<h1>Получите персональный AI-отчёт</h1><p>Подтвердите email, чтобы сохранить результаты диагностики.</p><p><a href="${url.replaceAll('&','&amp;')}">Открыть мой AI-отчёт</a></p><p>Ссылка действует 30 минут. Пароль не нужен. Не пересылайте письмо.</p>`};}
 export async function requestAccess(id:string,secretHash:string,input:z.infer<typeof emailSchema>){
  await requireFreeSmokeAdmission(input.email);
+ const mode=stagingAccessEmailEnabled(id,input.email)?'resend':process.env.ACQUISITION_EMAIL_PROVIDER??'mock';
+ if(mode!=='mock' && mode!=='resend')throw Error('acquisition_email_unavailable');
  // Reserve before mutating pending link state: a second attempt cannot invalidate the first link.
  await reserveFreeSmoke('email');
  const nonce=newSecret();
@@ -25,9 +28,6 @@ export async function requestAccess(id:string,secretHash:string,input:z.infer<ty
  const envelope=sealInvitationAuthProof({email:input.email,invitationHash:hash(id),tokenHash:generated.data.properties.hashed_token,type},proofSecret());
  // Fragment prevents credentials from entering normal HTTP access logs/referrers.
  const url=`${authConfig().APP_URL}/ru/free/confirm#session=${id}&access=${envelope}`;
- const mode=process.env.ACQUISITION_EMAIL_PROVIDER??'mock';
-
- if(mode!=='mock' && mode!=='resend')throw Error('acquisition_email_unavailable');
  await createTransactionalProvider(mode).send({to:input.email,...accessMessage(url),idempotencyKey:`acquisition/${id}/${reserved.generation}`});
  await sessionRpc('email_sent',id,secretHash,{generation:reserved.generation});
  // Never log destination, envelope, nonce, token, or source text.

@@ -10,6 +10,7 @@ import {cookieContext} from '@/server/acquisition/context';
 import {createAdminClient} from '@/server-runtime/supabase/admin';
 import {loadQuestionnaire} from '@/server/diagnostic/questionnaire';
 import {sessionLoadFailure,accessEmailSent,profileFromAnswers} from '@/server/acquisition/view-state';
+import {stagingAccessEmailEnabled} from '@/server/acquisition/staging-email';
 export const dynamic='force-dynamic';
 export default async function Page({searchParams}:{searchParams:Promise<Record<string,string>>}){
  if(!acquisitionEnabled())notFound();
@@ -50,5 +51,5 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
   const choices=await claimRpc<Choices>(c.id,c.hash,'choices');
   return shell(<><h1 className="text-3xl font-semibold">К какой компании относится эта диагностика?</h1><ClaimForm choices={choices} policy={policy} renewConsent={session.consent_version!==policy.versions.data_processing || session.marketing_version!==policy.versions.marketing}/></>);
  }
- return shell(<><h1 className="text-3xl font-semibold">Получите персональный отчёт</h1><EmailForm policy={policy} renewConsent={session.consent_version!==policy.versions.data_processing} waiting={session.status==='email_pending'&&accessEmailSent(session)} cooldownSeconds={session.email_cooldown_seconds} mock={(process.env.ACQUISITION_EMAIL_PROVIDER??'mock')==='mock'}/></>);
+ return shell(<><h1 className="text-3xl font-semibold">Получите персональный отчёт</h1><EmailForm policy={policy} renewConsent={session.consent_version!==policy.versions.data_processing} waiting={session.status==='email_pending'&&accessEmailSent(session)} cooldownSeconds={session.email_cooldown_seconds} mock={(process.env.ACQUISITION_EMAIL_PROVIDER??'mock')==='mock'&&!stagingAccessEmailEnabled(session.id)}/></>);
 }
