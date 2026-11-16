@@ -14,15 +14,39 @@ type Company = NonNullable<Awaited<ReturnType<typeof getOwnCompany>>>;
 const button = "mt-4 inline-flex min-h-12 items-center justify-center rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark";
 export async function DiagnosticsHub({ company, userId, type }: { company: Company; userId: string; type?: string }) {
   const rollout = teamFoundationEnabled();
-  const [active, individual, teams, entitled] = await Promise.all([
-    getActiveDiagnostic(userId, company.id), getLatestDiagnostics(userId, company.id),
-    rollout ? listTeamHistory(company.id) : Promise.resolve([]),
-    hasEntitlement(company.account_id, "team_diagnostics"),
-  ]);
-  const teamAvailable = rollout && teamCreationEnabled() && entitled;
   const base = `/ru/companies/${company.id}/diagnostics`;
   const plan = `/ru/account/plan?account=${company.account_id}&company=${company.id}`;
   const teamEntry = `${base}?new=1&type=team#team-create`;
+  const entitlement = hasEntitlement(company.account_id, "team_diagnostics");
+  if (type === "team") {
+    const entitled = await entitlement;
+    return <><CompanyNavigation companyId={company.id} userId={userId} /><main id="main-content" className="py-10"><Container>
+      <Link className="underline" href={base}>Все диагностики</Link>
+      <h1 id="team-create" className="mt-6 text-3xl font-semibold">Новая командная диагностика</h1>
+      <p className="mt-3 text-muted">{company.name}</p>
+      <Card className="mt-6">
+        {!entitled ? <>
+          <p className="text-muted">Командная диагностика доступна на тарифе Advanced.</p>
+          <div className="flex flex-wrap gap-x-4">
+            <Link className={button} href={`${plan}#advanced-access`}>Подключить Advanced</Link>
+            <Link className="mt-4 inline-flex min-h-12 items-center rounded-xl border border-brand px-5 py-3 font-semibold" href={`${plan}#promo`}>Ввести промокод</Link>
+          </div>
+        </> : rollout && teamCreationEnabled() ? <>
+          <p className="mb-4 text-muted">Вы организуете диагностику: формируете список участников, приглашаете их и отслеживаете прохождение. Индивидуальные ответы участников вам недоступны. Вы получите общий результат команды. Чтобы заполнить анкету самостоятельно, добавьте себя в список участников.</p>
+          <CreateTeamForm key={company.id} companyId={company.id} defaultTitle={`Командная диагностика ${company.name}`} />
+        </> : <>
+          <p role="status" className="text-muted">Создание новых командных диагностик временно приостановлено. Ваши сохранённые диагностики и отчёты доступны.</p>
+          <p className="mt-3 text-sm text-muted">Если вам нужна помощь, напишите на <a className="underline" href="mailto:alexander@iteamsystems.com">alexander@iteamsystems.com</a>.</p>
+        </>}
+      </Card>
+    </Container></main></>;
+  }
+  const [active, individual, teams, entitled] = await Promise.all([
+    getActiveDiagnostic(userId, company.id), getLatestDiagnostics(userId, company.id),
+    rollout ? listTeamHistory(company.id) : Promise.resolve([]),
+    entitlement,
+  ]);
+  const teamAvailable = rollout && teamCreationEnabled() && entitled;
   const statuses: Record<string, string> = { in_progress: "В процессе", submitted: "Расчёт результатов", scoring: "Расчёт результатов", scoring_failed: "Ошибка расчёта", completed: "Завершена" };
   return <><CompanyNavigation companyId={company.id} userId={userId} /><main id="main-content" className="py-10"><Container>
     <div className="flex flex-wrap items-center justify-between gap-4"><h1 className="text-3xl font-semibold">Диагностики — {company.name}</h1><Link className="underline" href={`${base}?new=1#choose`}>Новая диагностика</Link></div>
@@ -36,7 +60,6 @@ export async function DiagnosticsHub({ company, userId, type }: { company: Compa
           {!entitled ? <p className="mt-3 text-sm text-muted">Командная диагностика входит в Advanced. Подключите доступ или используйте промокод на следующем шаге.</p> : !teamAvailable && <p className="mt-3 text-sm text-muted">Создание новых командных диагностик временно приостановлено. Ваши сохранённые диагностики и отчёты доступны.</p>}
         </Card>
       </div>
-      {type === "team" && <Card className="mt-6" id="team-create"><h3 className="mb-4 text-xl font-semibold">Новая командная диагностика</h3>{teamAvailable ? <><p className="mb-4 text-muted">Вы организуете диагностику: формируете список участников, приглашаете их и отслеживаете прохождение. Индивидуальные ответы участников вам недоступны. Вы получите общий результат команды. Чтобы заполнить анкету самостоятельно, добавьте себя в список участников.</p><CreateTeamForm key={company.id} companyId={company.id} defaultTitle={`Командная диагностика ${company.name}`} /></> : entitled ? <><p role="status" className="text-muted">Создание новых командных диагностик временно приостановлено. Ваши сохранённые диагностики и отчёты доступны.</p><p className="mt-3 text-sm text-muted">Если вам нужна помощь, напишите на <a className="underline" href="mailto:alexander@iteamsystems.com">alexander@iteamsystems.com</a>.</p></> : <><p className="text-muted">Командная диагностика доступна на тарифе Advanced.</p><Link className={button} href={plan}>Подключить Advanced или применить промокод</Link></>}</Card>}
     </section>
     <section className="mt-10"><h2 className="text-2xl font-semibold">Индивидуальные диагностики</h2><div className="mt-5 space-y-4">{individual.length ? individual.map(({ diagnostic, result }) => <Card key={diagnostic.id}><p className="text-sm font-semibold">Индивидуальная</p><p className="mt-2">{statuses[diagnostic.status] ?? "Обработка"}</p>{diagnostic.completed_at && <p className="mt-2 text-sm text-muted">{new Date(diagnostic.completed_at).toLocaleDateString("ru-RU")}</p>}{result && <p className="mt-2">Индекс управляемости: {String(result.display_manageability_index ?? "—").replace(".", ",")}</p>}<Link className="mt-3 inline-block underline" href={`/ru/diagnostics/${diagnostic.id}${diagnostic.status === "in_progress" ? "" : "/result"}`}>{diagnostic.status === "in_progress" ? "Продолжить" : "Открыть результат"}</Link></Card>) : <p className="text-muted">Индивидуальных диагностик пока нет.</p>}</div></section>
     {rollout && <section id="teams" className="mt-10"><h2 className="text-2xl font-semibold">Командные диагностики</h2><div className="mt-5 space-y-4">{teams.length ? teams.map(team => <Card key={team.id}><p className="text-sm font-semibold">Командная</p><Link className="mt-2 inline-block text-xl font-semibold underline" href={`/ru/companies/${company.id}/teams/${team.id}`}>{team.title}</Link><p className="mt-2">{team.completedParticipants} участника завершили · {team.status === "open" ? "Сбор ответов открыт" : "Сбор завершён"}</p><p className="mt-2 text-sm text-muted">{new Date(team.created_at).toLocaleDateString("ru-RU")}</p></Card>) : <p className="text-muted">Командных диагностик пока нет.</p>}</div></section>}

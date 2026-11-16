@@ -38,19 +38,28 @@ describe("unified Diagnostics entry", () => {
   it("opens the existing creation form only on explicit Team choice", async () => {
     state.entitled = true;
     const html = await view("team"); expect(html).toContain('data-company="company-a"');
+    expect(html.match(/Новая командная диагностика/g)).toHaveLength(1);
     expect(html).toContain("формируете список участников, приглашаете их и отслеживаете прохождение");
     expect(html).toContain("Индивидуальные ответы участников вам недоступны");
     expect(html).toContain("Чтобы заполнить анкету самостоятельно, добавьте себя в список участников");
+    expect(html).not.toContain("Какую диагностику вы хотите провести?");
+    expect(html).not.toContain("Начать командную диагностику");
+    expect(state.individual).not.toHaveBeenCalled();
+    expect(state.teams).not.toHaveBeenCalled();
     expect(state.start).not.toHaveBeenCalled();
   });
-  it("does not let a query parameter unlock the Free Team form", async () => {
-    expect(await view("team")).not.toContain("Название команды");
+  it("shows both upgrade options and no creation form for a Free Team URL", async () => {
+    const html = await view("team");
+    expect(html).not.toContain("Название команды");
+    expect(html).not.toContain("Какую диагностику вы хотите провести?");
+    expect(html).toContain("/ru/account/plan?account=account-a&amp;company=company-a#advanced-access");
+    expect(html).toContain("/ru/account/plan?account=account-a&amp;company=company-a#promo");
   });
   it("keeps rollout availability separate from commercial entitlement", async () => {
     state.entitled = true; state.rollout = false;
     const html = await view("team"); expect(html).not.toContain("Название команды");
     expect(html).toContain("временно приостановлено");
-    expect(html).toContain("Начать командную диагностику");
+    expect(html).toContain("Новая командная диагностика");
     expect(html).toContain('id="team-create"'); expect(state.teams).not.toHaveBeenCalled();
   });
   it("keeps the Team button visible on Free even when the feature is paused",async()=>{
@@ -64,7 +73,7 @@ describe("unified Diagnostics entry", () => {
   it("explains a separate creation pause before displaying an unusable form",async()=>{
     state.entitled=true;state.creation=false;
     const html=await view("team");
-    expect(html).toContain("Начать командную диагностику");
+    expect(html).toContain("Новая командная диагностика");
     expect(html).toContain("временно приостановлено");
     expect(html).not.toContain("Название команды");
     expect(state.start).not.toHaveBeenCalled();
@@ -75,7 +84,7 @@ describe("unified Diagnostics entry", () => {
     expect(html).toContain('/ru/account/plan?account=account-a&amp;company=company-b');
     expect(html).not.toContain('company=company-a');
     state.entitled=true;html=await view("team",selected);
-    expect(html).toContain('/ru/companies/company-b/diagnostics?new=1&amp;type=team#team-create');
+    expect(html).toContain('href="/ru/companies/company-b/diagnostics"');
     expect(html).toContain('data-company="company-b"');
   });
   it("retains an active individual attempt and offers a separate Team choice", async () => {

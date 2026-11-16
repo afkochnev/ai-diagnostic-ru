@@ -6,10 +6,7 @@ import {acquisitionEnabled,safeAttribution,shortProfileSchema,saveSchema} from '
 import {decodeCookie,hash,newSecret} from '@/server/acquisition/context';
 import {acquisitionJson} from '@/server/acquisition/request';
 import {sealInvitationAuthProof} from '@/server/team/invitation-auth-proof';
-import {teamConversionDestination} from '@/features/acquisition/team-offer';
 vi.mock('@/server/supabase/server',()=>({createAuthClient:vi.fn()}));
-vi.mock('@/server/entitlements',()=>({getAccountPlan:vi.fn()}));
-vi.mock('@/server/team/service',()=>({listTeams:vi.fn()}));
 const baseline={name:'Synthetic','industry_key':'manufacturing',employee_count:30,products:'Products',key_problems:'Constraint',main_goals:'Goals'};
 describe('V25 anonymous security boundaries',()=>{
  it('keeps production and mixed project/origin pairs disabled',()=>{
@@ -44,11 +41,6 @@ describe('V25 anonymous security boundaries',()=>{
   const req=new Request('http://localhost',{method:'POST',body:JSON.stringify({safe:true})});expect(await acquisitionJson(req)).toEqual({safe:true});
   await expect(acquisitionJson(new Request('http://localhost',{method:'POST',body:'x'.repeat(40)}),20)).rejects.toThrow('too_large');
   await expect(acquisitionJson(new Request('http://localhost',{method:'POST',headers:{'content-length':'999999'},body:'{}'}),20)).rejects.toThrow('too_large');
- });
- it('uses an existing team, same-company Advanced creation, or an explanatory Free destination',()=>{
-  expect(teamConversionDestination('company',false)).toBe('/ru/companies/company/team-explainer');
-  expect(teamConversionDestination('company',true)).toContain('/company/diagnostics?new=1&type=team');
-  expect(teamConversionDestination('company',false,'team')).toBe('/ru/companies/company/teams/team');
  });
  it('separates the Supabase credential envelope from Team and rejects cross-flow reuse',async()=>{
   const {openInvitationAuthProof}=await import('@/server/team/invitation-auth-proof');const secret='synthetic-secret-for-unit-tests-000000000';

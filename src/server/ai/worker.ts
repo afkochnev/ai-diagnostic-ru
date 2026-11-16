@@ -3,7 +3,7 @@ import {assertFreeSmokeDiagnostic} from "@/server-runtime/free-smoke";
 import { createAdminClient } from "@/server-runtime/supabase/admin";
 import { buildAIInput, generateReport } from "./report";
 import {
-  assertIndividualPromptVersion, individualPromptForMethodology, RU_V3_INDIVIDUAL_INPUT_VERSION, RU_V3_INDIVIDUAL_PROMPT_VERSION,
+  assertIndividualPromptVersion, individualPromptForMethodology, RU_V3_INDIVIDUAL_INPUT_VERSION, usesRuV3IndividualInput,
 } from "./prompt-version";
 export async function enqueueAIReport(diagnosticId: string, version = 1) {
   const db = createAdminClient();
@@ -77,10 +77,11 @@ export async function runAIJob(job: ClaimedAIJob, maxAttempts = 3) {
   let phase = "prepare_input";
   try {
     assertIndividualPromptVersion(report.prompt_version);
-    const input = report.prompt_version === RU_V3_INDIVIDUAL_PROMPT_VERSION
+    const versionedInput = usesRuV3IndividualInput(report.prompt_version);
+    const input = versionedInput
       ? report.input_snapshot
       : await buildAIInput(diagnosticId, report.prompt_version);
-    if (report.prompt_version === RU_V3_INDIVIDUAL_PROMPT_VERSION && input?.input_version !== RU_V3_INDIVIDUAL_INPUT_VERSION) {
+    if (versionedInput && input?.input_version !== RU_V3_INDIVIDUAL_INPUT_VERSION) {
       throw Error("invalid_individual_input_version");
     }
     phase = "generate_report";

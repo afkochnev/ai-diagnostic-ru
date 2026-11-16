@@ -51,14 +51,14 @@ function answer(question_id: string, text_value: string | null) { return { quest
 
 describe("RU-v3 individual evidence contract", () => {
   it.each([
-    ["manageability", 5, "RU-1.6"], ["manageability", 4, "RU-1.5"], ["another", 5, "RU-1.5"],
+    ["manageability", 5, "RU-1.8"], ["manageability", 4, "RU-1.7"], ["another", 5, "RU-1.7"],
   ] as const)("selects %s methodology %i as %s independently of report generation", (definition, version, prompt) => {
     expect(individualPromptForMethodology(definition, version)).toBe(prompt);
   });
 
   it("builds all 13 text answers in questionnaire order with the three purposes and block metadata", async () => {
     state.tables.answers = [...textQuestions].reverse().map(question => answer(question.id, ` Синтетический ответ ${question.id} `));
-    const input = await buildAIInput("diagnostic", "RU-1.6");
+    const input = await buildAIInput("diagnostic", "RU-1.8");
     expect(input.input_version).toBe(RU_V3_INDIVIDUAL_INPUT_VERSION);
     expect(input.open_answers).toEqual(textQuestions.map(question => ({
       block_code: question.block_id,
@@ -70,14 +70,15 @@ describe("RU-v3 individual evidence contract", () => {
     })));
     expect(state.queries).toContainEqual(["question_translations", "questions.version_id", "methodology-5"]);
     expect(state.queries).toContainEqual(["diagnostic_block_translations", "diagnostic_blocks.version_id", "methodology-5"]);
+    expect(await buildAIInput("diagnostic", "RU-1.6")).toEqual(input);
   });
 
   it("keeps blank responses, numeric answers and responses from outside the pinned questionnaire out of new evidence", async () => {
-    const input = await buildAIInput("diagnostic", "RU-1.6");
+    const input = await buildAIInput("diagnostic", "RU-1.8");
     expect(input.open_answers).toEqual([]);
     expect(input.derived_facts).toMatchObject({ strongest_blocks: [], weakest_blocks: [], all_blocks_tied: true, block_score_spread: { raw: 0 } });
     state.tables.answers = [answer("strategy-11", "  \t\n"), answer("team-11", null), answer("cross-version", "Чужая запись"), answer("culture-11", "Пример")];
-    expect((await buildAIInput("diagnostic", "RU-1.6")).open_answers).toEqual([expect.objectContaining({
+    expect((await buildAIInput("diagnostic", "RU-1.8")).open_answers).toEqual([expect.objectContaining({
       category: "block", block_code: "culture", answer: "Пример",
     })]);
   });
@@ -87,7 +88,7 @@ describe("RU-v3 individual evidence contract", () => {
       block.raw_score = index < 2 ? 75 : index > 5 ? 52.5 : 62.5;
       block.display_score = block.raw_score;
     });
-    const input = await buildAIInput("diagnostic", "RU-1.6");
+    const input = await buildAIInput("diagnostic", "RU-1.8");
     expect(input.derived_facts).toMatchObject({
       strongest_blocks: [{ block_code: "strategy" }, { block_code: "structure" }],
       weakest_blocks: [{ block_code: "motivation" }, { block_code: "culture" }],
@@ -98,7 +99,8 @@ describe("RU-v3 individual evidence contract", () => {
 
   it("retains the exact legacy open-answer and tie shape on the old prompt", async () => {
     state.tables.answers = [answer("strategy-11", " \t"), answer("team-11", null), answer("open_questions-3", "Пример")];
-    const input = await buildAIInput("diagnostic", "RU-1.5");
+    const input = await buildAIInput("diagnostic", "RU-1.7");
+    expect(await buildAIInput("diagnostic", "RU-1.5")).toEqual(input);
     expect(input).not.toHaveProperty("input_version");
     expect(input.open_answers).toEqual([
       { question: "Синтетический вопрос strategy-11", answer: " \t" },
@@ -113,9 +115,9 @@ describe("RU-v3 individual evidence contract", () => {
   it("sends self-report and possible causation guidance in the system message and keeps the text in the data envelope", async () => {
     const respondentText = "Два заказа задержались. Синтетическое предположение респондента о правах на скидки.";
     state.tables.answers = [answer("company_info-1", "Согласовывать быстрее"), answer("processes-11", respondentText), answer("open_questions-3", "Ещё одна заметка")];
-    const input = await buildAIInput("diagnostic", "RU-1.6");
+    const input = await buildAIInput("diagnostic", "RU-1.8");
     state.generate.mockResolvedValue({ id: "mock", output_text: JSON.stringify({
-      summary: "Респондент сообщил, что два заказа задержались.",
+      summary: "Вы сообщили, что два заказа задержались.",
       main_diagnosis: "Возможная причина заключается в полномочиях на согласование скидок. Эту гипотезу нужно проверить.",
       manageability_index_text: "Оценки блоков равны.",
       strengths: ["Проверить сильные стороны", "Уточнить пример"], key_problem_zones: ["Задержка двух заказов", "Уточнить порядок согласования"],
@@ -124,12 +126,13 @@ describe("RU-v3 individual evidence contract", () => {
       next_step: "Сопоставить полномочия с двумя примерами.",
     }) });
 
-    const generated = await generateReport(input, "RU-1.6");
+    const generated = await generateReport(input, "RU-1.8");
     const [system, user] = state.generate.mock.calls[0][0].input;
     expect(system).toMatchObject({ role: "system" });
     expect(system.content).toContain("Если причинная связь не установлена, обозначь её как рабочую гипотезу");
     expect(system.content).toContain("Из среднего балла нельзя вывести ответ на отдельный шкальный вопрос");
     expect(system.content).toContain("Он не говорит о качестве управления");
+    expect(system.content).toContain("Вы сообщили, что согласование двух заказов задержалось");
     expect(system.content).not.toContain(respondentText);
     expect(user).toEqual({ role: "user", content: `<UNTRUSTED_DIAGNOSTIC_DATA>\n${JSON.stringify(input)}\n</UNTRUSTED_DIAGNOSTIC_DATA>` });
     expect(input.open_answers).toMatchObject([{ category: "intro" }, { category: "block", answer: respondentText }, { category: "final" }]);

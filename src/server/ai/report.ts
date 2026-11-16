@@ -8,7 +8,7 @@ import { createAdminClient } from "@/server-runtime/supabase/admin";
 import { formatDecimalRu } from "./format";
 import { deriveBlockFacts, deriveTieAwareBlockFacts } from "./facts";
 import {
-  assertIndividualPromptVersion, CURRENT_INDIVIDUAL_PROMPT_VERSION, RU_V3_INDIVIDUAL_INPUT_VERSION, RU_V3_INDIVIDUAL_PROMPT_VERSION,
+  assertIndividualPromptVersion, CURRENT_INDIVIDUAL_PROMPT_VERSION, RU_V3_INDIVIDUAL_INPUT_VERSION, usesRuV3IndividualInput,
   type IndividualPromptVersion,
 } from "./prompt-version";
 export type { IndividualPromptVersion } from "./prompt-version";
@@ -40,7 +40,7 @@ type Row = Record<string, string | number | null | undefined>;
 const numberValue = (value: unknown) => Number(value);
 
 export async function buildAIInput(diagnosticId: string, promptVersion: IndividualPromptVersion = CURRENT_INDIVIDUAL_PROMPT_VERSION) {
-  const versionedInput = promptVersion === RU_V3_INDIVIDUAL_PROMPT_VERSION;
+  const versionedInput = usesRuV3IndividualInput(promptVersion);
   const db = createAdminClient();
   const { data: diagnostic } = await db.from("diagnostics").select("id,version_id").eq("id", diagnosticId).single();
   if (!diagnostic) throw new Error("diagnostic_missing");
