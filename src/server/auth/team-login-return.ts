@@ -29,22 +29,34 @@ export async function setTeamLoginReturn(email: string, path: string | null) {
   jar.set(cookieName, Buffer.concat([iv, cipher.getAuthTag(), payload]).toString("base64url"), { ...options, maxAge: lifetime / 1000 });
 }
 
-export async function consumeTeamLoginReturn(email: string | undefined): Promise<string | null> {
-  const jar = await cookies();
-  const value = jar.get(cookieName)?.value;
-  if (!value) return null;
-  jar.set(cookieName, "", { httpOnly: true, secure: authConfig().secure, sameSite: "lax", path: "/", maxAge: 0 });
-  if (!email || value.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+function openTeamLoginReturn(value: string | undefined): { email: string; path: string } | null {
+  if (!value || value.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
   try {
     const bytes = Buffer.from(value, "base64url");
     const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), bytes.subarray(0, 12));
     decipher.setAuthTag(bytes.subarray(12, 28));
     const data = JSON.parse(Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8"));
-    return data.email === email.toLowerCase() && Number.isFinite(data.expires) &&
-      data.expires > Date.now() && data.expires <= Date.now() + lifetime ? safePath(data.path) : null;
+    const path = safePath(data.path);
+    return typeof data.email === "string" && path && Number.isFinite(data.expires) &&
+      data.expires > Date.now() && data.expires <= Date.now() + lifetime ? { email: data.email, path } : null;
   } catch {
     return null;
   }
+}
+
+/** Recovery may retain the destination without consuming or authenticating the pending login. */
+export async function peekTeamLoginReturn(): Promise<string | null> {
+  return openTeamLoginReturn((await cookies()).get(cookieName)?.value)?.path ?? null;
+}
+
+export async function consumeTeamLoginReturn(email: string | undefined): Promise<string | null> {
+  const jar = await cookies();
+  const value = jar.get(cookieName)?.value;
+  if (!value) return null;
+  jar.set(cookieName, "", { httpOnly: true, secure: authConfig().secure, sameSite: "lax", path: "/", maxAge: 0 });
+  if (!email) return null;
+  const context = openTeamLoginReturn(value);
+  return context?.email === email.toLowerCase() ? context.path : null;
 }
 
 export async function authorizedTeamReturn(path: string, client: unknown): Promise<string | null> {

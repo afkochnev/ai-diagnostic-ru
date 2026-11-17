@@ -21,7 +21,7 @@ vi.mock("@/server-runtime/supabase/admin", () => ({createAdminClient: () => ({
     }),
   }),
 })}));
-import { activeParticipantDestination, authorizedTeamReturn, consumeTeamLoginReturn, setTeamLoginReturn } from "@/server/auth/team-login-return";
+import { activeParticipantDestination, authorizedTeamReturn, consumeTeamLoginReturn, peekTeamLoginReturn, setTeamLoginReturn } from "@/server/auth/team-login-return";
 import { safeMfaReturnTo, safeTeamResponseReturnTo } from "@/server/auth/mfa-return";
 
 const first = "10000000-0000-4000-8000-000000000001";
@@ -30,6 +30,31 @@ const teamPath = "/ru/team/responses/" + first;
 beforeEach(() => {vi.restoreAllMocks(); state.jar.clear(); state.matches = []; state.rpc.mockReset().mockResolvedValue({error: null}); state.query.mockReset();});
 
 describe("participant return context", () => {
+  it("reads the pending destination without consuming or bypassing its email binding", async () => {
+    await setTeamLoginReturn("participant@example.test", teamPath);
+    const context = state.jar.get("team-login-return");
+    expect(await peekTeamLoginReturn()).toBe(teamPath);
+    expect(await peekTeamLoginReturn()).toBe(teamPath);
+    expect(state.jar.get("team-login-return")).toBe(context);
+    expect(await consumeTeamLoginReturn("other@example.test")).toBeNull();
+    expect(await peekTeamLoginReturn()).toBeNull();
+    await setTeamLoginReturn("participant@example.test", teamPath);
+    expect(await peekTeamLoginReturn()).toBe(teamPath);
+    expect(await consumeTeamLoginReturn("participant@example.test")).toBe(teamPath);
+  });
+  it("rejects expired or damaged recovery context without modifying it", async () => {
+    await setTeamLoginReturn("participant@example.test", teamPath);
+    const context = state.jar.get("team-login-return")!;
+    const altered = Buffer.from(context, "base64url");
+    altered[35] ^= 1;
+    state.jar.set("team-login-return", altered.toString("base64url"));
+    expect(await peekTeamLoginReturn()).toBeNull();
+    expect(state.jar.get("team-login-return")).toBe(altered.toString("base64url"));
+    state.jar.set("team-login-return", context);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 1800001);
+    expect(await peekTeamLoginReturn()).toBeNull();
+    expect(state.jar.get("team-login-return")).toBe(context);
+  });
   it("binds the encrypted continuation to the verified email, rejecting expiry and tampering", async () => {
     await setTeamLoginReturn("Participant@example.test", teamPath);
     const context = state.jar.get("team-login-return")!;

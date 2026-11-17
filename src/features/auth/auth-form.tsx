@@ -8,11 +8,11 @@ import { ConfirmationRecovery } from "./confirmation-recovery";
 
 type Mode = "register" | "login" | "email-login" | "forgot" | "resend" | "reset" | "confirm" | "mfa";
 type Policy = { versions: Record<string, string>; temporary: boolean; dataUrl: string; marketingUrl: string; policyUrl?: string };
-type Props = { action: (state: AuthState, form: FormData) => Promise<AuthState>; mode: Mode; policy?: Policy; hidden?: Record<string, string>; signedIn?: boolean };
+type Props = { action: (state: AuthState, form: FormData) => Promise<AuthState>; mode: Mode; policy?: Policy; hidden?: Record<string, string>; signedIn?: boolean; returnTo?: string | null };
 const copy = getMessages("ru").auth;
 const inputClass = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
 
-export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false }: Props) {
+export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false, returnTo }: Props) {
   const [state, formAction, pending] = useActionState(action, {});
   const [localError, setLocalError] = useState("");
   const [feedbackHidden, setFeedbackHidden] = useState(false);
@@ -47,7 +47,7 @@ export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false }
     return () => window.clearInterval(timer);
   }, [mode, resendCooldown]);
 
-  if (mode === "confirm" && state.code === "invalid_link") return <ConfirmationRecovery type={hidden.type ?? "email"} signedIn={signedIn} />;
+  if (mode === "confirm" && state.code === "invalid_link") return <ConfirmationRecovery type={hidden.type ?? "email"} signedIn={signedIn} returnTo={returnTo} />;
 
   return (
     <form action={formAction} onSubmit={validate} onChange={() => {setFeedbackHidden(true); setLocalError("");}} noValidate className="space-y-5">
