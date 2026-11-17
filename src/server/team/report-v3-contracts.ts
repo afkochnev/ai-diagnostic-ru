@@ -71,13 +71,34 @@ export function coreText(report: TeamReportV2) {
   const {team_analysis,participant_count,...core}=report;void team_analysis;void participant_count;
   return Object.values(core).flat().join("\n");
 }
+export type CoreQualityIssue = {
+  field_path: string;
+  reason: "core_dynamics" | "test_wording" | "duplicate_paragraph";
+};
+/** Field paths and rule names only: generated report text stays inside validation. */
+export function inspectCoreQuality(report: TeamReportV2, provider: "mock" | "openai"): CoreQualityIssue[] {
+  const issues: CoreQualityIssue[] = [];
+  const seen = new Set<string>();
+  for (const [key, value] of Object.entries(report)) {
+    if (key === "participant_count" || key === "team_analysis") continue;
+    const paragraphs = typeof value === "string" ? [{field_path: key, text: value}]
+      : Array.isArray(value) ? value.map((text, index) => ({field_path: `${key}[${index}]`, text})) : [];
+    for (const {field_path, text} of paragraphs) {
+      if (/stddev|variance|distribution|дисперси|разброс|поляризац|расхождени|разных? картин|противоположн.{0,20}оцен|среднее скрывает|по-разному оценива/iu.test(text)) {
+        issues.push({field_path, reason: "core_dynamics"});
+      }
+      if (provider === "openai" && /тестовый отчёт|тестовая гипотеза|тестовое ограничение/iu.test(text)) {
+        issues.push({field_path, reason: "test_wording"});
+      }
+      if (seen.has(text)) issues.push({field_path, reason: "duplicate_paragraph"});
+      seen.add(text);
+    }
+  }
+  return issues;
+}
 export function validateCoreQuality(report: TeamReportV2, provider: "mock"|"openai", synthesis: TeamSynthesisV2) {
   // Coverage is checked before generation. Prescribed source words cannot
   // establish whether the report actually uses the anonymous evidence.
   void synthesis;
-  const text=coreText(report);
-  if(/stddev|variance|distribution|дисперси|разброс|поляризац|расхождени|разных? картин|противоположн.{0,20}оцен|среднее скрывает|по-разному оценива/iu.test(text)) throw new Error("team_quality_rejected");
-  if(provider==="openai" && /тестовый отчёт|тестовая гипотеза|тестовое ограничение/iu.test(text)) throw new Error("team_quality_rejected");
-  const paragraphs=Object.values(report).flat().filter((x):x is string=>typeof x==="string");
-  if(new Set(paragraphs).size!==paragraphs.length) throw new Error("team_quality_rejected");
+  if (inspectCoreQuality(report, provider).length) throw new Error("team_quality_rejected");
 }

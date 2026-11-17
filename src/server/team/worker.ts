@@ -4,9 +4,10 @@ import { emptyTeamCallCounts, generateTeamReportV2, synthesizeTeamTextsV2, repai
 import { parseQualitativeInputForRuV3, parseQualitativeInputV2, type QualitativeInputV2 } from "./report-v2-contracts";
 import { inspectSynthesisPrivacy, privacyCorpusSchema, type PrivacyCorpus } from "./synthesis-privacy";
 import { validateAndRepairSynthesis } from "./synthesis-repair";
-import { generateTeamReportV3, synthesizeTeamTextsV3, repairV3Fields } from "./report-v3-provider";
-import { isRuV3TeamQuestionnaire, qualitativeCoverage, validateCoreQuality } from "./report-v3-contracts";
+import { generateTeamReportV3, synthesizeTeamTextsV3, repairV3Fields, repairV3QualityFields } from "./report-v3-provider";
+import { isRuV3TeamQuestionnaire, qualitativeCoverage } from "./report-v3-contracts";
 import { validateAndRepairReport } from "./report-privacy";
+import { validateAndRepairCoreQuality } from "./report-quality";
 import {launchEnvironment} from '@/server-runtime/launch-gates';
 import {controlledTeamRequired} from '@/server-runtime/team-smoke';
 import {currentControlledTeamClaim} from './controlled-ai-transport';
@@ -65,9 +66,11 @@ export async function processTeamJob(job: TeamJob, rpc: Rpc) {
     phase = "generate_report";
     const generated = await (v3?generateTeamReportV3(prepared.report_input,summary,counts,ruV3Qualitative):rich ? generateTeamReportV2(prepared.report_input, summary,counts) : generateTeamReport(prepared.report_input, summary));
     phase = "validate_report";
-    const content=rich && corpus ? await validateAndRepairReport(generated,prepared.report_input,corpus,config.provider,
+    let content=rich && corpus ? await validateAndRepairReport(generated,prepared.report_input,corpus,config.provider,
       fields=>v3?repairV3Fields(fields,counts,true,ruV3):repairReportFields(fields,counts),event=>console.info("[team-ai]",event)) : generated;
-    if(v3) validateCoreQuality(content as import("./report-v2-contracts").TeamReportV2,config.provider,summary as import("./report-v2-contracts").TeamSynthesisV2);
+    if(v3 && corpus) content=await validateAndRepairCoreQuality(content,prepared.report_input,corpus,config.provider,
+      summary as import("./report-v2-contracts").TeamSynthesisV2,
+      (fields,issues)=>repairV3QualityFields(fields,issues,counts),event=>console.info("[team-ai]",event));
     reportLocalPass=rich;
     publishing=true;
     phase = "publish_report";
