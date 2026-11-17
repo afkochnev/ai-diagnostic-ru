@@ -30,7 +30,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
   const [state, setState] = useState<TeamActionState>({ revision: response.revision, status: response.status });
   const firstIncompleteBlock = blocks.findIndex((block) => block.questions.some((question) => question.required && !hasAnswer(question, initialAnswers[question.id])));
   const [viewIndex, setViewIndex] = useState(Math.max(0, firstIncompleteBlock < 0 ? blocks.length - 1 : firstIncompleteBlock));
-  const [saving, setSaving] = useState<"saved" | "unsaved" | "saving" | "error">("saved");
+  const [saving, setSaving] = useState<"saved" | "unsaved" | "saving" | "confirming" | "error">("saved");
   const [retrySubmit, setRetrySubmit] = useState(false);
   const [retrySeconds, setRetrySeconds] = useState(0);
   const [needsSession, setNeedsSession] = useState(false);
@@ -176,6 +176,21 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
         finish({ revision: result.revision, status: result.status }, hash);
         return true;
       } catch (error) {
+        // A lost reply does not undo a committed submission. Confirm it once before asking the participant to retry.
+        if (!(error instanceof Error && error.message === "team_session_unavailable") && intent === "submit" &&
+          pendingSave.current?.submit && pendingSave.current.hash === answersHash(answersRef.current)) {
+          setSaving("confirming");
+          try {
+            const outcome = await reconcile(pendingSave.current);
+            if (outcome === "saved") return true;
+            if (outcome === "conflict") {
+              pendingSave.current = null;
+              return fail(conflictMessage);
+            }
+          } catch (confirmationError) {
+            error = confirmationError;
+          }
+        }
         if (error instanceof Error && error.message === "team_session_unavailable") {
           sessionBlocked.current = true;
           verifySessionOnSave.current = true;
@@ -276,7 +291,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
     <div className="rounded-2xl border border-line bg-white p-5">
       <div className="flex flex-wrap justify-between gap-2 text-sm text-muted"><span>Блок {viewIndex + 1} из {blocks.length}</span><span>Отвечено {answered} из {required.length} обязательных вопросов</span></div>
       <div role="progressbar" aria-label="Заполнение анкеты" aria-valuemin={0} aria-valuemax={required.length} aria-valuenow={answered} className="mt-3 h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${required.length ? answered / required.length * 100 : 0}%` }} /></div>
-      {saving !== "saved" && <p role="status" aria-live="polite" className="mt-3 text-sm text-muted">{rateLimited ? "Сохранение временно приостановлено." : saving === "saving" ? "Сохранение…" : saving === "error" ? "Не удалось подтвердить сохранение." : "Есть несохранённые ответы…"}</p>}
+      {saving !== "saved" && <p role="status" aria-live="polite" className="mt-3 text-sm text-muted">{rateLimited ? "Сохранение временно приостановлено." : saving === "confirming" ? "Проверяем подтверждение отправки…" : saving === "saving" ? "Сохранение…" : saving === "error" ? "Не удалось подтвердить сохранение." : "Есть несохранённые ответы…"}</p>}
     </div>
     <h2 ref={blockHeading} tabIndex={-1} className="scroll-mt-6 text-2xl font-semibold outline-none">{currentBlock.title}</h2>
     {viewIndex === 0 && <QuestionnaireIntro />}

@@ -319,18 +319,118 @@ describe("team response blocks and saving", () => {
     expect(button(render(), "Повторить сохранение")).toBeUndefined();
   });
 
-  it("opens results once when the final submit committed before the response was lost", async () => {
+  describe("final submission confirmation", () => {
     const complete = { ...response, answers: { "question-1": 0, "question-2": "Current situation" } };
     const renderComplete = () => hooks.render(() => TeamResponseForm({ response: complete }));
-    mocks.fetch.mockRejectedValueOnce(Error("network failure"));
-    const form = elements(renderComplete()).find((element) => element.type === "form")!;
-    (form.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault() {} });
-    await vi.advanceTimersByTimeAsync(0);
-    mocks.fetch.mockResolvedValueOnce(Response.json({ revision: 5, status: "completed", answers: complete.answers }));
-    (button(renderComplete(), "Повторить отправку").props.onClick as () => void)();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.fetch.mock.calls.map(([, options]) => options.method ?? "GET")).toEqual(["PATCH", "GET"]);
-    expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/ru/team/responses/participant-1/result");
+    const confirmation = () => Response.json({ revision: 5, status: "completed", answers: complete.answers });
+    const methods = () => mocks.fetch.mock.calls.map(([, options]) => options.method ?? "GET");
+    const submitComplete = () => {
+      const form = elements(renderComplete()).find(element => element.type === "form")!;
+      (form.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault() {} });
+    };
+
+    it.each(["network failure", "server error", "non-JSON response", "unexpected result"])("confirms an already committed final submission automatically after %s", async failure => {
+      if (failure === "network failure") mocks.fetch.mockRejectedValueOnce(Error("connection interrupted"));
+      else if (failure === "server error") mocks.fetch.mockResolvedValueOnce(Response.json({ error: "save_unavailable" }, { status: 503 }));
+      else if (failure === "non-JSON response") mocks.fetch.mockResolvedValueOnce(new Response("upstream unavailable", { status: 502 }));
+      else mocks.fetch.mockResolvedValueOnce(Response.json({ revision: 4, status: "completed" }));
+      mocks.fetch.mockResolvedValueOnce(confirmation());
+
+      submitComplete();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(methods()).toEqual(["PATCH", "GET"]);
+      expect(requestBody(0)).toEqual({ revision: 4, answers: complete.answers, submit: true });
+      expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/ru/team/responses/participant-1/result");
+      expect(button(renderComplete(), "Повторить отправку")).toBeUndefined();
+      expect(elements(renderComplete()).some(element => element.props.role === "alert")).toBe(false);
+    });
+
+    it("confirms a committed final submission after the request times out without another click", async () => {
+      mocks.fetch.mockImplementationOnce(hangUntilAbort).mockResolvedValueOnce(confirmation());
+      submitComplete();
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(methods()).toEqual(["PATCH"]);
+      expect(button(renderComplete(), "Завершить участие").props.disabled).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(methods()).toEqual(["PATCH", "GET"]);
+      expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/ru/team/responses/participant-1/result");
+      expect(button(renderComplete(), "Повторить отправку")).toBeUndefined();
+    });
+
+    it.each(["changed answers", "changed revision"])("keeps the draft and refuses to confirm a conflict with %s", async conflict => {
+      mocks.fetch.mockRejectedValueOnce(Error("connection interrupted"));
+      mocks.fetch.mockResolvedValueOnce(Response.json({
+        revision: conflict === "changed revision" ? 6 : 5, status: "completed",
+        answers: conflict === "changed answers" ? { ...complete.answers, "question-2": "Another tab's answer" } : complete.answers,
+      }));
+      submitComplete();
+      await vi.advanceTimersByTimeAsync(0);
+
+      const failed = renderComplete();
+      expect(methods()).toEqual(["PATCH", "GET"]);
+      expect(mocks.push).not.toHaveBeenCalled();
+      expect(elements(failed).find(element => element.type === DictatedAnswer)?.props.value).toBe("Current situation");
+      expect(elements(failed).some(element => element.props.role === "alert" && String(element.props.children).includes("другой вкладке"))).toBe(true);
+    });
+
+    it.each([401, 403, 404])("retains the draft and requests the participant session if automatic confirmation returns %s", async status => {
+      mocks.fetch.mockRejectedValueOnce(Error("connection interrupted"));
+      mocks.fetch.mockResolvedValueOnce(Response.json({ error: "access_denied" }, { status }));
+      submitComplete();
+      await vi.advanceTimersByTimeAsync(0);
+      const blocked = renderComplete();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(methods()).toEqual(["PATCH", "GET"]);
+      expect(mocks.push).not.toHaveBeenCalled();
+      expect(button(blocked, "Завершить участие").props.disabled).toBe(true);
+      expect(button(blocked, "Я вошёл — повторить отправку")).toBeDefined();
+      expect(elements(blocked).find(element => element.type === DictatedAnswer)?.props.value).toBe("Current situation");
+    });
+
+    it.each(["unreachable", "unavailable", "not committed"])("stops after one read when confirmation is %s and retains the pending submission", async failure => {
+      mocks.fetch.mockRejectedValueOnce(Error("connection interrupted"));
+      if (failure === "unreachable") mocks.fetch.mockRejectedValueOnce(Error("still offline"));
+      else if (failure === "unavailable") mocks.fetch.mockResolvedValueOnce(Response.json({ error: "status_unavailable" }, { status: 503 }));
+      else mocks.fetch.mockResolvedValueOnce(Response.json({ revision: 4, status: "started", answers: complete.answers }));
+      submitComplete();
+      await vi.advanceTimersByTimeAsync(0);
+      const failed = renderComplete();
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(methods()).toEqual(["PATCH", "GET"]);
+      expect(mocks.push).not.toHaveBeenCalled();
+      expect(button(failed, "Повторить отправку")).toBeDefined();
+      expect(elements(failed).find(element => element.type === DictatedAnswer)?.props.value).toBe("Current situation");
+
+      mocks.fetch.mockResolvedValueOnce(confirmation());
+      (button(failed, "Повторить отправку").props.onClick as () => void)();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(methods()).toEqual(["PATCH", "GET", "GET"]);
+      expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/ru/team/responses/participant-1/result");
+    });
+
+    it("ignores repeated Finish clicks while automatic confirmation is in progress", async () => {
+      let resolveConfirmation!: (reply: Response) => void;
+      mocks.fetch.mockRejectedValueOnce(Error("connection interrupted"));
+      mocks.fetch.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveConfirmation = resolve; }));
+      submitComplete();
+      await vi.advanceTimersByTimeAsync(0);
+      const confirming = renderComplete();
+      expect(button(confirming, "Завершить участие").props.disabled).toBe(true);
+      expect(elements(confirming).some(element => element.props.role === "status" && String(element.props.children).toLowerCase().includes("подтвержд"))).toBe(true);
+      submitComplete();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(methods()).toEqual(["PATCH", "GET"]);
+
+      resolveConfirmation(confirmation());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(methods()).toEqual(["PATCH", "GET"]);
+      expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/ru/team/responses/participant-1/result");
+    });
   });
 
   it("does not overwrite a different answer saved in another tab after an ambiguous response", async () => {
