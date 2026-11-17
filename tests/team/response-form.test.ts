@@ -73,6 +73,11 @@ function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
 const render = () => hooks.render(() => TeamResponseForm({ response }));
 const requestBody = (index: number) => JSON.parse(mocks.fetch.mock.calls[index][1].body);
 function button(tree: ReactNode, text: string) { return elements(tree).find((element) => element.type === "button" && element.props.children === text)!; }
+function nextBlock(tree: ReactNode) {
+  const preventDefault = vi.fn();
+  (button(tree, "Далее").props.onClick as (event: { preventDefault: () => void }) => void)({ preventDefault });
+  expect(preventDefault).toHaveBeenCalledExactlyOnceWith();
+}
 function choose(tree: ReactNode, value: number) {
   const scale = elements(tree).find((element) => element.props.name === "question-1" && typeof element.props.onChange === "function")!;
   (scale.props.onChange as (value: number) => void)(value);
@@ -106,7 +111,7 @@ describe("team response blocks and saving", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(mocks.fetch).not.toHaveBeenCalled();
     choose(tree, 0);
-    (button(render(), "Далее").props.onClick as () => void)();
+    nextBlock(render());
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
     expect(requestBody(0).revision).toBe(4);
@@ -152,7 +157,7 @@ describe("team response blocks and saving", () => {
     expect(login.props.href).toBe("/ru/login?method=email&next=%2Fru%2Fteam%2Fresponses%2Fparticipant-1");
     expect(elements(blocked).find(element => element.props.name === "question-1")?.props.value).toBe(4);
     expect(button(blocked, "Далее").props.disabled).toBe(true);
-    (button(blocked, "Далее").props.onClick as () => void)();
+    nextBlock(blocked);
     await vi.advanceTimersByTimeAsync(3000);
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
     expect(mocks.push).not.toHaveBeenCalled();
@@ -220,7 +225,7 @@ describe("team response blocks and saving", () => {
     expect(elements(waiting).find(element => element.props.name === "question-1")?.props.value).toBe(4);
     expect(elements(waiting).some(element => element.props.children === "Повторить сохранение можно через 8 сек.")).toBe(true);
     expect(button(waiting, "Далее").props.disabled).toBe(true);
-    (button(waiting, "Далее").props.onClick as () => void)();
+    nextBlock(waiting);
     await vi.advanceTimersByTimeAsync(7900);
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
 
@@ -285,7 +290,7 @@ describe("team response blocks and saving", () => {
   it("releases a blocked Next on timeout, retains the answer, and retries at the confirmed unchanged revision", async () => {
     mocks.fetch.mockImplementationOnce(hangUntilAbort);
     choose(render(), 4);
-    (button(render(), "Далее").props.onClick as () => void)();
+    nextBlock(render());
     await vi.advanceTimersByTimeAsync(0);
     expect(button(render(), "Далее").props.disabled).toBe(true);
     await vi.advanceTimersByTimeAsync(15_000);
@@ -379,11 +384,69 @@ describe("team response blocks and saving", () => {
     const tree = hooks.render(() => TeamResponseForm({ response: partial }));
     choose(tree, 0);
     const updated = hooks.render(() => TeamResponseForm({ response: partial }));
-    (button(updated, "Далее").props.onClick as () => void)();
+    nextBlock(updated);
     await vi.advanceTimersByTimeAsync(0);
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
     expect(requestBody(0).answers["question-1"]).toBe(0);
     expect(elements(hooks.render(() => TeamResponseForm({ response: partial }))).some((element) => element.props.role === "alert")).toBe(true);
+  });
+
+  const withClosingQuestions: TeamResponse = {
+    ...response,
+    questions: [response.questions[0], ...[1, 2, 3].map(index => ({
+      ...response.questions[1], id: `closing-${index}`, prompt: `Closing question ${index}`, required: false,
+    }))],
+  };
+
+  it("keeps all closing questions open after Next when the required answers are already autosaved", async () => {
+    const renderClosing = () => hooks.render(() => TeamResponseForm({ response: withClosingQuestions }));
+    choose(renderClosing(), 2);
+    renderClosing();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(requestBody(0).submit).toBe(false);
+
+    const previous = renderClosing();
+    nextBlock(previous);
+    await vi.advanceTimersByTimeAsync(0);
+    const closing = renderClosing();
+    const textareas = elements(closing).filter(element => element.type === DictatedAnswer);
+    expect(textareas.map(element => element.props.name)).toEqual(["closing-1", "closing-2", "closing-3"]);
+    expect(button(closing, "Завершить участие").key).not.toBe(button(previous, "Далее").key);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    textareas.forEach((element, index) => {
+      (element.props.onChange as (value: string) => void)(`Closing answer ${index + 1}`);
+    });
+    const form = elements(renderClosing()).find(element => element.type === "form")!;
+    (form.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault() {} });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(requestBody(1)).toEqual({
+      revision: 5, submit: true,
+      answers: { "question-1": 2, "closing-1": "Closing answer 1", "closing-2": "Closing answer 2", "closing-3": "Closing answer 3" },
+    });
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/ru/team/responses/participant-1/result");
+  });
+
+  it("ignores implicit submission before the closing block even when every required answer is saved", async () => {
+    const renderClosing = () => hooks.render(() => TeamResponseForm({ response: withClosingQuestions }));
+    choose(renderClosing(), 3);
+    renderClosing();
+    await vi.advanceTimersByTimeAsync(1500);
+    const beforeClosing = renderClosing();
+    const preventDefault = vi.fn();
+    const form = elements(beforeClosing).find(element => element.type === "form")!;
+    (form.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(preventDefault).toHaveBeenCalledExactlyOnceWith();
+    expect(button(renderClosing(), "Далее")).toBeDefined();
+    expect(button(renderClosing(), "Завершить участие")).toBeUndefined();
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(requestBody(0).submit).toBe(false);
+    expect(mocks.push).not.toHaveBeenCalled();
   });
 
   it("sends submit once and opens the personal result after completion", async () => {

@@ -260,7 +260,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (navigationPendingRef.current) return;
+    if (viewIndex !== blocks.length - 1 || navigationPendingRef.current) return;
     navigationPendingRef.current = true; setNavigationPending(true);
     try {
       const missing = required.filter((question) => !hasAnswer(question, answersRef.current[question.id]));
@@ -306,7 +306,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
     {rateLimited && <p className="text-sm text-muted">{`Повторить ${retrySubmit ? "отправку" : "сохранение"} можно через ${retrySeconds} сек.`}</p>}
     <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
       {saving === "error" && !needsSession && <button type="button" disabled={navigationPending || rateLimited || !hydrated} onClick={() => void save(retrySubmit ? "submit" : "save")} className="min-h-12 rounded-xl border border-line px-5 py-3 disabled:opacity-50">{retrySubmit ? "Повторить отправку" : "Повторить сохранение"}</button>}
-      <div className="flex gap-3 sm:ml-auto"><button type="button" disabled={viewIndex === 0 || needsSession || navigationPending || rateLimited || !hydrated} onClick={() => void navigate(viewIndex - 1)} className="min-h-12 flex-1 rounded-xl border border-line px-5 py-3 disabled:opacity-50">Назад</button>{viewIndex < blocks.length - 1 ? <button type="button" disabled={needsSession || navigationPending || rateLimited || !hydrated} onClick={() => void navigate(viewIndex + 1)} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Далее</button> : <button disabled={needsSession || navigationPending || rateLimited || !hydrated} type="submit" className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Завершить участие</button>}</div>
+      <div className="flex gap-3 sm:ml-auto"><button type="button" disabled={viewIndex === 0 || needsSession || navigationPending || rateLimited || !hydrated} onClick={() => void navigate(viewIndex - 1)} className="min-h-12 flex-1 rounded-xl border border-line px-5 py-3 disabled:opacity-50">Назад</button>{viewIndex < blocks.length - 1 ? <button key="next-block" type="button" disabled={needsSession || navigationPending || rateLimited || !hydrated} onClick={(event) => { event.preventDefault(); void navigate(viewIndex + 1); }} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Далее</button> : <button key="finish-participation" disabled={needsSession || navigationPending || rateLimited || !hydrated} type="submit" className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Завершить участие</button>}</div>
     </div>
     <p className="text-sm text-muted">Ответы сохраняются автоматически. После завершения их изменить нельзя. Ваш личный результат будет доступен сразу; AI-отчёт для него не создаётся.</p>
   </form>;
