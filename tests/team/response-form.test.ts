@@ -141,6 +141,75 @@ describe("team response blocks and saving", () => {
     expect(elements(saved).some((element) => element.props.role === "status")).toBe(false);
   });
 
+  it("waits for Retry-After and then automatically saves the most recent draft", async () => {
+    mocks.fetch.mockResolvedValueOnce(Response.json({ error: "Лимит сохранений" }, {
+      status: 429, headers: { "Retry-After": "8" },
+    }));
+    choose(render(), 3);
+    render();
+    await vi.advanceTimersByTimeAsync(1500);
+
+    choose(render(), 4);
+    const waiting = render();
+    expect(elements(waiting).find(element => element.props.name === "question-1")?.props.value).toBe(4);
+    expect(elements(waiting).some(element => element.props.children === "Повторить сохранение можно через 8 сек.")).toBe(true);
+    expect(button(waiting, "Далее").props.disabled).toBe(true);
+    (button(waiting, "Далее").props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(7900);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(100);
+    render();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+    expect(requestBody(1)).toEqual({ revision: 4, answers: { "question-1": 4, "question-2": "" }, submit: false });
+  });
+
+  it("clears the save warning when a draft is reverted during the quota pause", async () => {
+    const cached = {
+      ...response,
+      answers: { "question-1": 2 },
+      questions: [response.questions[0], { ...response.questions[1], block_id: "block-1" }],
+    };
+    const renderCached = () => hooks.render(() => TeamResponseForm({ response: cached }));
+    mocks.fetch.mockResolvedValueOnce(new Response("Busy", { status: 429, headers: { "Retry-After": "4" } }));
+
+    choose(renderCached(), 3);
+    renderCached();
+    await vi.advanceTimersByTimeAsync(1500);
+    choose(renderCached(), 2);
+    renderCached();
+    await vi.advanceTimersByTimeAsync(4000);
+    renderCached();
+    await vi.advanceTimersByTimeAsync(1500);
+    const unchanged = renderCached();
+
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(elements(unchanged).some(element => element.props.role === "alert" || element.props.role === "status")).toBe(false);
+  });
+
+  it("waits for an explicit action before retrying a rate-limited final submission", async () => {
+    const complete = { ...response, answers: { "question-1": 0, "question-2": "Current situation" } };
+    const renderComplete = () => hooks.render(() => TeamResponseForm({ response: complete }));
+    const submit = elements(renderComplete()).find(element => element.type === "form")!.props.onSubmit as
+      (event: { preventDefault: () => void }) => void;
+    mocks.fetch.mockResolvedValueOnce(Response.json({ error: "Лимит сохранений", retryAfterSeconds: 4 }, { status: 429 }));
+
+    submit({ preventDefault() {} });
+    await vi.advanceTimersByTimeAsync(0);
+    renderComplete();
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    const retry = button(renderComplete(), "Повторить отправку");
+    expect(retry.props.disabled).toBe(false);
+    (retry.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(requestBody(1)).toMatchObject({ revision: 4, submit: true });
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/ru/team/responses/participant-1/result");
+  });
+
   function hangUntilAbort(_url: string, options: RequestInit) {
     return new Promise<Response>((_, reject) => {
       options.signal!.addEventListener("abort", () => reject(options.signal!.reason), { once: true });

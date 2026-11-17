@@ -50,6 +50,16 @@ describe("team response transport", () => {
     expect(mocks.save).not.toHaveBeenCalled();
   });
 
+  it("returns a private 429 with the wait in both the header and JSON", async () => {
+    const limited = { error: "Слишком много запросов. Попробуйте позже.", revision: 4, retryAfterSeconds: 12 };
+    mocks.save.mockResolvedValueOnce(limited);
+    const response = await PATCH(write(), context);
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("12");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(await response.json()).toEqual(limited);
+  });
+
   it("binds writes to the path participant and keeps uncertainty distinct from conflicts", async () => {
     const result = await PATCH(write(), context);
     expect(result.status).toBe(200);

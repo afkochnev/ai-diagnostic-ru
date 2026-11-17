@@ -1,7 +1,7 @@
 vi.mock("@/server/entitlements",()=>({requireEntitlement:vi.fn(async()=>{if(!state.entitled)throw Error("advanced_required");})}));
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const state=vi.hoisted(()=>({controlled:false,entitled:true,rpc:vi.fn(),send:vi.fn(),credential:vi.fn(),revalidate:vi.fn(),origin:"https://ai-diagnostic-staging-web.onrender.com",provider:"mock",cookieSet:vi.fn()}));
+const state=vi.hoisted(()=>({controlled:false,entitled:true,rpc:vi.fn(),send:vi.fn(),credential:vi.fn(),revalidate:vi.fn(),origin:"https://ai-diagnostic-staging-web.onrender.com",provider:"mock",cookieSet:vi.fn(),rateLimit:vi.fn()}));
 vi.mock("server-only",()=>({}));
 vi.mock("next/headers",()=>({headers:async()=>new Headers({origin:state.origin}),cookies:async()=>({set:state.cookieSet,get:()=>undefined})}));
 vi.mock("next/navigation",()=>({redirect:vi.fn()}));
@@ -13,13 +13,16 @@ vi.mock("@/server/team/capabilities",()=>({teamFoundationEnabled:()=>true,teamCr
 vi.mock('@/server-runtime/team-smoke',()=>({controlledTeamRequired:()=>state.controlled,controlledTeamContext:async()=>state.controlled?{mode:'controlled'}:null}));
 vi.mock("@/server/team/single-email",()=>({singleEmailCredential:state.credential}));
 vi.mock("@/server/team/day-access",()=>({issueInvitationDayAccess:async(hash:string,email:string)=>({...await state.credential(hash),email,expires:Date.now()+86400000})}));
-vi.mock("@/server/rate-limit",()=>({enforceRateLimit:vi.fn()}));
+vi.mock("@/server/rate-limit", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/rate-limit")>(), enforceRateLimit: state.rateLimit,
+}));
 vi.mock("@/server/team/service",()=>({teamRpc:state.rpc,invitationCompany:async()=>"Synthetic company",ownerTeam:async()=>({team:{company_id:"company",title:"Synthetic team"},participants:[{id:"10000000-0000-4000-8000-000000000001",email:"participant@example.test"}]})}));
 vi.mock("@/server/team/invitation-email",async(importOriginal)=>({...await importOriginal<typeof import("@/server/team/invitation-email")>(),getTeamInvitationProvider:()=>({name:state.provider,send:state.send})}));
 import { inviteTeamAction, prepareTeamInvitationAction, renewTeamInvitationAction, saveTeamResponseAction } from "@/server/team/actions";
+import { RateLimitExceeded } from "@/server/rate-limit";
 const id="10000000-0000-4000-8000-000000000001";
 function invitation() { const f=new FormData(); f.set("teamId",id); f.set("email","participant@example.test"); f.set("displayName","Participant"); return f; }
-beforeEach(()=>{state.controlled=false;state.entitled=true;vi.clearAllMocks();state.origin="https://ai-diagnostic-staging-web.onrender.com";state.provider="mock";state.rpc.mockResolvedValue(id);state.send.mockResolvedValue({providerMessageId:"synthetic-receipt"});state.credential.mockResolvedValue({email:"participant@example.test",envelope:"synthetic-private-proof"});});
+beforeEach(()=>{state.controlled=false;state.entitled=true;vi.clearAllMocks();state.rateLimit.mockReset();state.origin="https://ai-diagnostic-staging-web.onrender.com";state.provider="mock";state.rpc.mockResolvedValue(id);state.send.mockResolvedValue({providerMessageId:"synthetic-receipt"});state.credential.mockResolvedValue({email:"participant@example.test",envelope:"synthetic-private-proof"});});
 describe("team invitation side effects",()=>{
   it("sends one email only after scoped invitation creation, binding recipient and token hash",async()=>{
     const result=await inviteTeamAction({},invitation());
@@ -87,14 +90,43 @@ describe("team invitation side effects",()=>{
   });
 });
 
+function responseForm(intent: "save" | "submit" = "submit") {
+  const form = new FormData();
+  form.set("participantId", id);
+  form.set("revision", "3");
+  form.set("answers", "{}");
+  form.set("intent", intent);
+  return form;
+}
+
 it("retains the last saved revision across a validation error so correction can be submitted",async()=>{
-  const f=new FormData();f.set("participantId",id);f.set("revision","3");f.set("answers","{}");f.set("intent","submit");
+  const f = responseForm();
   state.rpc.mockRejectedValue(new Error("team_required_answers_missing"));
   const result=await saveTeamResponseAction({revision:3,status:"started"},f);
   expect(result).toMatchObject({revision:3,status:"started"});expect(result.error).toContain("обязательные");
   state.rpc.mockResolvedValue({revision:4,status:"completed"});
   expect(await saveTeamResponseAction(result,f)).toEqual({revision:4,status:"completed"});
   expect(state.rpc.mock.calls[1][1].p_expected_revision).toBe(3);
+});
+
+it("allows ordinary draft saves at questionnaire pace while retaining the controlled quota", async () => {
+  state.rpc.mockResolvedValue({ revision: 4, status: "started" });
+  const previous = { revision: 3, status: "started" };
+  await expect(saveTeamResponseAction(previous, responseForm("save"))).resolves.toEqual({ revision: 4, status: "started" });
+  expect(state.rateLimit).toHaveBeenLastCalledWith("team-save-minute:owner", 60, 60);
+
+  state.controlled = true;
+  await saveTeamResponseAction(previous, responseForm("save"));
+  expect(state.rateLimit).toHaveBeenLastCalledWith("team-save:owner", 120, 3600);
+});
+
+it.each([[12.2, 13], [NaN, 60], [3600, 60]])("retains the known revision and retry delay after hitting the save quota (%s)", async (rejectedDelay, expectedDelay) => {
+  state.rateLimit.mockRejectedValueOnce(new RateLimitExceeded(rejectedDelay));
+  const previous = { revision: 3, status: "started" };
+  await expect(saveTeamResponseAction(previous, responseForm("save"))).resolves.toMatchObject({
+    ...previous, retryAfterSeconds: expectedDelay,
+  });
+  expect(state.rpc).not.toHaveBeenCalled();
 });
 
 it("hides the raw link on successful real invitation delivery",async()=>{

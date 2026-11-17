@@ -12,7 +12,7 @@ import { isAppRequestOrigin } from "@/server-runtime/app-request-origin";
 import { requireCompanyWrite } from "@/server/account/authorization";
 import { getTeamInvitationProvider, teamInvitationMessage } from "./invitation-email";
 import { sealInvitationDetails,openInvitationDetails } from "./invitation-details";
-import { enforceRateLimit } from "@/server/rate-limit";
+import { enforceRateLimit, RateLimitExceeded } from "@/server/rate-limit";
 import { invitationToken, teamCreation, teamInvitation, teamSave, type TeamActionState } from "./contracts";
 import { invitationSessionTtl, sealInvitation } from "./invitation-envelope";
 import { invitationCompany, ownerTeam, teamRpc } from "./service";
@@ -220,15 +220,29 @@ export async function switchTeamInvitationAccountAction(): Promise<TeamActionSta
   redirect("/ru/team/join");
 }
 export async function saveTeamResponseAction(previous: TeamActionState, form: FormData): Promise<TeamActionState> {
+  let windowSeconds = 60;
   try {
     await origin(true); const identity = await requireIdentity();
-    await enforceRateLimit(`team-save:${identity.user.id}`, 120, 3600);
+    if (controlledTeamRequired()) {
+      windowSeconds = 3600;
+      await enforceRateLimit(`team-save:${identity.user.id}`, 120, windowSeconds);
+    } else {
+      // The form saves after a 1.5 second pause, including on long questionnaires.
+      // Use a new key so old hourly counters cannot block the first minute.
+      await enforceRateLimit(`team-save-minute:${identity.user.id}`, 60, windowSeconds);
+    }
     const raw = value(form,"answers");
     if (raw.length > 1000000) throw new Error("team_invalid_answers");
     const input = teamSave.parse({ participantId: value(form,"participantId"), revision: value(form,"revision"), answers: JSON.parse(raw), submit: value(form,"intent") === "submit" });
     await controlledTeamContext({participantId:input.participantId});
     return await teamRpc<{ revision: number; status: string }>("save_team_response", { p_participant_id: input.participantId, p_expected_revision: input.revision, p_answers: input.answers, p_submit: input.submit });
   } catch (error) {
+    if (error instanceof RateLimitExceeded) {
+      const retryAfterSeconds = Number.isSafeInteger(error.retryAfter) && error.retryAfter >= 1
+        ? Math.min(error.retryAfter, windowSeconds)
+        : windowSeconds;
+      return { revision: previous.revision, status: previous.status, ...failure(error), retryAfterSeconds };
+    }
     const code = error instanceof Error ? error.message : "";
     const saveFailure = code === "team_revision_conflict" ? "conflict" : code === "team_request_failed" ? "uncertain" : undefined;
     return { revision: previous.revision, status: previous.status, ...failure(error), ...(saveFailure ? { saveFailure } : {}) };

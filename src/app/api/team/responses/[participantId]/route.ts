@@ -48,6 +48,9 @@ export async function PATCH(request: Request, { params }: Context) {
   form.set("answers", JSON.stringify(answers));
   form.set("intent", submit ? "submit" : "save");
   const result = await saveTeamResponseAction({ revision }, form);
+  if (result.retryAfterSeconds !== undefined) {
+    return NextResponse.json(result, { status: 429, headers: { ...privateHeaders, "Retry-After": String(result.retryAfterSeconds) } });
+  }
   if (result.saveFailure === "uncertain") return json({ error: "save_unavailable" }, 503);
   return json(result, result.saveFailure === "conflict" ? 409 : result.error ? 400 : 200);
 }
