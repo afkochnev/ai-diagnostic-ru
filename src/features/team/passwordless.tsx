@@ -17,8 +17,8 @@ export function TeamPasswordless({policy,view}:{policy:TeamEntryPolicy;view:Team
   const expired=view.phase==="expired" || sent.phase==="expired" || Boolean(now && contextExpires && now>=contextExpires);
   if(expired)return <p role="alert">{sent.error??(view.continuation?'Ссылка недоступна или срок доступа истёк. Обратитесь к организатору.':view.singleEmail?"Ссылка для входа недоступна. Попросите организатора отправить новое приглашение.":"Откройте исходную ссылку из письма-приглашения. Если вы уже приняли приглашение, сначала войдите с тем же email.")}</p>;
   if(sent.phase==="spent")return <div className="space-y-3" role="status">
-    <p>Вы уже приняли это приглашение. Войдите с адресом приглашения и снова откройте ссылку из письма, чтобы продолжить диагностику.</p>
-    <Link href="/ru/login?method=email" className="underline">Войти по ссылке из email</Link>
+    <p>Вы уже приняли это приглашение. Войдите с адресом приглашения, чтобы продолжить диагностику.</p>
+    <Link href="/ru/login?method=email&next=team-invitation" className="underline">Войти по ссылке из email</Link>
   </div>;
   const wrong=view.wrongAccount || sent.phase==="wrong";
   if(wrong)return <div className="space-y-4"><p>Это приглашение предназначено для другого адреса: {view.maskedEmail}.</p><form action={switchAccount}><button className={button} disabled={switching}>Выйти и продолжить с адресом приглашения</button></form>{switched.error && <p role="alert">{switched.error}</p>}</div>;

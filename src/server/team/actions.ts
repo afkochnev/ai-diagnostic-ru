@@ -244,7 +244,8 @@ export async function saveTeamResponseAction(previous: TeamActionState, form: Fo
       return { revision: previous.revision, status: previous.status, ...failure(error), retryAfterSeconds };
     }
     const code = error instanceof Error ? error.message : "";
-    const saveFailure = code === "team_revision_conflict" ? "conflict" : code === "team_request_failed" ? "uncertain" : undefined;
+    const saveFailure = code === "team_revision_conflict" ? "conflict" : code === "team_request_failed" ? "uncertain" :
+      code === "team_response_unavailable" || code === "team_unauthorized" ? "session" : undefined;
     return { revision: previous.revision, status: previous.status, ...failure(error), ...(saveFailure ? { saveFailure } : {}) };
   }
 }

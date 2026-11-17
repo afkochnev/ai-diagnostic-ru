@@ -50,6 +50,20 @@ describe("team response transport", () => {
     expect(mocks.save).not.toHaveBeenCalled();
   });
 
+  it("requires the participant to sign in again without sending an HTML redirect during autosave", async () => {
+    mocks.getIdentity.mockResolvedValueOnce(null);
+    const expired = await PATCH(write(), context);
+    expect(expired.status).toBe(401);
+    expect(expired.headers.get("location")).toBeNull();
+    expect(await expired.json()).toEqual({ error: "access_denied" });
+    expect(mocks.save).not.toHaveBeenCalled();
+
+    mocks.save.mockResolvedValueOnce({ revision: 4, error: "Unavailable", saveFailure: "session" });
+    const switched = await PATCH(write(), context);
+    expect(switched.status).toBe(403);
+    expect(await switched.json()).toEqual({ error: "access_denied" });
+  });
+
   it("returns a private 429 with the wait in both the header and JSON", async () => {
     const limited = { error: "Слишком много запросов. Попробуйте позже.", revision: 4, retryAfterSeconds: 12 };
     mocks.save.mockResolvedValueOnce(limited);

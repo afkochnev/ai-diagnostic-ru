@@ -129,6 +129,12 @@ it.each([[12.2, 13], [NaN, 60], [3600, 60]])("retains the known revision and ret
   expect(state.rpc).not.toHaveBeenCalled();
 });
 
+it("identifies a changed session while retaining the last confirmed participant revision", async () => {
+  state.rpc.mockRejectedValueOnce(Error("team_response_unavailable"));
+  await expect(saveTeamResponseAction({ revision: 3, status: "started" }, responseForm("save")))
+    .resolves.toMatchObject({ revision: 3, status: "started", saveFailure: "session" });
+});
+
 it("hides the raw link on successful real invitation delivery",async()=>{
  state.provider="resend";const result=await inviteTeamAction({},invitation());
  expect(result).toMatchObject({emailStatus:"sent",recipient:"participant@example.test",providerMessageId:"synthetic-receipt"});

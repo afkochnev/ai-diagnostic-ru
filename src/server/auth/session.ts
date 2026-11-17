@@ -6,7 +6,8 @@ import { isAuthConfigured } from "@/server/supabase/config";
 import { listAccessibleAccounts } from "@/server/account/queries";
 import { listAccessibleCompanies } from "@/server/company/queries";
 import { workspaceDestination } from "@/features/company/workspace-routing";
-import {safeMfaReturnTo} from "./mfa-return";
+import {safeMfaReturnTo, safeTeamResponseReturnTo} from "./mfa-return";
+import { activeParticipantDestination } from "./team-login-return";
 
 export { workspaceDestination } from "@/features/company/workspace-routing";
 
@@ -26,7 +27,10 @@ export const getIdentity = cache(async () => {
 
 export async function requireIdentity(returnTo?: string) {
   const identity = await getIdentity();
-  if (!identity) redirect("/ru/login");
+  if (!identity) {
+    const teamReturn = safeTeamResponseReturnTo(returnTo);
+    redirect(teamReturn ? `/ru/login?method=email&next=${encodeURIComponent(teamReturn)}` : "/ru/login");
+  }
   if (!identity.user.email_confirmed_at) redirect("/ru/verify-email");
   // A configured MFA factor requires step-up; the administrator role alone does not.
   if (identity.role === "administrator" && identity.nextAal === "aal2" && identity.aal !== "aal2") {
@@ -42,5 +46,9 @@ export async function signedInDestination() {
   if (!identity.user.email_confirmed_at) return "/ru/verify-email";
   if (identity.role === "administrator") return "/ru/admin";
   const [companies, accounts] = await Promise.all([listAccessibleCompanies(identity.user.id), listAccessibleAccounts(identity.user.id)]);
+  if (!companies.length) {
+    const participantDestination = await activeParticipantDestination(identity.user.email);
+    if (participantDestination) return participantDestination;
+  }
   return workspaceDestination(companies.length, accounts.length);
 }

@@ -141,6 +141,72 @@ describe("team response blocks and saving", () => {
     expect(elements(saved).some((element) => element.props.role === "status")).toBe(false);
   });
 
+  it.each([401, 404])("keeps the draft after an account switch and verifies access before retrying (GET %s)", async status => {
+    mocks.fetch.mockResolvedValueOnce(Response.json({ error: "access_denied" }, { status: 403 }));
+    choose(render(), 3);
+    render();
+    await vi.advanceTimersByTimeAsync(1500);
+    choose(render(), 4);
+    const blocked = render();
+    const login = elements(blocked).find(element => element.type === "a" && element.props.target === "_blank")!;
+    expect(login.props.href).toBe("/ru/login?method=email&next=%2Fru%2Fteam%2Fresponses%2Fparticipant-1");
+    expect(elements(blocked).find(element => element.props.name === "question-1")?.props.value).toBe(4);
+    expect(button(blocked, "Далее").props.disabled).toBe(true);
+    (button(blocked, "Далее").props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.push).not.toHaveBeenCalled();
+
+    mocks.fetch.mockResolvedValueOnce(Response.json({ error: "access_denied" }, { status }));
+    (button(render(), "Я вошёл — повторить сохранение").props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.fetch.mock.calls[1][1].method).toBeUndefined();
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+
+    mocks.fetch.mockResolvedValueOnce(Response.json({ revision: 4, status: "started", answers: {} }));
+    (button(render(), "Я вошёл — повторить сохранение").props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.fetch.mock.calls.map(([, options]) => options.method ?? "GET")).toEqual(["PATCH", "GET", "GET", "PATCH"]);
+    expect(requestBody(3)).toEqual({ revision: 4, answers: { "question-1": 4, "question-2": "" }, submit: false });
+    expect(button(render(), "Далее").props.disabled).toBe(false);
+    expect(elements(render()).some(element => element.props.role === "alert")).toBe(false);
+  });
+
+  it("reconciles an earlier unconfirmed write after returning to the participant account", async () => {
+    mocks.fetch.mockRejectedValueOnce(Error("connection interrupted"));
+    choose(render(), 3);
+    render();
+    await vi.advanceTimersByTimeAsync(1500);
+    mocks.fetch.mockResolvedValueOnce(Response.json({ error: "access_denied" }, { status: 401 }));
+    (button(render(), "Повторить сохранение").props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    mocks.fetch.mockResolvedValueOnce(Response.json({ revision: 5, status: "started", answers: { "question-1": 3, "question-2": "" } }));
+    (button(render(), "Я вошёл — повторить сохранение").props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mocks.fetch.mock.calls.map(([, options]) => options.method ?? "GET")).toEqual(["PATCH", "GET", "GET"]);
+    expect(button(render(), "Далее").props.disabled).toBe(false);
+  });
+
+  it("requires an explicit final retry after the participant session is restored", async () => {
+    const complete = { ...response, answers: { "question-1": 0, "question-2": "Current situation" } };
+    const renderComplete = () => hooks.render(() => TeamResponseForm({ response: complete }));
+    mocks.fetch.mockResolvedValueOnce(Response.json({ error: "access_denied" }, { status: 401 }));
+    const form = elements(renderComplete()).find(element => element.type === "form")!;
+    (form.props.onSubmit as (event: { preventDefault: () => void }) => void)({ preventDefault() {} });
+    await vi.advanceTimersByTimeAsync(0);
+    renderComplete();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+
+    mocks.fetch.mockResolvedValueOnce(Response.json({ revision: 4, status: "started", answers: complete.answers }));
+    (button(renderComplete(), "Я вошёл — повторить отправку").props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.fetch.mock.calls.map(([, options]) => options.method ?? "GET")).toEqual(["PATCH", "GET", "PATCH"]);
+    expect(requestBody(2).submit).toBe(true);
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/ru/team/responses/participant-1/result");
+  });
+
   it("waits for Retry-After and then automatically saves the most recent draft", async () => {
     mocks.fetch.mockResolvedValueOnce(Response.json({ error: "Лимит сохранений" }, {
       status: 429, headers: { "Retry-After": "8" },

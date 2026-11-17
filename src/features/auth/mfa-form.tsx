@@ -11,7 +11,7 @@ export function MfaForm({ factorId, returnTo }: { factorId?: string; returnTo?: 
   const copy = getMessages("ru").auth;
   const activeFactor = factorId || state.factorId;
   return <div className="space-y-5">
-    {returnTo && <p className="rounded-xl bg-tint p-4 text-sm leading-relaxed">{factorId ? "В вашем аккаунте уже настроена двухфакторная защита. " : ""}После подтверждения вернём вас к подключению Advanced. Промокод не меняет настройки защиты аккаунта.</p>}
+    {returnTo && <p className="rounded-xl bg-tint p-4 text-sm leading-relaxed">{factorId ? "В вашем аккаунте уже настроена двухфакторная защита. " : ""}{returnTo.startsWith("/ru/team/responses/") ? "После подтверждения вернём вас к вашей анкете." : "После подтверждения вернём вас к подключению Advanced. Промокод не меняет настройки защиты аккаунта."}</p>}
     <p className="text-sm leading-relaxed">{copy.mfaText}</p>
     {!activeFactor && <form action={action}><button className="min-h-12 w-full rounded-xl bg-brand px-5 py-3 text-white" disabled={pending}>{pending ? copy.pending : copy.mfaEnroll}</button></form>}
     {state.secret && <div className="rounded-xl bg-tint p-4"><p className="text-sm">{copy.mfaSecret}</p><code className="mt-3 block break-all" data-mfa-secret>{state.secret}</code></div>}

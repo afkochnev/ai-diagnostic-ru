@@ -16,6 +16,7 @@ type SaveState = Pick<TeamResponse, "revision" | "status">;
 const conflictMessage = "Ответы изменились в другой вкладке. Обновите страницу перед сохранением.";
 const confirmationMessage = "Не удалось подтвердить сохранение. Ответы остались на экране. Попробуйте ещё раз.";
 const limitedMessage = "Ответы остались в открытой вкладке.";
+const sessionMessage = "Вход изменился или срок сессии истёк. Войдите с адресом, на который получили приглашение. Ответы остались в этой вкладке.";
 const subscribe = () => () => {};
 const answersHash = (answers: Answers) => JSON.stringify(Object.entries(answers).sort(([a], [b]) => a.localeCompare(b)));
 const hasAnswer = (question: TeamQuestion, value: Answers[string]) => question.answer_type === "text" ? typeof value === "string" && value.trim().length > 0 : typeof value === "number" && value >= 0 && value <= 4;
@@ -32,6 +33,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
   const [saving, setSaving] = useState<"saved" | "unsaved" | "saving" | "error">("saved");
   const [retrySubmit, setRetrySubmit] = useState(false);
   const [retrySeconds, setRetrySeconds] = useState(0);
+  const [needsSession, setNeedsSession] = useState(false);
   const [navigationPending, setNavigationPending] = useState(false);
   const [missingIds, setMissingIds] = useState<string[]>([]);
   const [validationError, setValidationError] = useState("");
@@ -43,6 +45,8 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryAt = useRef(0);
   const manualSubmitAfterLimit = useRef(false);
+  const sessionBlocked = useRef(false);
+  const verifySessionOnSave = useRef(false);
   const navigationPendingRef = useRef(false);
   const blockHeading = useRef<HTMLHeadingElement>(null);
   const questionRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -50,6 +54,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
   const required = response.questions.filter((question) => question.required);
   const answered = required.filter((question) => hasAnswer(question, answers[question.id])).length;
   const resultPath = `/ru/team/responses/${response.participant_id}/result`;
+  const loginPath = `/ru/login?method=email&next=${encodeURIComponent(`/ru/team/responses/${response.participant_id}`)}`;
 
   const apiPath = "/api/team/responses/" + response.participant_id;
   const rateLimited = retrySeconds > 0;
@@ -58,14 +63,16 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     const operation = saveQueue.current.then(async () => {
       if (stateRef.current.status === "completed") return true;
+      if (sessionBlocked.current) return false;
       if (Date.now() < retryAt.current) return false;
-      if (!pendingSave.current && intent === "save" && answersHash(answersRef.current) === persistedHash.current) return true;
+      if (!verifySessionOnSave.current && !pendingSave.current && intent === "save" && answersHash(answersRef.current) === persistedHash.current) return true;
       setSaving("saving");
       function finish(result: SaveState, hash: string) {
         pendingSave.current = null;
         manualSubmitAfterLimit.current = false;
         stateRef.current = result;
         setState(result);
+        setNeedsSession(false);
         persistedHash.current = hash;
         setSaving(answersHash(answersRef.current) === hash ? "saved" : "unsaved");
         if (result.status === "completed") { router.push(resultPath); router.refresh(); }
@@ -78,14 +85,19 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
         setSaving("error");
         return false;
       }
-      async function reconcile(pending: PendingSave) {
-        const saved = await withRequestTimeout(async signal => {
+      async function readSaved() {
+        return withRequestTimeout(async signal => {
           const current = await fetch(apiPath, { cache: "no-store", signal });
+          if (current.status === 401 || current.status === 403 || current.status === 404) throw Error("team_session_unavailable");
           if (!current.ok) throw Error("status_unavailable");
           const body = await current.json() as Pick<TeamResponse, "revision" | "status" | "answers">;
           signal.throwIfAborted();
+          verifySessionOnSave.current = false;
           return body;
         });
+      }
+      async function reconcile(pending: PendingSave) {
+        const saved = await readSaved();
         const hash = answersHash(saved.answers);
         if (saved.revision === pending.revision + 1 && hash === pending.hash && saved.status === (pending.submit ? "completed" : "started")) {
           finish({ revision: saved.revision, status: saved.status }, hash);
@@ -104,9 +116,18 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
           }
           if (outcome === "saved") earlier = null;
         }
+        let resumed: SaveState | undefined;
+        if (verifySessionOnSave.current) {
+          const saved = await readSaved();
+          if (saved.revision !== stateRef.current.revision || saved.status === "completed") return fail(conflictMessage);
+          resumed = { revision: saved.revision, status: saved.status };
+        }
         const snapshot = answersRef.current;
         const hash = answersHash(snapshot);
-        if (!earlier && intent === "save" && hash === persistedHash.current) return true;
+        if (!earlier && intent === "save" && hash === persistedHash.current) {
+          if (resumed) finish(resumed, hash);
+          return true;
+        }
         const revision = stateRef.current.revision ?? response.revision;
         const submit = intent === "submit";
         pendingSave.current = { revision, hash, submit };
@@ -115,6 +136,10 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
             method: "PATCH", headers: { "content-type": "application/json" }, signal,
             body: JSON.stringify({ revision, answers: snapshot, submit }),
           });
+          if (saved.status === 401 || saved.status === 403) {
+            pendingSave.current = earlier;
+            throw Error("team_session_unavailable");
+          }
           const result = await saved.json().catch(error => {
             if (saved.status !== 429) throw error;
             return {};
@@ -150,7 +175,13 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
         if (result.revision !== revision + 1 || result.status !== (submit ? "completed" : "started")) throw Error("save_unavailable");
         finish({ revision: result.revision, status: result.status }, hash);
         return true;
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && error.message === "team_session_unavailable") {
+          sessionBlocked.current = true;
+          verifySessionOnSave.current = true;
+          setNeedsSession(true);
+          return fail(sessionMessage, intent === "submit");
+        }
         return fail(confirmationMessage);
       }
     });
@@ -175,11 +206,11 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
   }, [rateLimited]);
 
   useEffect(() => {
-    if (rateLimited || manualSubmitAfterLimit.current || state.status === "completed" || (!pendingSave.current && answersHash(answers) === persistedHash.current)) return;
+    if (needsSession || rateLimited || manualSubmitAfterLimit.current || state.status === "completed" || (!pendingSave.current && answersHash(answers) === persistedHash.current)) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { void save(); }, 1500);
     return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [answers, rateLimited, save, state.status]);
+  }, [answers, needsSession, rateLimited, save, state.status]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -264,10 +295,18 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
       </fieldset>;
     })}
     {state.error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{state.error}</p>}
+    {needsSession && <div className="space-y-3 rounded-xl border border-line bg-white p-4">
+      <a href={loginPath} target="_blank" rel="noopener noreferrer" className="block underline">Войти с адресом приглашения в новой вкладке</a>
+      <p className="text-sm text-muted">После входа вернитесь к этой анкете и повторите сохранение.</p>
+      <button type="button" disabled={navigationPending || rateLimited || !hydrated} className="min-h-12 rounded-xl border border-line px-5 py-3 disabled:opacity-50" onClick={() => {
+        sessionBlocked.current = false;
+        void save(retrySubmit ? "submit" : "save");
+      }}>{retrySubmit ? "Я вошёл — повторить отправку" : "Я вошёл — повторить сохранение"}</button>
+    </div>}
     {rateLimited && <p className="text-sm text-muted">{`Повторить ${retrySubmit ? "отправку" : "сохранение"} можно через ${retrySeconds} сек.`}</p>}
     <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-      {saving === "error" && <button type="button" disabled={navigationPending || rateLimited || !hydrated} onClick={() => void save(retrySubmit ? "submit" : "save")} className="min-h-12 rounded-xl border border-line px-5 py-3 disabled:opacity-50">{retrySubmit ? "Повторить отправку" : "Повторить сохранение"}</button>}
-      <div className="flex gap-3 sm:ml-auto"><button type="button" disabled={viewIndex === 0 || navigationPending || rateLimited || !hydrated} onClick={() => void navigate(viewIndex - 1)} className="min-h-12 flex-1 rounded-xl border border-line px-5 py-3 disabled:opacity-50">Назад</button>{viewIndex < blocks.length - 1 ? <button type="button" disabled={navigationPending || rateLimited || !hydrated} onClick={() => void navigate(viewIndex + 1)} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Далее</button> : <button disabled={navigationPending || rateLimited || !hydrated} type="submit" className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Завершить участие</button>}</div>
+      {saving === "error" && !needsSession && <button type="button" disabled={navigationPending || rateLimited || !hydrated} onClick={() => void save(retrySubmit ? "submit" : "save")} className="min-h-12 rounded-xl border border-line px-5 py-3 disabled:opacity-50">{retrySubmit ? "Повторить отправку" : "Повторить сохранение"}</button>}
+      <div className="flex gap-3 sm:ml-auto"><button type="button" disabled={viewIndex === 0 || needsSession || navigationPending || rateLimited || !hydrated} onClick={() => void navigate(viewIndex - 1)} className="min-h-12 flex-1 rounded-xl border border-line px-5 py-3 disabled:opacity-50">Назад</button>{viewIndex < blocks.length - 1 ? <button type="button" disabled={needsSession || navigationPending || rateLimited || !hydrated} onClick={() => void navigate(viewIndex + 1)} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Далее</button> : <button disabled={needsSession || navigationPending || rateLimited || !hydrated} type="submit" className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-50">Завершить участие</button>}</div>
     </div>
     <p className="text-sm text-muted">Ответы сохраняются автоматически. После завершения их изменить нельзя. Ваш личный результат будет доступен сразу; AI-отчёт для него не создаётся.</p>
   </form>;

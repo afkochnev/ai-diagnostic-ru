@@ -37,6 +37,15 @@ export async function PATCH(request: Request, { params }: Context) {
   const { participantId } = await params;
   if (!z.uuid().safeParse(participantId).success) return json({ error: "not_found" }, 404);
 
+  try {
+    const identity = await getIdentity();
+    if (!identity?.user.email_confirmed_at || (identity.role === "administrator" && identity.nextAal === "aal2" && identity.aal !== "aal2")) {
+      return json({ error: "access_denied" }, 401);
+    }
+  } catch {
+    return json({ error: "save_unavailable" }, 503);
+  }
+
   const body = await acquisitionJson(request, 1_000_100).catch(() => null);
   const parsed = saveSchema.safeParse(body);
   if (!parsed.success) return json({ error: "Не удалось сохранить ответы. Проверьте данные и попробуйте ещё раз." }, 400);
@@ -51,6 +60,7 @@ export async function PATCH(request: Request, { params }: Context) {
   if (result.retryAfterSeconds !== undefined) {
     return NextResponse.json(result, { status: 429, headers: { ...privateHeaders, "Retry-After": String(result.retryAfterSeconds) } });
   }
+  if (result.saveFailure === "session") return json({ error: "access_denied" }, 403);
   if (result.saveFailure === "uncertain") return json({ error: "save_unavailable" }, 503);
   return json(result, result.saveFailure === "conflict" ? 409 : result.error ? 400 : 200);
 }

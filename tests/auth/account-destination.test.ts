@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
   signedIn: true, verified: true, role: "user", aal: "aal1", companyCount: 1, accountCount: 1,
-  companies: vi.fn(), accounts: vi.fn(),
+  companies: vi.fn(), accounts: vi.fn(), participantDestination: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
@@ -18,15 +18,22 @@ vi.mock("@/server/supabase/server", () => ({
 }));
 vi.mock("@/server/company/queries", () => ({ listAccessibleCompanies: state.companies }));
 vi.mock("@/server/account/queries", () => ({ listAccessibleAccounts: state.accounts }));
+vi.mock("@/server/auth/team-login-return", () => ({activeParticipantDestination: state.participantDestination}));
 import { signedInDestination } from "@/server/auth/session";
 
 beforeEach(() => {
   Object.assign(state, { signedIn: true, verified: true, role: "user", aal: "aal1", companyCount: 1, accountCount: 1 });
   state.companies.mockReset().mockImplementation(async () => Array.from({ length: state.companyCount }, (_, index) => ({ id: `company-${index}` })));
   state.accounts.mockReset().mockImplementation(async () => Array.from({ length: state.accountCount }, (_, index) => ({ id: `account-${index}` })));
+  state.participantDestination.mockReset().mockResolvedValue(null);
 });
 
 describe("signed-in account destinations", () => {
+  it("resumes a bound participant after a new-browser login before offering a company profile", async () => {
+    state.companyCount = 0;
+    state.participantDestination.mockResolvedValue("/ru/team/responses/10000000-0000-4000-8000-000000000001");
+    expect(await signedInDestination()).toBe("/ru/team/responses/10000000-0000-4000-8000-000000000001");
+  });
   it("preserves one-company V1 destination and uses verified membership lookups", async () => {
     expect(await signedInDestination()).toBe("/ru/dashboard");
     expect(state.companies).toHaveBeenCalledWith("user-a");

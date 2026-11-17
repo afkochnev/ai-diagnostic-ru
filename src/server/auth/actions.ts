@@ -11,7 +11,8 @@ import { clearRecovery, hasRecovery, setRecovery } from "./recovery";
 import { emailSchema, loginSchema, passwordSchema, registrationSchema, type AuthState } from "@/validation/auth";
 import { getMessages } from "@/i18n/messages";
 import { buildSignupMetadata, hasCreatedAuthUser, isDuplicateSignup } from "./registration-contract";
-import {safeMfaReturnTo} from "./mfa-return";
+import {safeMfaReturnTo, safeTeamResponseReturnTo} from "./mfa-return";
+import { authorizedTeamReturn, consumeTeamLoginReturn, setTeamLoginReturn } from "./team-login-return";
 import type { EmailOtpType } from "@supabase/supabase-js";
 
 const text = getMessages("ru").auth;
@@ -69,6 +70,12 @@ export async function loginAction(_: AuthState, form: FormData): Promise<AuthSta
   await clearRecovery();
   revalidatePath("/", "layout");
   if (value(form, "next") === "team-invitation") redirect("/ru/team/join");
+  const teamReturn = safeTeamResponseReturnTo(value(form, "next"));
+  if (teamReturn) {
+    const destination = await authorizedTeamReturn(teamReturn, client);
+    if (!destination) return { error: "Войдите с адресом, на который отправлено приглашение участника." };
+    redirect(destination);
+  }
   redirect("/ru/account");
 }
 
@@ -81,6 +88,8 @@ export async function emailLoginAction(_: AuthState, form: FormData): Promise<Au
     options: { shouldCreateUser: false, emailRedirectTo: `${authConfig().APP_URL}/auth/confirm` },
   });
   if (error && !["otp_disabled", "user_not_found", "signup_disabled"].includes(error.code ?? "")) return failure(error);
+  const teamReturn = value(form, "next") === "team-invitation" ? "/ru/team/join" : safeTeamResponseReturnTo(value(form, "next"));
+  await setTeamLoginReturn(parsed.data, teamReturn);
   // The same acknowledgment covers existing and unknown accounts.
   return { success: "Если этот email зарегистрирован, мы отправили ссылку для входа. Проверьте входящие и папку «Спам»." };
 }
@@ -169,6 +178,14 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
   }
   await clearRecovery();
   revalidatePath("/", "layout");
+  if (type === "email") {
+    const teamReturn = await consumeTeamLoginReturn(data.user.email);
+    if (teamReturn) {
+      const destination = await authorizedTeamReturn(teamReturn, client);
+      if (!destination) redirect(`/ru/login?method=email&next=${encodeURIComponent(teamReturn)}`);
+      redirect(destination);
+    }
+  }
   redirect(type === "signup" ? "/ru/verification-complete" : "/ru/account");
 }
 

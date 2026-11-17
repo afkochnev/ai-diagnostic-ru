@@ -1,7 +1,16 @@
 import {z} from "zod";
 
+/** A return path identifies a questionnaire. Its page still checks the participant session. */
+export function safeTeamResponseReturnTo(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const match = /^\/ru\/team\/responses\/([a-f0-9-]{36})$/.exec(value);
+  return match && z.uuid().safeParse(match[1]).success ? value : null;
+}
+
 /** Return context only; the destination still verifies Account and Company access. */
 export function safeMfaReturnTo(value: unknown): string | null {
+  const teamResponse = safeTeamResponseReturnTo(value);
+  if (teamResponse) return teamResponse;
   if (typeof value !== "string" || value.length > 512 || !value.startsWith("/") || value.startsWith("//") || /[\\\s]/.test(value)) return null;
   const url = new URL(value, "https://mfa.internal");
   if (url.origin !== "https://mfa.internal" || url.pathname !== "/ru/account/plan" || url.hash) return null;
