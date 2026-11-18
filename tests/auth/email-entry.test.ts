@@ -100,6 +100,21 @@ describe("email sign-in and confirmation continuation", () => {
     m.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: { code: "otp_expired" } });
     expect(await confirmAction({}, confirmation("email"))).toMatchObject({ error: expect.any(String), code: "invalid_link" }); expect(m.clear).not.toHaveBeenCalled();
   });
+  it("does not confirm an expired signup using another account's existing session", async () => {
+    m.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: { code: "otp_expired", status: 403 } });
+    m.getUser.mockResolvedValue({ data: { user: { id: "organizer", email: "organizer@example.test", email_confirmed_at: "confirmed" } }, error: null });
+    expect(await confirmAction({}, confirmation("signup"))).toMatchObject({ code: "invalid_link", error: expect.any(String) });
+    expect(m.getUser).not.toHaveBeenCalled();
+    expect(m.clear).not.toHaveBeenCalled();
+  });
+  it("does not announce signup success for an unverifiable link even when a user is already signed in", async () => {
+    m.getUser.mockResolvedValue({ data: { user: { id: "existing-user", email_confirmed_at: "confirmed" } }, error: null });
+    const form = new FormData(); form.set("type", "signup"); form.set("token_hash", "not-a-valid-token");
+    expect(await confirmAction({}, form)).toMatchObject({ code: "invalid_link", error: expect.any(String) });
+    expect(m.verifyOtp).not.toHaveBeenCalled();
+    expect(m.getUser).not.toHaveBeenCalled();
+    expect(m.clear).not.toHaveBeenCalled();
+  });
   it.each([{ code: "unexpected_failure", status: 503 }, { status: 429 }, { name: "AuthRetryableFetchError" }])("allows retrying temporary provider failures without labeling the token invalid: %j", async (error) => {
     m.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error });
     const result = await confirmAction({}, confirmation("email"));

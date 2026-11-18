@@ -180,14 +180,7 @@ export async function confirmAction(_: AuthState, form: FormData): Promise<AuthS
   }
   if (exchangeError?.status === 429 || (exchangeError?.status ?? 0) >= 500 || exchangeError?.name === "AuthRetryableFetchError") return failure(exchangeError);
   if (!data?.user) {
-    if (type === "signup") {
-      const { data: current } = await client.auth.getUser();
-      if (current.user?.email_confirmed_at) {
-        await clearRecovery();
-        revalidatePath("/", "layout");
-        redirect("/ru/verification-complete");
-      }
-    }
+    // A browser's existing session does not prove which signup this link confirms.
     return { error: text.invalidLink, code: "invalid_link" };
   }
   if (type === "recovery") {
