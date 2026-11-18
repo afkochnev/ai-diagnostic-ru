@@ -6,10 +6,20 @@ import {continueSingleEmailAction} from "@/server/team/single-email-actions";
 import {switchTeamInvitationAccountAction} from "@/server/team/actions";
 import type {TeamEntryView} from "@/server/team/entry-context";
 import {getMessages} from "@/i18n/messages";
+import {AuthProtection,useAuthProtection} from "@/features/auth/auth-protection";
 export type TeamEntryPolicy={versions:Record<string,string>;temporary:boolean;dataUrl:string;marketingUrl:string;policyUrl?:string};
 const button="min-h-12 rounded-xl bg-brand px-5 py-3 font-semibold text-white disabled:opacity-60";
 export function TeamPasswordless({policy,view}:{policy:TeamEntryPolicy;view:TeamEntryView}){
-  const [sent,send,sending]=useActionState(view.singleEmail?continueSingleEmailAction:sendTeamCodeAction,{});
+  const [captchaRequired,setCaptchaRequired]=useState(false);
+  const protection=useAuthProtection(!view.singleEmail && (!view.matching || captchaRequired));
+  const [sent,send,sending]=useActionState(async(previous:Awaited<ReturnType<typeof sendTeamCodeAction>>,form:FormData)=>{
+    try{
+      const result=await (view.singleEmail?continueSingleEmailAction:sendTeamCodeAction)(previous,form);
+      if(result.captchaRequired)setCaptchaRequired(true);
+      return result;
+    }
+    finally{protection.reset();}
+  },{});
   const [switched,switchAccount,switching]=useActionState(switchTeamInvitationAccountAction,{});
   const [now,setNow]=useState(0),[consented,setConsented]=useState(false);
   useEffect(()=>{const tick=()=>setNow(Date.now());const timer=window.setInterval(tick,1000);return()=>window.clearInterval(timer);},[]);
@@ -38,7 +48,8 @@ export function TeamPasswordless({policy,view}:{policy:TeamEntryPolicy;view:Team
       <Link href={policy.dataUrl} className="block text-sm underline">{policy.temporary ? text.dataLink : "Согласие на обработку персональных данных"}</Link>
       {policy.policyUrl && <Link href={policy.policyUrl} className="block text-sm underline">Политика обработки персональных данных</Link>}
       {policy.temporary && <p className="text-xs text-muted">{text.temporaryLegal}</p>}
-      <button disabled={sending||cooldown>0} className={button}>{sending?"Продолжаем…":view.matching?"Продолжить":accepted?"Отправить ещё раз":"Продолжить"}</button>
+      <AuthProtection protection={protection}/>
+      <button disabled={sending||protection.blocked||cooldown>0} className={button}>{sending?"Продолжаем…":view.matching?"Продолжить":accepted?"Отправить ещё раз":"Продолжить"}</button>
       {cooldown>0 && <p>Повторная отправка через {cooldown} сек.</p>}
     </form>
     {sent.error && <p role="alert">{sent.error}</p>}

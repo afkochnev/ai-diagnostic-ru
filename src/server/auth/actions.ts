@@ -14,6 +14,9 @@ import { buildSignupMetadata, hasCreatedAuthUser, isDuplicateSignup } from "./re
 import {safeMfaReturnTo, safeTeamResponseReturnTo} from "./mfa-return";
 import { authorizedTeamReturn, consumeTeamLoginReturn, setTeamLoginReturn } from "./team-login-return";
 import type { EmailOtpType } from "@supabase/supabase-js";
+import { readAuthCaptcha } from "./captcha";
+import { enforceRegistrationLimits, isRegistrationHoneypotFilled } from "./abuse-limits";
+import { RateLimitExceeded } from "@/server/rate-limit";
 
 const text = getMessages("ru").auth;
 const value = (form: FormData, name: string) => String(form.get(name) ?? "");
@@ -23,6 +26,7 @@ async function actionClient(allowLegacyContinuation = false) {
   return createAuthClient();
 }
 function failure(error: { status?: number; code?: string } | null): AuthState {
+  if (error?.code === "captcha_failed") return { error: "Проверка защиты не пройдена. Повторите её и отправьте форму ещё раз." };
   return { error: error?.status === 429 ? text.rateLimit : text.technical };
 }
 
@@ -37,6 +41,9 @@ export async function registerAction(_: AuthState, form: FormData): Promise<Auth
   if (!dataProcessingConsent) return { error: text.required };
   const marketingConsent = form.get("marketing_consent") === "on";
   const client = await actionClient();
+  if (isRegistrationHoneypotFilled(value(form, "website"))) return { error: text.technical };
+  const captcha = readAuthCaptcha(form);
+  if (captcha.error) return { error: captcha.error };
   const { data: documents, error: policyError } = await client.from("consent_documents").select("kind, version");
   if (policyError || documents?.length !== 2) return { error: text.technical };
   const versions = Object.fromEntries(documents.map((doc) => [`${doc.kind}_version`, doc.version]));
@@ -44,9 +51,14 @@ export async function registerAction(_: AuthState, form: FormData): Promise<Auth
     if (value(form, key) !== version) return { error: text.required };
   }
   const { email, password, full_name } = parsed.data;
+  try {
+    await enforceRegistrationLimits(email, await headers());
+  } catch (error) {
+    return { error: error instanceof RateLimitExceeded ? "Слишком много попыток регистрации. Попробуйте позже." : text.technical };
+  }
   const metadata = buildSignupMetadata({ full_name, data_processing_consent: dataProcessingConsent, marketing_consent: marketingConsent, versions });
   const { data, error } = await client.auth.signUp({ email, password, options: {
-    emailRedirectTo: `${authConfig().APP_URL}/auth/confirm`, data: metadata,
+    emailRedirectTo: `${authConfig().APP_URL}/auth/confirm`, data: metadata, ...(captcha.captchaToken ? { captchaToken: captcha.captchaToken } : {}),
   } });
   if (isDuplicateSignup(error, data)) return { error: text.emailAlreadyRegistered };
   if (error) {
@@ -65,8 +77,10 @@ export async function loginAction(_: AuthState, form: FormData): Promise<AuthSta
   const legacyInvitation = value(form, "next") === "team-invitation" && isLegacyContinuationOrigin(await headers())
     && Boolean(openInvitationContext((await cookies()).get("team-invitation")?.value, authConfig().AUTH_FLOW_SECRET));
   const client = await actionClient(legacyInvitation);
-  const { error } = await client.auth.signInWithPassword(parsed.data);
-  if (error) return { error: error.status === 429 ? text.rateLimit : error.code === "email_not_confirmed" ? text.verifyRequired : text.badLogin };
+  const captcha = readAuthCaptcha(form);
+  if (captcha.error) return { error: captcha.error };
+  const { error } = await client.auth.signInWithPassword({ ...parsed.data, ...(captcha.captchaToken ? { options: { captchaToken: captcha.captchaToken } } : {}) });
+  if (error) return error.code === "captcha_failed" ? failure(error) : { error: error.status === 429 ? text.rateLimit : error.code === "email_not_confirmed" ? text.verifyRequired : text.badLogin };
   await clearRecovery();
   revalidatePath("/", "layout");
   if (value(form, "next") === "team-invitation") redirect("/ru/team/join");
@@ -83,9 +97,11 @@ export async function emailLoginAction(_: AuthState, form: FormData): Promise<Au
   const parsed = emailSchema.safeParse(value(form, "email").trim());
   if (!parsed.success) return { error: text.badEmail };
   const client = await actionClient();
+  const captcha = readAuthCaptcha(form);
+  if (captcha.error) return { error: captcha.error };
   const { error } = await client.auth.signInWithOtp({
     email: parsed.data,
-    options: { shouldCreateUser: false, emailRedirectTo: `${authConfig().APP_URL}/auth/confirm` },
+    options: { shouldCreateUser: false, emailRedirectTo: `${authConfig().APP_URL}/auth/confirm`, ...(captcha.captchaToken ? { captchaToken: captcha.captchaToken } : {}) },
   });
   if (error && !["otp_disabled", "user_not_found", "signup_disabled"].includes(error.code ?? "")) return failure(error);
   const teamReturn = value(form, "next") === "team-invitation" ? "/ru/team/join" : safeTeamResponseReturnTo(value(form, "next"));
@@ -107,7 +123,9 @@ export async function forgotAction(_: AuthState, form: FormData): Promise<AuthSt
   const parsed = emailSchema.safeParse(value(form, "email").trim());
   if (!parsed.success) return { error: text.badEmail };
   const client = await actionClient();
-  const { error } = await client.auth.resetPasswordForEmail(parsed.data, { redirectTo: `${authConfig().APP_URL}/auth/confirm?type=recovery` });
+  const captcha = readAuthCaptcha(form);
+  if (captcha.error) return { error: captcha.error };
+  const { error } = await client.auth.resetPasswordForEmail(parsed.data, { redirectTo: `${authConfig().APP_URL}/auth/confirm?type=recovery`, ...(captcha.captchaToken ? { captchaToken: captcha.captchaToken } : {}) });
   if (error) return failure(error);
   return { success: "Если этот email зарегистрирован, мы отправили письмо для восстановления пароля. Проверьте входящие и папку «Спам»." };
 }
@@ -116,7 +134,10 @@ export async function resendAction(_: AuthState, form: FormData): Promise<AuthSt
   const parsed = emailSchema.safeParse(value(form, "email").trim());
   if (!parsed.success) return { error: text.badEmail };
   const client = await actionClient();
-  const { error } = await client.auth.resend({ type: "signup", email: parsed.data, options: { emailRedirectTo: `${authConfig().APP_URL}/auth/confirm` } });
+  const captcha = readAuthCaptcha(form);
+  if (captcha.error) return { error: captcha.error };
+  const { error } = await client.auth.resend({ type: "signup", email: parsed.data, options: { emailRedirectTo: `${authConfig().APP_URL}/auth/confirm`, ...(captcha.captchaToken ? { captchaToken: captcha.captchaToken } : {}) } });
+  if (error?.code === "captcha_failed") return failure(error);
   if (error?.status === 429) return { error: text.rateLimit };
   if (error && error.status && error.status >= 500) return failure(error);
   return { success: text.sent };
