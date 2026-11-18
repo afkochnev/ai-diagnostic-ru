@@ -21,10 +21,12 @@ const buttonClass = "min-h-10 rounded-lg border border-line px-3 py-2 text-sm fo
 const fallbackMessage = "В Windows поставьте курсор в поле ответа и нажмите Win + H. Если диктовка недоступна во встроенном браузере, попробуйте открыть эту страницу в Chrome.";
 const localPrivacy = "Речь распознаётся на вашем устройстве. При первом запуске скачается модель русского языка (около 46 МБ). Сохраняется только вставленный текст.";
 const browserPrivacy = "Браузер может передать звук своему сервису распознавания. Сохраняется только вставленный текст.";
+const dictationHint = "Произносите слова отчетливо и раздельно. После завершения диктовки не забудьте сохранить текст";
 
 export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props }: Props) {
   const mode = useSyncExternalStore(subscribe, browserMode, serverMode);
   const [state, setState] = useState<SpeechUpdate | null>(null);
+  const [hintVisible, setHintVisible] = useState(false);
   const capture = useRef<SpeechCapture | null>(null);
   const answer = useRef<HTMLTextAreaElement>(null);
   const controls = useRef<HTMLDivElement>(null);
@@ -54,6 +56,7 @@ export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props 
 
   function start() {
     if (disabled || capture.current || pending || preview || mode === "unavailable") return;
+    setHintVisible(true);
     manageFocus.current = true;
     let finished = false;
     const report = (update: SpeechUpdate) => {
@@ -70,6 +73,7 @@ export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props 
     capture.current?.cancel();
     capture.current = null;
     manageFocus.current = false;
+    setHintVisible(false);
     setState(null);
     answer.current?.focus();
   }
@@ -94,8 +98,14 @@ export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props 
       <button ref={startButton} type="button" disabled={disabled} aria-disabled={pending || preview || undefined} aria-describedby={privacyId} className={buttonClass + " aria-disabled:opacity-50"} onClick={start}>
         Диктовать ответ
       </button>
+      {hintVisible && <div role="region" aria-label="Подсказка по диктовке" className="max-w-xl rounded-xl border border-line bg-white p-3 shadow-md">
+        <div className="flex items-start gap-3">
+          <p className="flex-1 text-sm" aria-live="polite">{dictationHint}</p>
+          <button type="button" aria-label="Закрыть подсказку по диктовке" className="flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-line text-lg" onClick={() => setHintVisible(false)}>×</button>
+        </div>
+      </div>}
       <p id={privacyId} className="text-sm text-muted">{mode === "local" ? localPrivacy : browserPrivacy}</p>
-      {state && <p role="status" aria-live="polite" className="text-sm text-muted">
+      {state && <p role="status" aria-live="polite" className={state.phase === "listening" ? "text-sm font-semibold" : "text-sm text-muted"}>
         {speechStatus(state, mode)}
       </p>}
       {state?.phase === "finished" && state.message && <p className="text-sm text-muted">{fallbackMessage}</p>}
@@ -127,9 +137,9 @@ export function DictatedAnswer({ value, onChange, disabled, maxLength, ...props 
 function speechStatus(state: SpeechUpdate, mode: DictationMode) {
   switch (state.phase) {
     case "starting":
-      return mode === "local" ? "Подготавливаем распознавание. При запросе разрешите доступ к микрофону." : "Включаем микрофон…";
+      return mode === "local" ? "Включаем микрофон… Пока не говорите. При запросе разрешите доступ к микрофону." : "Включаем микрофон… Пока не говорите.";
     case "listening":
-      return "Идёт диктовка.";
+      return "Микрофон включён — можно говорить.";
     case "stopping":
       return "Завершаем распознавание…";
     case "finished":

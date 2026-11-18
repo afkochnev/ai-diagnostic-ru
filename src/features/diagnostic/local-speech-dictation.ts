@@ -5,6 +5,8 @@ const startTimeoutMs = 90000;
 const audioTimeoutMs = 6000;
 const stopTimeoutMs = 8000;
 const maxQueuedChunks = 128;
+const maxBufferedSeconds = 90;
+const maxBufferedBytes = 32 * 1024 * 1024;
 const recognizerId = "dictation";
 const assetPath = "/dictation/";
 
@@ -56,7 +58,8 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
   const session = Symbol();
   active = session;
   let phase: Phase = "starting";
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let audioTimer: ReturnType<typeof setTimeout> | undefined;
+  let stopTimer: ReturnType<typeof setTimeout> | undefined;
   let context: AudioContext | undefined;
   let worker: Worker | undefined;
   let stream: MediaStream | undefined;
@@ -64,8 +67,12 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
   let input: AudioWorkletNode | undefined;
   let inputReady = false;
   let modelReady = false;
+  let recognizerReady = false;
+  let flushed = false;
   let finalRequested = false;
   let outstanding = 0;
+  const queuedAudio: Float32Array[] = [];
+  let queuedSamples = 0;
   const fragments: string[] = [];
   let partial = "";
 
@@ -84,7 +91,11 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
   function release(): boolean {
     if (!isActive()) return false;
     active = null;
-    clearTimeout(timer);
+    clearTimeout(preparationTimer);
+    clearTimeout(audioTimer);
+    clearTimeout(stopTimer);
+    queuedAudio.length = 0;
+    queuedSamples = 0;
     if (input) {
       input.port.onmessage = null;
       input.port.close();
@@ -102,9 +113,9 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
     if (release()) report({ phase: "finished", transcript: transcript(), message });
   }
 
-  function setDeadline(duration: number, message: string) {
-    clearTimeout(timer);
-    timer = setTimeout(() => finish(message), duration);
+  function waitForRecognition() {
+    clearTimeout(stopTimer);
+    stopTimer = setTimeout(() => finish("Распознавание не завершилось вовремя."), stopTimeoutMs);
   }
 
   function publish() {
@@ -115,34 +126,61 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
     worker?.postMessage(message, transfer);
   }
 
+  function drainAudio() {
+    if (!isActive() || !recognizerReady || !context) return;
+    while (queuedAudio.length && outstanding < maxQueuedChunks) {
+      const data = queuedAudio.shift()!;
+      queuedSamples -= data.length;
+      outstanding += 1;
+      post({ action: "audioChunk", recognizerId, data, sampleRate: context.sampleRate }, [data.buffer]);
+    }
+    if (flushed && !queuedAudio.length && outstanding === 0 && !finalRequested) {
+      finalRequested = true;
+      waitForRecognition();
+      post({ action: "retrieveFinalResult", recognizerId });
+    }
+  }
+
   function acceptAudio(message: WorkletMessage) {
     if (!isActive() || !context) return;
     if (message.type === "flushed") {
-      if (phase === "stopping" && !finalRequested) {
-        finalRequested = true;
-        post({ action: "retrieveFinalResult", recognizerId });
+      if (phase === "stopping") {
+        flushed = true;
+        drainAudio();
       }
       return;
     }
-    if (finalRequested || !(message.samples instanceof Float32Array)) return;
+    if (flushed || finalRequested || !(message.samples instanceof Float32Array)) return;
+    clearTimeout(audioTimer);
     if (phase === "starting") {
-      clearTimeout(timer);
       phase = "listening";
       publish();
     }
-    if (outstanding >= maxQueuedChunks) {
+    // The microphone is already recording while the model loads. Retain the
+    // beginning in memory rather than connecting the input only after loading.
+    const sampleLimit = Math.min(context.sampleRate * maxBufferedSeconds, maxBufferedBytes / Float32Array.BYTES_PER_ELEMENT);
+    if (queuedSamples + message.samples.length > sampleLimit) {
       finish("Устройство не успевает распознавать речь. Попробуйте диктовать короткими фрагментами.");
       return;
     }
     const data = Float32Array.from(message.samples, (sample) => sample * 32768);
-    outstanding += 1;
-    post({ action: "audioChunk", recognizerId, data, sampleRate: context.sampleRate }, [data.buffer]);
+    queuedAudio.push(data);
+    queuedSamples += data.length;
+    drainAudio();
   }
 
-  function startWhenReady() {
-    if (!isActive() || !inputReady || !modelReady || !context || !stream) return;
+  function startRecognizerWhenReady() {
+    if (!isActive() || !modelReady || !input || !context || recognizerReady) return;
+    post({ action: "create", recognizerId, sampleRate: context.sampleRate });
+    recognizerReady = true;
+    clearTimeout(preparationTimer);
+    if (phase === "stopping") waitForRecognition();
+    drainAudio();
+  }
+
+  function startCaptureWhenReady() {
+    if (!isActive() || !inputReady || !context || !stream || input) return;
     try {
-      post({ action: "create", recognizerId, sampleRate: context.sampleRate });
       source = context.createMediaStreamSource(stream);
       input = new window.AudioWorkletNode(context, "dictation-pcm", {
         channelCount: 1,
@@ -153,7 +191,8 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
       input.onprocessorerror = () => finish("Браузер прервал обработку звука с микрофона.");
       input.connect(context.destination);
       source.connect(input);
-      setDeadline(audioTimeoutMs, "Не удалось получить звук с микрофона. Проверьте настройки устройства.");
+      audioTimer = setTimeout(() => finish("Не удалось получить звук с микрофона. Проверьте настройки устройства."), audioTimeoutMs);
+      startRecognizerWhenReady();
     } catch {
       finish("Браузер не смог начать обработку звука с микрофона.");
     }
@@ -165,7 +204,7 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
       if (!message.result) finish("Не удалось загрузить русскую модель распознавания.");
       else {
         modelReady = true;
-        startWhenReady();
+        startRecognizerWhenReady();
       }
       return;
     }
@@ -185,11 +224,15 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
       partial = "";
     }
     if (isFinalResponse) finish(transcript() ? undefined : "Речь не распознана. Попробуйте ещё раз.");
-    else publish();
+    else {
+      if (phase === "stopping" && recognizerReady) waitForRecognition();
+      drainAudio();
+      publish();
+    }
   }
 
   publish();
-  setDeadline(startTimeoutMs, "Не удалось подготовить диктовку. Проверьте разрешение на микрофон и загрузку модели.");
+  const preparationTimer = setTimeout(() => finish("Не удалось подготовить диктовку. Проверьте разрешение на микрофон и загрузку модели."), startTimeoutMs);
   async function prepareMicrophone() {
     let recording: MediaStream;
     try {
@@ -232,7 +275,7 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
       .then(([microphoneReady]) => {
         if (!microphoneReady || !isActive()) return;
         inputReady = true;
-        startWhenReady();
+        startCaptureWhenReady();
       })
       .catch(() => finish("Браузер не смог подготовить микрофон для диктовки."));
   } catch {
@@ -249,7 +292,9 @@ export function startLocalSpeechDictation(report: (update: SpeechUpdate) => void
       }
       phase = "stopping";
       publish();
-      setDeadline(stopTimeoutMs, "Распознавание не завершилось вовремя.");
+      // If the model is still loading, keep its preparation deadline. Once
+      // ready, drain every recorded chunk before asking for the final result.
+      if (recognizerReady) waitForRecognition();
       input.port.postMessage({ type: "flush" });
       stopMicrophone();
     },

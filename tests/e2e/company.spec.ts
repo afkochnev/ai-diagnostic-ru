@@ -49,6 +49,7 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
     }
 
     Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: SpeechRecognitionStub });
+    Object.defineProperty(window, "AudioWorkletNode", { configurable: true, value: undefined });
   });
   const email = `stage3-${randomUUID()}@example.test`;
   const password = "stage3-password";
@@ -118,11 +119,17 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
   await microphone.focus();
   await expect(microphone).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(firstQuestion.getByText("Идёт диктовка.")).toBeVisible();
+  await expect(firstQuestion.getByText("Микрофон включён — можно говорить.")).toBeVisible();
+  const dictationHint = firstQuestion.getByRole("region", { name: "Подсказка по диктовке" });
+  await expect(dictationHint).toContainText("Произносите слова отчетливо и раздельно. После завершения диктовки не забудьте сохранить текст");
+  await firstQuestion.getByRole("button", { name: "Закрыть подсказку по диктовке" }).click();
+  await expect(dictationHint).toHaveCount(0);
+  await expect(firstQuestion.getByRole("button", { name: "Остановить диктовку" })).toBeVisible();
   await firstQuestion.getByRole("button", { name: "Отменить" }).click();
   await expect(answer).toHaveValue(original);
 
   await microphone.click();
+  await expect(dictationHint).toBeVisible();
   await firstQuestion.getByRole("button", { name: "Остановить диктовку" }).click();
   const recognized = firstQuestion.getByLabel("Распознанный текст");
   await expect(recognized).toHaveValue("Распознанная фраза.");
@@ -134,16 +141,17 @@ test("profile lifecycle, dashboard, edit, validation, ownership and idempotent s
       && Boolean(response.request().postData()?.includes(correction)) && response.ok(),
   );
   await firstQuestion.getByRole("button", { name: "Добавить к ответу" }).click();
+  await expect(dictationHint).toHaveCount(0);
   await expect(answer).toHaveValue(`${original} ${correction}`);
   await inserted;
   await page.reload();
   await expect(answer).toHaveValue(`${original} ${correction}`);
   await page.locator("textarea").nth(1).fill("Ускорить рост без потери управляемости.");
   await microphone.click();
-  await expect(firstQuestion.getByText("Идёт диктовка.")).toBeVisible();
+  await expect(firstQuestion.getByText("Микрофон включён — можно говорить.")).toBeVisible();
   await page.getByRole("button", { name: "Далее", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Стратегия", exact: true })).toBeVisible();
-  await expect(page.getByText("Идёт диктовка.")).toHaveCount(0);
+  await expect(page.getByText("Микрофон включён — можно говорить.")).toHaveCount(0);
   await page.locator("article").nth(0).getByRole("button", { name: "5", exact: true }).click();
   await page.locator("article").nth(1).getByRole("button", { name: "4", exact: true }).click();
   await page.getByRole("button", { name: "Далее", exact: true }).click();
