@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
+vi.mock("@/server/auth/abuse-limits", () => ({ enforceRegistrationLimits: vi.fn(), isRegistrationHoneypotFilled: () => false }));
 
 const m = vi.hoisted(() => ({
   origin: vi.fn(), signUp: vi.fn(), signInWithPassword: vi.fn(), resetPasswordForEmail: vi.fn(),

@@ -4,6 +4,7 @@ import {beforeEach,describe,expect,it,vi} from "vitest";
 const state=vi.hoisted(()=>({values:[] as unknown[],index:0,result:{success:"Проверьте почту"} as {success?:string;error?:string},pending:false}));
 vi.mock("react",async original=>({...await original<typeof import("react")>(),
   useActionState:()=>[state.result,vi.fn(),state.pending],useEffect:vi.fn(),
+  useCallback:(callback:unknown)=>callback,
   useState:(initial:unknown)=>{const index=state.index++;if(!(index in state.values))state.values[index]=initial;return[state.values[index],(value:unknown)=>{state.values[index]=value;}];},
 }));
 import {AuthForm} from "@/features/auth/auth-form";

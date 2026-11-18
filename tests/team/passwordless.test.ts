@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const state=vi.hoisted(()=>({jar:new Map<string,string>(),origin:"https://ai-diagnostic-staging-web.onrender.com",enabled:true,resolve:vi.fn(),send:vi.fn(),verify:vi.fn(),accept:vi.fn(),limit:vi.fn(),identity:vi.fn(),current:vi.fn(),user:vi.fn(),redirect:vi.fn(),set:vi.fn()}));
+const state=vi.hoisted(()=>({jar:new Map<string,string>(),origin:"https://ai-diagnostic-staging-web.onrender.com",enabled:true,resolve:vi.fn(),send:vi.fn(),verify:vi.fn(),accept:vi.fn(),limit:vi.fn(),identity:vi.fn(),current:vi.fn(),user:vi.fn(),redirect:vi.fn(),set:vi.fn(),captcha:vi.fn()}));
 vi.mock("server-only",()=>({}));
 vi.mock("next/headers",()=>({headers:async()=>new Headers({origin:state.origin}),cookies:async()=>({get:(key:string)=>state.jar.has(key)?{value:state.jar.get(key)}:undefined,set:(key:string,value:string,options:unknown)=>{state.jar.set(key,value);state.set(key,value,options);},delete:(key:string)=>state.jar.delete(key)})}));
 vi.mock("next/navigation",()=>({redirect:state.redirect}));
@@ -13,6 +13,7 @@ vi.mock("@/server/auth/session",()=>({requireIdentity:state.identity,getIdentity
 vi.mock("@/server/auth/legal",()=>({registrationPolicy:async()=>({versions:{data_processing:"v1",marketing:"v1"}})}));
 vi.mock("@/server/team/service",()=>({teamRpc:state.accept}));
 vi.mock("@/server/rate-limit",()=>({enforceRateLimit:state.limit}));
+vi.mock("@/server/auth/captcha",()=>({readAuthCaptcha:state.captcha}));
 import { sendTeamCodeAction,verifyTeamCodeAction,confirmTeamEmailAction } from "@/server/team/passwordless-actions";
 import { prepareTeamInvitationAction } from "@/server/team/actions";
 import { teamEntryView } from "@/server/team/entry-context";
@@ -25,6 +26,7 @@ function code(value="123456"){const f=new FormData();f.set("code",value);return 
 function challenge(){state.jar.set("team-email-challenge",sealTeamChallenge(email,hash,secret));}
 beforeEach(()=>{
  vi.clearAllMocks();state.jar.clear();state.origin="https://ai-diagnostic-staging-web.onrender.com";state.enabled=true;
+ state.captcha.mockReturnValue({});
  state.jar.set("team-invitation",sealInvitation(token,secret));
  state.resolve.mockResolvedValue({data:{email,display_name:"Invited participant",create_user:false},error:null});state.send.mockResolvedValue({error:null});
  state.verify.mockResolvedValue({data:{session:{access_token:"synthetic"},user:{email,email_confirmed_at:"confirmed"}},error:null});
@@ -32,6 +34,24 @@ beforeEach(()=>{
  state.redirect.mockImplementation((url:string)=>{throw Error("redirect:"+url);});
 });
 describe("invitation-only passwordless requests",()=>{
+ it("rejects a failed CAPTCHA before mail limits or any OTP request",async()=>{
+  state.captcha.mockReturnValue({error:"Дождитесь проверки защиты от ботов и повторите отправку."});
+  const result=await sendTeamCodeAction({},consent());
+  expect(result).toMatchObject({phase:"error",authRequestAccepted:false,captchaRequired:true,error:expect.stringContaining("защиты")});
+  expect(state.limit).not.toHaveBeenCalled();expect(state.send).not.toHaveBeenCalled();expect(state.accept).not.toHaveBeenCalled();
+ });
+ it.each([false,true])("passes the single-use CAPTCHA token to OTP for create_user=%s",async(create_user)=>{
+  state.captcha.mockReturnValue({captchaToken:"single-use-captcha"});
+  state.resolve.mockResolvedValue({data:{email,display_name:"Invited participant",create_user},error:null});
+  expect(await sendTeamCodeAction({},consent())).toMatchObject({phase:"waiting",authRequestAccepted:true});
+  expect(state.send).toHaveBeenCalledWith(expect.objectContaining({email,options:expect.objectContaining({shouldCreateUser:create_user,captchaToken:"single-use-captcha"})}));
+ });
+ it("does not request CAPTCHA from an already verified matching participant",async()=>{
+  state.captcha.mockReturnValue({error:"missing captcha"});
+  state.current.mockResolvedValue({user:{id:"participant-user",email,email_confirmed_at:"confirmed"}});
+  await expect(sendTeamCodeAction({},consent())).rejects.toThrow("redirect:/ru/team/responses/participant-id");
+  expect(state.captcha).not.toHaveBeenCalled();expect(state.send).not.toHaveBeenCalled();
+ });
  it("uses the invited address, not a form override, and never sends an existing user's metadata",async()=>{
   const f=consent();f.set("email","attacker@example.test");
   expect(await sendTeamCodeAction({},f)).toMatchObject({phase:"waiting",authRequestAccepted:true});

@@ -13,7 +13,8 @@ import {sealTeamChallenge} from "./passwordless-challenge";
 import {teamRpc} from "./service";
 import {clearTeamEntry,teamEntryContext} from "./entry-context";
 import {controlledTeamRequired} from '@/server-runtime/team-smoke';
-export type TeamPasswordlessState={phase?:"ready"|"waiting"|"expired"|"error"|"wrong"|"spent";error?:string;authRequestAccepted?:boolean;sentAt?:number;expires?:number;contextExpires?:number};
+import {readAuthCaptcha} from "@/server/auth/captcha";
+export type TeamPasswordlessState={phase?:"ready"|"waiting"|"expired"|"error"|"wrong"|"spent";error?:string;authRequestAccepted?:boolean;sentAt?:number;expires?:number;contextExpires?:number;captchaRequired?:boolean};
 function failure(error:unknown):TeamPasswordlessState{
   const code=error instanceof Error?error.message:"";
   const messages:Record<string,string>={
@@ -60,13 +61,15 @@ export async function sendTeamCodeAction(_:TeamPasswordlessState,form:FormData):
     if(identity?.user.email && identity.user.email.toLowerCase()!==c.target.email)throw new Error("team_wrong_account");
     const matching=Boolean(identity?.user.email_confirmed_at && identity.user.email?.toLowerCase()===c.target.email);
     if(!matching){
+      const captcha=readAuthCaptcha(form);
+      if(captcha.error)return {phase:"error",authRequestAccepted:false,captchaRequired:true,error:captcha.error};
       await enforceRateLimit(`team-code-cooldown:${c.hash}`,1,60);
       await enforceRateLimit(`team-code-send:${c.hash}`,5,3600);
       const mailbox=createHmac("sha256",c.secret).update(c.target.email).digest("hex");
       await enforceRateLimit(`team-code-mailbox:${mailbox}`,5,3600);
       await enforceRateLimit("team-code-send:global",100,3600);
       const client=await createAuthClient();
-      const {error}=await client.auth.signInWithOtp({email:c.target.email,options:{shouldCreateUser:c.target.create_user,emailRedirectTo:`${authConfig().APP_URL}/ru/team/confirm`,...(c.target.create_user?{data:buildSignupMetadata({full_name:c.target.display_name,data_processing_consent:true,marketing_consent:false,versions:Object.fromEntries(Object.entries(policy.versions).map(([k,v])=>[`${k}_version`,v]))})}:{})}});
+      const {error}=await client.auth.signInWithOtp({email:c.target.email,options:{shouldCreateUser:c.target.create_user,emailRedirectTo:`${authConfig().APP_URL}/ru/team/confirm`,...(captcha.captchaToken?{captchaToken:captcha.captchaToken}:{}),...(c.target.create_user?{data:buildSignupMetadata({full_name:c.target.display_name,data_processing_consent:true,marketing_consent:false,versions:Object.fromEntries(Object.entries(policy.versions).map(([k,v])=>[`${k}_version`,v]))})}:{})}});
       if(error)throw new Error(error.status===429?"rate_limited":"team_auth_unavailable");
       const now=Date.now();
       c.jar.set("team-email-challenge",sealTeamChallenge(c.target.email,c.hash,c.secret,now),{httpOnly:true,sameSite:"lax",secure:authConfig().secure,path:"/ru/team",maxAge:600});

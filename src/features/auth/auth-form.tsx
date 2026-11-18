@@ -1,19 +1,28 @@
 "use client";
 
-import { useActionState, useEffect, useState, type FormEvent } from "react";
+import { startTransition, useActionState, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { emailSchema, loginSchema, passwordSchema, registrationSchema, type AuthState } from "@/validation/auth";
 import { getMessages } from "@/i18n/messages";
 import { ConfirmationRecovery } from "./confirmation-recovery";
+import { AuthProtection, useAuthProtection } from "./auth-protection";
 
 type Mode = "register" | "login" | "email-login" | "forgot" | "resend" | "reset" | "confirm" | "mfa";
 type Policy = { versions: Record<string, string>; temporary: boolean; dataUrl: string; marketingUrl: string; policyUrl?: string };
 type Props = { action: (state: AuthState, form: FormData) => Promise<AuthState>; mode: Mode; policy?: Policy; hidden?: Record<string, string>; signedIn?: boolean; returnTo?: string | null };
 const copy = getMessages("ru").auth;
 const inputClass = "mt-2 min-h-12 w-full rounded-xl border border-line bg-white px-3 py-3 text-base text-brand";
+const captchaModes = ["register", "login", "email-login", "forgot", "resend"];
 
 export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false, returnTo }: Props) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const protection = useAuthProtection(captchaModes.includes(mode));
+  const [state, formAction, pending] = useActionState(async (previous: AuthState, form: FormData) => {
+    try { return await action(previous, form); }
+    finally {
+      // A provider token is single-use, including when authentication fails.
+      protection.reset();
+    }
+  }, {});
   const [localError, setLocalError] = useState("");
   const [feedbackHidden, setFeedbackHidden] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -23,7 +32,9 @@ export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false, 
   const labels: Record<Mode, string> = { register: copy.register, login: copy.login, "email-login": "Получить ссылку для входа", forgot: copy.sendReset, resend: copy.resend, reset: copy.savePassword, confirm: hidden.type === "recovery" ? copy.confirmRecovery : hidden.type === "email" ? "Войти в кабинет" : copy.confirm, mfa: copy.mfaVerify };
 
   function validate(event: FormEvent<HTMLFormElement>) {
-    if (["resend", "email-login"].includes(mode) && resendCooldown > 0) { event.preventDefault(); return; }
+    // Manual action dispatch preserves entered fields when a check or request fails.
+    event.preventDefault();
+    if (pending || (["resend", "email-login"].includes(mode) && resendCooldown > 0)) return;
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
@@ -35,8 +46,11 @@ export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false, 
       const result = registrationSchema.safeParse({ email, password, confirm_password: form.get("confirm_password"), full_name: form.get("full_name"), data_processing_consent: form.get("data_processing_consent") === "on", marketing_consent: form.get("marketing_consent") === "on" });
       if (!result.success) error = result.error.issues.some((issue) => issue.path[0] === "confirm_password") ? copy.passwordMismatch : copy.required;
     }
-    if (error) event.preventDefault();
-    else if (["resend", "email-login"].includes(mode)) setResendCooldown(60);
+    if (!error && protection.blocked) error = protection.config.status === "error" ? "Не удалось загрузить проверку безопасности. Попробуйте ещё раз." : "Дождитесь завершения проверки безопасности.";
+    if (!error) {
+      if (["resend", "email-login"].includes(mode)) setResendCooldown(60);
+      startTransition(() => formAction(form));
+    }
     setLocalError(error);
     setFeedbackHidden(Boolean(error));
   }
@@ -53,6 +67,9 @@ export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false, 
     <form action={formAction} onSubmit={validate} onChange={() => {setFeedbackHidden(true); setLocalError("");}} noValidate className="space-y-5">
       {mode === "confirm" && <p>{hidden.type === "email" ? "Нажмите кнопку, чтобы войти в кабинет. Ссылка одноразовая." : copy.confirmText}</p>}
       {Object.entries(hidden).map(([name, value]) => <input key={name} type="hidden" name={name} value={value} />)}
+      {mode === "register" && <div className="absolute -left-[10000px] h-px w-px overflow-hidden" aria-hidden="true">
+        <label>Website<input name="website" type="text" autoComplete="off" tabIndex={-1} /></label>
+      </div>}
       {policy && Object.entries(policy.versions).map(([kind, version]) => <input key={kind} type="hidden" name={`${kind}_version`} value={version} />)}
       {mode === "register" && <label className="block text-sm font-medium">{copy.name}<input className={inputClass} name="full_name" autoComplete="name" required maxLength={200} /></label>}
       {hasEmail && <label className="block text-sm font-medium">{copy.email}<input className={inputClass} name="email" type="email" autoComplete="email" required maxLength={254} /></label>}
@@ -67,9 +84,10 @@ export function AuthForm({ action, mode, policy, hidden = {}, signedIn = false, 
         <Link className="block text-sm underline" href={policy.marketingUrl}>{copy.marketingLink}</Link>
         {policy.temporary && <p className="text-xs leading-relaxed text-muted">{copy.temporaryLegal}</p>}
       </>}
+      <AuthProtection protection={protection} />
       {(localError || (!feedbackHidden && !pending && state.error)) && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{localError || state.error}</p>}
       {!feedbackHidden && !pending && !localError && state.success && <p role="status" className="rounded-xl bg-tint p-3 text-sm">{state.success}</p>}
-      <button type="submit" disabled={pending || (["resend", "email-login"].includes(mode) && resendCooldown > 0)} className="min-h-12 w-full cursor-pointer rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-60">{pending ? copy.pending : labels[mode]}</button>
+      <button type="submit" disabled={pending || protection.blocked || (["resend", "email-login"].includes(mode) && resendCooldown > 0)} className="min-h-12 w-full cursor-pointer rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:cursor-wait disabled:opacity-60">{pending ? copy.pending : labels[mode]}</button>
       {["resend", "email-login"].includes(mode) && resendCooldown > 0 && <p className="text-xs text-muted" role="status">Повторить отправку можно через {resendCooldown} сек.</p>}
     </form>
   );

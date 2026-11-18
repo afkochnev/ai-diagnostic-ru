@@ -15,8 +15,9 @@ describe("staging auth flow contract", () => {
     expect(action).toContain("verifyOtp({ token_hash");
   });
 
-  it("keeps already-confirmed signup safe while recovery remains strict", () => {
-    expect(action).toContain("current.user?.email_confirmed_at");
+  it("does not use an existing session as proof of signup confirmation", () => {
+    expect(action).not.toContain("current.user?.email_confirmed_at");
+    expect(action).toContain("if (!data?.user)");
     expect(action).toContain('type === "signup"');
     expect(action).toContain("return { error: text.invalidLink }");
   });
