@@ -50,7 +50,7 @@ const hooks = vi.hoisted(() => {
   };
 });
 
-vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof import("react")>(), ...hooks }));
+vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof import("react")>(), ...hooks, useLayoutEffect: hooks.useEffect }));
 const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
 vi.mock("next/link", () => ({ default: "a" }));
@@ -116,7 +116,7 @@ describe("diagnostic runner autosave", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("shows save progress and persistent errors but removes the status row after success", async () => {
+  it("shows save progress and persistent errors but removes the live announcement after success", async () => {
     const statuses = (tree: ReactNode) => elements(tree).filter((element) => element.props.role === "status");
     expect(statuses(render())).toHaveLength(0);
     let finishSave!: (result: unknown) => void;
@@ -160,6 +160,30 @@ describe("diagnostic runner autosave", () => {
     await vi.advanceTimersByTimeAsync(2000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ current_block_id: "block-2", answers_dirty: false, answers: [] });
+  });
+
+  it("moves to the newly rendered block after saving, without scrolling on opening or autosaving", async () => {
+    const heading = { scrollIntoView: vi.fn(), focus: vi.fn() };
+    vi.stubGlobal("document", { getElementById: vi.fn(() => heading) });
+    vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn(), requestAnimationFrame: (callback: () => void) => callback() });
+    const first = render();
+    expect(heading.scrollIntoView).not.toHaveBeenCalled();
+    edit(first, 3); render();
+    await vi.advanceTimersByTimeAsync(900);
+    render();
+    expect(heading.scrollIntoView).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ revision: 9 }) });
+    const next = elements(render()).find((element) => element.type === "button" && element.props.children === "Далее");
+    (next?.props.onClick as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heading.scrollIntoView).not.toHaveBeenCalled();
+    const second = render();
+    expect(elements(second).find((element) => element.props.id === "diagnostic-block-heading")?.props.children).toBe("Second block");
+    expect(heading.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ behavior: "auto", block: "start" });
+    expect(heading.focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+    render();
+    expect(heading.scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
   it("preserves partial answers when Next finds a missing required answer", async () => {
