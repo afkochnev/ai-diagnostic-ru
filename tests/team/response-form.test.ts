@@ -53,7 +53,7 @@ const mocks = vi.hoisted(() => {
   const push = vi.fn(), refresh = vi.fn();
   return {fetch: vi.fn(), push, refresh, router: {push, refresh}};
 });
-vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof import("react")>(), ...hooks, useSyncExternalStore: (_subscribe: unknown, snapshot: () => boolean) => snapshot() }));
+vi.mock("react", async (importOriginal) => ({ ...await importOriginal<typeof import("react")>(), ...hooks, useLayoutEffect: hooks.useEffect, useSyncExternalStore: (_subscribe: unknown, snapshot: () => boolean) => snapshot() }));
 vi.mock("next/navigation", () => ({ useRouter: () => mocks.router }));
 vi.mock("next/link", () => ({ default: "a" }));
 
@@ -497,6 +497,34 @@ describe("team response blocks and saving", () => {
       ...response.questions[1], id: `closing-${index}`, prompt: `Closing question ${index}`, required: false,
     }))],
   };
+
+  it("scrolls only after the requested block is rendered, without moving on autosave", async () => {
+    const heading = { scrollIntoView: vi.fn(), focus: vi.fn() };
+    const initial = render();
+    const headingRef = elements(initial).find(element => element.type === "h2")!.props.ref as { current: unknown };
+    headingRef.current = heading;
+    expect(heading.scrollIntoView).not.toHaveBeenCalled();
+
+    choose(initial, 2);
+    render();
+    await vi.advanceTimersByTimeAsync(1500);
+    const saved = render();
+    expect(heading.scrollIntoView).not.toHaveBeenCalled();
+
+    nextBlock(saved);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heading.scrollIntoView).not.toHaveBeenCalled();
+    const next = render();
+    expect(heading.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ behavior: "auto", block: "start" });
+    expect(heading.focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+
+    const answer = elements(next).find(element => element.type === DictatedAnswer)!;
+    (answer.props.onChange as (value: string) => void)("A saved answer");
+    render();
+    await vi.advanceTimersByTimeAsync(1500);
+    render();
+    expect(heading.scrollIntoView).toHaveBeenCalledTimes(1);
+  });
 
   it("keeps all closing questions open after Next when the required answers are already autosaved", async () => {
     const renderClosing = () => hooks.render(() => TeamResponseForm({ response: withClosingQuestions }));

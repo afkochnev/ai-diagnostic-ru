@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { AnswerScale, AnswerScaleGuide } from "@/features/diagnostic/answer-scale";
 import { QuestionnaireIntro } from "@/features/diagnostic/questionnaire-intro";
 import { DictatedAnswer } from "@/features/diagnostic/dictated-answer";
@@ -49,6 +49,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
   const verifySessionOnSave = useRef(false);
   const navigationPendingRef = useRef(false);
   const blockHeading = useRef<HTMLHeadingElement>(null);
+  const scrollToBlockAfterCommit = useRef(false);
   const questionRefs = useRef<Record<string, HTMLElement | null>>({});
   const currentBlock = blocks[Math.min(viewIndex, blocks.length - 1)];
   const required = response.questions.filter((question) => question.required);
@@ -236,6 +237,13 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
 
+  useLayoutEffect(() => {
+    if (!scrollToBlockAfterCommit.current) return;
+    scrollToBlockAfterCommit.current = false;
+    blockHeading.current?.scrollIntoView({ behavior: "auto", block: "start" });
+    blockHeading.current?.focus({ preventScroll: true });
+  }, [viewIndex]);
+
   function update(question: TeamQuestion, value: number | string) {
     const next = { ...answersRef.current, [question.id]: value };
     answersRef.current = next;
@@ -268,8 +276,9 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
       if (!(await save())) return;
       const missing = next > viewIndex ? currentBlock.questions.filter((question) => question.required && !hasAnswer(question, answersRef.current[question.id])) : [];
       if (missing.length) { showMissing(missing); return; }
-      setValidationError(""); setMissingIds([]); setViewIndex(next);
-      requestAnimationFrame(() => { blockHeading.current?.scrollIntoView({ behavior: "smooth", block: "start" }); blockHeading.current?.focus({ preventScroll: true }); });
+      setValidationError(""); setMissingIds([]);
+      scrollToBlockAfterCommit.current = true;
+      setViewIndex(next);
     } finally { navigationPendingRef.current = false; setNavigationPending(false); }
   }
 
@@ -291,7 +300,7 @@ export function TeamResponseForm({ response }: { response: TeamResponse }) {
     <div className="rounded-2xl border border-line bg-white p-5">
       <div className="flex flex-wrap justify-between gap-2 text-sm text-muted"><span>Блок {viewIndex + 1} из {blocks.length}</span><span>Отвечено {answered} из {required.length} обязательных вопросов</span></div>
       <div role="progressbar" aria-label="Заполнение анкеты" aria-valuemin={0} aria-valuemax={required.length} aria-valuenow={answered} className="mt-3 h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${required.length ? answered / required.length * 100 : 0}%` }} /></div>
-      {saving !== "saved" && <p role="status" aria-live="polite" className="mt-3 text-sm text-muted">{rateLimited ? "Сохранение временно приостановлено." : saving === "confirming" ? "Проверяем подтверждение отправки…" : saving === "saving" ? "Сохранение…" : saving === "error" ? "Не удалось подтвердить сохранение." : "Есть несохранённые ответы…"}</p>}
+      <div className="mt-3 h-5 text-sm text-muted">{saving !== "saved" && <p role="status" aria-live="polite">{rateLimited ? "Сохранение временно приостановлено." : saving === "confirming" ? "Проверяем подтверждение отправки…" : saving === "saving" ? "Сохранение…" : saving === "error" ? "Не удалось подтвердить сохранение." : "Есть несохранённые ответы…"}</p>}</div>
     </div>
     <h2 ref={blockHeading} tabIndex={-1} className="scroll-mt-6 text-2xl font-semibold outline-none">{currentBlock.title}</h2>
     {viewIndex === 0 && <QuestionnaireIntro />}

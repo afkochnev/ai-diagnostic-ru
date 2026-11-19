@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AnswerScale, AnswerScaleGuide } from "./answer-scale";
 import { QuestionnaireIntro } from "./questionnaire-intro";
@@ -32,6 +32,7 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
   const [navigationPending, setNavigationPending] = useState(false);
   const [submissionUnconfirmed, setSubmissionUnconfirmed] = useState(false);
   const navigationPendingRef = useRef(false);
+  const navigationScrollPending = useRef(false);
   const questionRefs = useRef<Record<string, HTMLElement | null>>({});
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
@@ -45,6 +46,14 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
   const [viewIndex, setViewIndex] = useState(initialIndex);
   const currentIndex = Math.min(Math.max(0, viewIndex), Math.max(0, data.blocks.length - 1));
   const currentBlock = data.blocks[currentIndex] ?? data.blocks[0];
+
+  useLayoutEffect(() => {
+    if (!navigationScrollPending.current || typeof document === "undefined") return;
+    navigationScrollPending.current = false;
+    const heading = document.getElementById("diagnostic-block-heading");
+    heading?.scrollIntoView({ behavior: "auto", block: "start" });
+    heading?.focus({ preventScroll: true });
+  }, [currentIndex]);
 
   useEffect(() => { answersRef.current = answers; }, [answers]);
 
@@ -164,11 +173,8 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
     setNavigationPending(true);
     try {
       if (!(await save(data.blocks[index].id))) return;
+      navigationScrollPending.current = true;
       setViewIndex(index);
-      if (typeof window !== "undefined") window.requestAnimationFrame(() => {
-        const heading = document.getElementById("diagnostic-block-heading");
-        heading?.scrollIntoView({ behavior: "smooth", block: "start" }); heading?.focus({ preventScroll: true });
-      });
     } finally {
       navigationPendingRef.current = false;
       setNavigationPending(false);
@@ -237,7 +243,7 @@ export function DiagnosticRunner({ data, navigation, anonymous=false }: Props) {
   if (!currentBlock) return null;
   const requiredQuestions = data.blocks.flatMap((block) => block.questions).filter((question) => question.is_required);
   const answeredQuestions = requiredQuestions.filter((question) => isDiagnosticAnswerPresent(question, answers[question.id])).length;
-  return <>{navigation}<main id="main-content" className="min-h-[70vh] py-8 sm:py-12"><div className="mx-auto w-full max-w-4xl px-5 sm:px-8"><div className="mb-7 flex flex-wrap items-center justify-between gap-4"><div><Link href={returnPath} onClick={(event) => void saveAndReturn(event)} className="text-sm underline">{anonymous?"Моя диагностика":"В кабинет"}</Link>{!anonymous && <p className="mt-4 text-sm text-muted">{data.company.name}</p>}<h1 id="diagnostic-block-heading" tabIndex={-1} className="mt-1 scroll-mt-6 text-3xl font-semibold tracking-tight outline-none">{currentBlock.title}</h1></div><div className="text-sm text-muted"><p>Блок {currentIndex + 1} из {data.blocks.length}</p><p className="mt-1">Отвечено {answeredQuestions} из {requiredQuestions.length} обязательных вопросов</p></div></div><div role="progressbar" aria-label="Заполнение анкеты" aria-valuemin={0} aria-valuemax={requiredQuestions.length} aria-valuenow={answeredQuestions} className="h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${(requiredQuestions.length ? answeredQuestions / requiredQuestions.length : 0) * 100}%` }} /></div>{saving !== "saved" && saving !== "idle" && <div className="mt-5 flex items-center gap-2 text-sm text-muted" role="status" aria-live="polite">{saving === "saving" && "Сохранение…"}{saving === "unsaved" && "Есть несохранённые ответы…"}{saving === "error" && "Ошибка сохранения"}</div>}{error && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}{submissionUnconfirmed && <a href={diagnosticPath} className="mt-3 inline-block text-sm underline">Обновить анкету</a>}{saving === "error" && <button type="button" disabled={navigationPending} onClick={() => void save()} className="mt-3 rounded-xl border border-line px-4 py-2 text-sm font-semibold disabled:opacity-50">Повторить сохранение</button>}{validationError && <p role="alert" data-testid="required-answer-error" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{validationError}</p>}{submitError.length>0 && <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800"><p>Заполните обязательные вопросы:</p><ul className="mt-2 list-disc pl-5">{submitError.map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
+  return <>{navigation}<main id="main-content" className="min-h-[70vh] py-8 sm:py-12"><div className="mx-auto w-full max-w-4xl px-5 sm:px-8"><div className="mb-7 flex flex-wrap items-center justify-between gap-4"><div><Link href={returnPath} onClick={(event) => void saveAndReturn(event)} className="text-sm underline">{anonymous?"Моя диагностика":"В кабинет"}</Link>{!anonymous && <p className="mt-4 text-sm text-muted">{data.company.name}</p>}<h1 id="diagnostic-block-heading" tabIndex={-1} className="mt-1 scroll-mt-6 text-3xl font-semibold tracking-tight outline-none">{currentBlock.title}</h1></div><div className="text-sm text-muted"><p>Блок {currentIndex + 1} из {data.blocks.length}</p><p className="mt-1">Отвечено {answeredQuestions} из {requiredQuestions.length} обязательных вопросов</p></div></div><div role="progressbar" aria-label="Заполнение анкеты" aria-valuemin={0} aria-valuemax={requiredQuestions.length} aria-valuenow={answeredQuestions} className="h-2 overflow-hidden rounded-full bg-line"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${(requiredQuestions.length ? answeredQuestions / requiredQuestions.length : 0) * 100}%` }} /></div><div className="mt-5 h-5 text-sm leading-5 text-muted">{saving !== "saved" && saving !== "idle" && <p role="status" aria-live="polite">{saving === "saving" && "Сохранение…"}{saving === "unsaved" && "Есть несохранённые ответы…"}{saving === "error" && "Ошибка сохранения"}</p>}</div>{error && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}{submissionUnconfirmed && <a href={diagnosticPath} className="mt-3 inline-block text-sm underline">Обновить анкету</a>}{saving === "error" && <button type="button" disabled={navigationPending} onClick={() => void save()} className="mt-3 rounded-xl border border-line px-4 py-2 text-sm font-semibold disabled:opacity-50">Повторить сохранение</button>}{validationError && <p role="alert" data-testid="required-answer-error" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{validationError}</p>}{submitError.length>0 && <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800"><p>Заполните обязательные вопросы:</p><ul className="mt-2 list-disc pl-5">{submitError.map((x,i)=><li key={i}>{x}</li>)}</ul></div>}
     {currentIndex === 0 && <QuestionnaireIntro />}
     <section className="mt-5 space-y-5">{currentBlock.questions.some((question) => question.answer_type === "scale_0_4") && <AnswerScaleGuide id="diagnostic-answer-scale-guide" />}{currentBlock.questions.map((question) => <QuestionCard key={question.id} question={question} maxTextLength={anonymous ? 10000 : undefined} value={answers[question.id]} invalid={missingRequiredIds.includes(question.id)} disabled={navigationPending || submissionUnconfirmed} containerRef={(element) => { questionRefs.current[question.id] = element; }} onChange={(value) => update(question, value)} />)}</section><div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between"><Link href={returnPath} onClick={(event) => void saveAndReturn(event)} className="inline-flex min-h-12 items-center justify-center rounded-xl border border-line px-5 py-3 font-semibold hover:bg-tint">{anonymous?"Сохранить и выйти":"Сохранить и выйти в кабинет"}</Link><div className="flex gap-3"><button type="button" disabled={currentIndex === 0 || navigationPending || submissionUnconfirmed} onClick={() => void navigate(currentIndex - 1, false)} className="min-h-12 flex-1 rounded-xl border border-line px-5 py-3 font-semibold hover:bg-tint disabled:cursor-not-allowed disabled:opacity-50">Назад</button>{currentIndex < data.blocks.length - 1 ? <button type="button" disabled={navigationPending} onClick={() => void navigate(currentIndex + 1)} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-50">Далее</button> : <button type="button" disabled={navigationPending} onClick={() => void submit()} className="min-h-12 flex-1 rounded-xl bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-dark disabled:opacity-50">{submissionUnconfirmed ? "Повторить отправку" : "Завершить диагностику"}</button>}</div></div></div></main></>;
 }

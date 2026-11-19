@@ -39,11 +39,11 @@ describe("diagnostic runner required-answer validation", () => {
     expect(source).toContain('navigate(currentIndex + 1)}');
   });
 
-  it("switches and scrolls the block only after a successful save", () => {
+  it("switches the block only after a successful save", () => {
     const source = readFileSync("src/features/diagnostic/diagnostic-runner.tsx", "utf8");
     expect(source).toContain("const [viewIndex, setViewIndex] = useState(initialIndex);");
     const navigation = source.slice(source.indexOf("const navigate ="), source.indexOf("const submit ="));
-    expect(navigation).toMatch(/if \(!\(await save\(data\.blocks\[index\]\.id\)\)\) return;\s+setViewIndex\(index\);\s+if \(typeof window/);
+    expect(navigation).toMatch(/if \(!\(await save\(data\.blocks\[index\]\.id\)\)\) return;[\s\S]*?setViewIndex\(index\);/);
     expect(navigation).not.toContain("router.refresh()");
   });
 
